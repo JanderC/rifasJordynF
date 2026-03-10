@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'https://rifasjordynb-production.up.railway.app/api',
+  baseURL: 'http://localhost:5000/api',
 });
 
 // Adjuntar token en cada request

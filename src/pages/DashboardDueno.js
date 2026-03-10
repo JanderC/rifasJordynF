@@ -28,7 +28,7 @@ export default function DashboardDueno() {
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) return (
-    <Layout title="DASHBOARD">
+    <Layout title="PANTALLA PRINCIPAL">
       <div className="d-flex justify-content-center mt-5">
         <div className="jd-spinner" style={{ width: 48, height: 48 }}></div>
       </div>
@@ -53,7 +53,7 @@ export default function DashboardDueno() {
   const totalIngresos = data?.rifasDetalle?.reduce((a, r) => a + parseFloat(r.ingresos_totales || 0), 0) || 0;
 
   return (
-    <Layout title="DASHBOARD">
+    <Layout title="PANTALLA PRINCIPAL">
 
       {/* ── Banner global ── */}
       <div style={{
