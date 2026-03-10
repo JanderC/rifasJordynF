@@ -14,18 +14,17 @@ const ESTADOS = {
 export default function BuscarNumero() {
   const { user } = useAuth();
 
-  const [numero,      setNumero]      = useState('');
-  const [resultado,   setResultado]   = useState(null);
-  const [loading,     setLoading]     = useState(false);
-  const [vendiendo,   setVendiendo]   = useState(false);
-  const [rifaSelec,   setRifaSelec]   = useState(null);  // rifa seleccionada para vender
-  const [comprador,   setComprador]   = useState({ nombre: '', telefono: '' });
-  const [ticketData,  setTicketData]  = useState(null);  // después de vender
-  const [step,        setStep]        = useState('buscar'); // buscar | confirmar | ticket
+  const [numero,     setNumero]     = useState('');
+  const [resultado,  setResultado]  = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [vendiendo,  setVendiendo]  = useState(false);
+  const [rifaSelec,  setRifaSelec]  = useState(null);
+  const [comprador,  setComprador]  = useState({ nombre: '', telefono: '' });
+  const [ticketData, setTicketData] = useState(null);
+  const [step,       setStep]       = useState('buscar'); // buscar | confirmar | ticket
 
   const inputRef = useRef();
 
-  // Normalizar número a 3 dígitos
   const normalizar = (val) => val.replace(/\D/g, '').slice(0, 3);
 
   const handleBuscar = async (e) => {
@@ -61,17 +60,13 @@ export default function BuscarNumero() {
     const num = numero.padStart(3, '0');
     try {
       await API.post('/numeros/vender', {
-        rifa_id: rifaSelec.rifa_id,
-        numero: num,
+        rifa_id:          rifaSelec.rifa_id,
+        numero:           num,
         nombre_comprador: comprador.nombre,
-        telefono: comprador.telefono,
+        telefono:         comprador.telefono,
       });
       toast.success(`✅ Número ${num} vendido exitosamente`);
-      setTicketData({
-        rifa: resultado.rifas,
-        comprador,
-        rifaVendida: rifaSelec,
-      });
+      setTicketData({ rifa: resultado.rifas, comprador, rifaVendida: rifaSelec });
       setStep('ticket');
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Error al registrar venta';
@@ -98,33 +93,40 @@ export default function BuscarNumero() {
 
   const num3 = numero.padStart(3, '0');
 
+  const fmtCOP = (v) =>
+    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
+
   return (
     <Layout title="VENDER NÚMERO">
-      <div style={{ maxWidth: '800px' }}>
+      <div style={{ maxWidth: '820px' }}>
 
-        {/* ── PASO 1: Buscar ─────────────────────────────── */}
-        <div className="jd-card jd-card-gold mb-4">
+        {/* ── PASO 1: Buscar ── */}
+        <div className="jd-card jd-card-primary mb-4">
           <form onSubmit={handleBuscar}>
             <label className="jd-label mb-2">BUSCAR NÚMERO (000 – 999)</label>
             <div className="d-flex gap-2">
               <input
                 ref={inputRef}
                 className="jd-input"
-                style={{ fontFamily: 'var(--jordyn-mono)', fontSize: '2rem', textAlign: 'center', letterSpacing: '8px', maxWidth: '160px' }}
+                style={{
+                  fontWeight: 900, fontSize: '2.2rem', textAlign: 'center',
+                  letterSpacing: '10px', maxWidth: '170px',
+                  color: 'var(--jordyn-primary)', border: '2px solid var(--jordyn-primary)',
+                }}
                 value={numero}
                 onChange={e => setNumero(normalizar(e.target.value))}
                 placeholder="000"
                 maxLength={3}
                 autoFocus
               />
-              <button type="submit" className="btn-jordyn" disabled={loading} style={{ flex: 1, fontSize: '1rem' }}>
+              <button type="submit" className="btn-jordyn" disabled={loading} style={{ flex: 1, fontSize: '0.95rem' }}>
                 {loading
-                  ? <><span className="jd-spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span> BUSCANDO...</>
+                  ? <><span className="jd-spinner" style={{ width: 18, height: 18, borderWidth: 2, borderTopColor:'#fff' }}></span> Buscando...</>
                   : <><i className="bi bi-search me-2"></i>VERIFICAR</>
                 }
               </button>
               {(resultado || ticketData) && (
-                <button type="button" className="btn-jordyn-outline" onClick={handleReset}>
+                <button type="button" className="btn-jordyn-outline" onClick={handleReset} title="Nueva búsqueda">
                   <i className="bi bi-arrow-counterclockwise"></i>
                 </button>
               )}
@@ -132,44 +134,56 @@ export default function BuscarNumero() {
           </form>
         </div>
 
-        {/* ── PASO 2: Resultado de búsqueda ──────────────── */}
+        {/* ── PASO 2: Resultado ── */}
         {resultado && step === 'buscar' && (
           <div className="fade-in">
-            <h5 style={{ fontFamily: 'var(--jordyn-display)', letterSpacing: '2px', marginBottom: '1rem', color: 'var(--jordyn-muted)', fontSize: '1rem' }}>
-              NÚMERO <span style={{ color: 'var(--jordyn-gold)', fontSize: '1.4rem' }}>{num3}</span> EN LAS RIFAS:
-            </h5>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--jordyn-muted)', marginBottom: '1rem' }}>
+              NÚMERO{' '}
+              <span style={{ color: 'var(--jordyn-primary)', fontSize: '1.4rem', fontWeight: 900 }}>{num3}</span>
+              {' '}EN LAS RIFAS:
+            </div>
             <div className="row g-3">
               {resultado.rifas.map((r) => {
                 const estado = ESTADOS[r.estado] || ESTADOS.disponible;
                 return (
                   <div key={r.rifa_id} className="col-12 col-md-6">
                     <div
-                      className={`jd-card ${r.disponible ? '' : 'opacity-75'}`}
+                      className="jd-card"
                       style={{
-                        border: `1px solid ${r.disponible ? 'rgba(6,214,160,0.3)' : 'rgba(230,57,70,0.3)'}`,
+                        border: `2px solid ${r.disponible ? 'rgba(6,214,160,0.35)' : 'rgba(230,57,70,0.25)'}`,
                         cursor: r.disponible ? 'pointer' : 'not-allowed',
+                        opacity: r.disponible ? 1 : 0.7,
                         transition: 'all 0.2s',
+                        background: r.disponible ? 'linear-gradient(135deg,#fff 80%,rgba(6,214,160,0.04))' : '#fff',
                       }}
                       onClick={() => r.disponible && handleSeleccionarRifa(r)}
+                      onMouseEnter={e => r.disponible && (e.currentTarget.style.boxShadow = '0 4px 20px rgba(6,214,160,0.2)')}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = ''}
                     >
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div>
-                          <div style={{ fontFamily: 'var(--jordyn-display)', fontSize: '1rem', letterSpacing: '2px', color: 'var(--jordyn-text)' }}>
+                          <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--jordyn-text)' }}>
                             {r.rifa_nombre}
                           </div>
-                          <div style={{ fontFamily: 'var(--jordyn-mono)', fontSize: '0.7rem', color: 'var(--jordyn-muted)' }}>🏆 {r.premio}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)' }}>🏆 {r.premio}</div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--jordyn-primary)', marginTop: 2 }}>
+                            {fmtCOP(r.precio)}
+                          </div>
                         </div>
-                        <span className={estado.cls} style={{ fontSize: '0.7rem' }}>
+                        <span className={estado.cls} style={{ fontSize: '0.68rem' }}>
                           <i className={`bi ${estado.icon} me-1`}></i>{estado.label}
                         </span>
                       </div>
 
-                      {/* Compradores previos */}
                       {r.compradores?.map((c, i) => (
-                        <div key={i} style={{ background: '#1a1a1a', borderRadius: '4px', padding: '6px 10px', marginBottom: '4px', fontSize: '0.8rem' }}>
-                          <i className="bi bi-person-fill me-1" style={{ color: 'var(--jordyn-muted)' }}></i>
+                        <div key={i} style={{
+                          background: 'var(--jordyn-bg2)', borderRadius: 6,
+                          padding: '5px 10px', marginBottom: 4, fontSize: '0.8rem',
+                          border: '1px solid var(--jordyn-border)',
+                        }}>
+                          <i className="bi bi-person-fill me-1" style={{ color: 'var(--jordyn-primary)' }}></i>
                           {c.comprador}
-                          <span style={{ fontFamily: 'var(--jordyn-mono)', fontSize: '0.65rem', color: 'var(--jordyn-muted)', marginLeft: '8px' }}>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--jordyn-muted)', marginLeft: 8 }}>
                             venta #{i + 1}
                           </span>
                         </div>
@@ -177,7 +191,7 @@ export default function BuscarNumero() {
 
                       {r.disponible && (
                         <div className="mt-2 text-center">
-                          <span style={{ fontFamily: 'var(--jordyn-display)', fontSize: '0.9rem', color: 'var(--jordyn-green)', letterSpacing: '2px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--jordyn-primary)' }}>
                             <i className="bi bi-cursor-fill me-1"></i>CLICK PARA VENDER
                           </span>
                         </div>
@@ -190,20 +204,27 @@ export default function BuscarNumero() {
           </div>
         )}
 
-        {/* ── PASO 3: Confirmar datos del comprador ──────── */}
+        {/* ── PASO 3: Datos del comprador ── */}
         {step === 'confirmar' && rifaSelec && (
           <div className="jd-card jd-card-green fade-in">
-            <h5 style={{ fontFamily: 'var(--jordyn-display)', fontSize: '1.2rem', letterSpacing: '2px', color: 'var(--jordyn-green)', marginBottom: '1.5rem' }}>
+            <h5 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--jordyn-green)', marginBottom: '1.25rem' }}>
               <i className="bi bi-person-plus-fill me-2"></i>DATOS DEL COMPRADOR
             </h5>
 
-            {/* Info de lo que se va a vender */}
-            <div style={{ background: '#1a1a1a', borderRadius: '6px', padding: '0.8rem 1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ fontFamily: 'var(--jordyn-mono)', fontSize: '2rem', fontWeight: 900, color: 'var(--jordyn-gold)', letterSpacing: '6px' }}>{num3}</div>
+            <div style={{
+              background: 'var(--jordyn-bg2)', borderRadius: 10,
+              padding: '0.85rem 1.1rem', marginBottom: '1.25rem',
+              display: 'flex', alignItems: 'center', gap: '1rem',
+              border: '1.5px solid var(--jordyn-border)',
+            }}>
+              <div style={{ fontWeight: 900, fontSize: '2rem', color: 'var(--jordyn-primary)', letterSpacing: '6px' }}>
+                {num3}
+              </div>
               <div>
-                <div style={{ fontFamily: 'var(--jordyn-display)', letterSpacing: '1px' }}>{rifaSelec.rifa_nombre}</div>
-                <div style={{ fontFamily: 'var(--jordyn-mono)', fontSize: '0.7rem', color: 'var(--jordyn-muted)' }}>
-                  {new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(rifaSelec.precio)}
+                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{rifaSelec.rifa_nombre}</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--jordyn-muted)' }}>🏆 {rifaSelec.premio}</div>
+                <div style={{ fontWeight: 700, color: 'var(--jordyn-green)', fontSize: '0.9rem' }}>
+                  {fmtCOP(rifaSelec.precio)}
                 </div>
               </div>
             </div>
@@ -232,25 +253,25 @@ export default function BuscarNumero() {
             </div>
 
             <div className="d-flex gap-2">
-              <button className="btn-jordyn" onClick={handleVender} disabled={vendiendo} style={{ flex: 1, fontSize: '1rem' }}>
+              <button className="btn-jordyn" onClick={handleVender} disabled={vendiendo} style={{ flex: 1 }}>
                 {vendiendo
-                  ? <><span className="jd-spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></span> REGISTRANDO...</>
+                  ? <><span className="jd-spinner" style={{ width: 16, height: 16, borderWidth: 2, borderTopColor:'#fff' }}></span> Registrando...</>
                   : <><i className="bi bi-check2-circle me-2"></i>CONFIRMAR VENTA</>
                 }
               </button>
               <button className="btn-jordyn-outline" onClick={() => setStep('buscar')}>
-                <i className="bi bi-arrow-left"></i> VOLVER
+                <i className="bi bi-arrow-left me-1"></i> Volver
               </button>
             </div>
           </div>
         )}
 
-        {/* ── PASO 4: Boleto listo para imprimir ─────────── */}
+        {/* ── PASO 4: Ticket ── */}
         {step === 'ticket' && ticketData && (
           <div className="fade-in">
             <div className="jd-alert jd-alert-success mb-4">
               <i className="bi bi-check-circle-fill"></i>
-              Venta registrada exitosamente · Número <strong>{num3}</strong>
+              Venta registrada · Número <strong>{num3}</strong>
             </div>
             <Ticket
               rifa={ticketData.rifa.filter(r => r.rifa_id === rifaSelec?.rifa_id || !rifaSelec)}
