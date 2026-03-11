@@ -328,7 +328,7 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'24px 24px 0 0', padding:'22px 26px 18px', position:'relative' }}>
           <button onClick={onClose} style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>RESERVAR NÚMERO</div>
+          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>COMPRAR NÚMERO</div>
           <div style={{ fontSize:'2.6rem', color:'#fff', lineHeight:1, fontWeight:900 }}>{numero}</div>
           <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)', marginTop:3 }}>{rifa.nombre} · {fmt(rifa.precio)}</div>
           <div style={{ display:'flex', gap:6, marginTop:14 }}>
@@ -569,7 +569,7 @@ function GridNumeros({ rifa, onSelectNumero }) {
         <div style={{ position:'sticky', bottom:14, marginTop:18, animation:'fadeUp .2s ease' }}>
           <button className="pub-btn" onClick={() => onSelectNumero(seleccionado)}
             style={{ width:'100%', justifyContent:'center', borderRadius:16, padding:'15px', fontSize:'1rem', boxShadow:`0 12px 32px ${TURQ}55` }}>
-            🎟 Reservar número {seleccionado} por {fmt(rifa.precio)}
+            🎟 Comprar número {seleccionado} por {fmt(rifa.precio)}
           </button>
         </div>
       )}
