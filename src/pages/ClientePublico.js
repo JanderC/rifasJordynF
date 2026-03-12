@@ -328,7 +328,7 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'24px 24px 0 0', padding:'22px 26px 18px', position:'relative' }}>
           <button onClick={onClose} style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>COMPRAR NÚMERO</div>
+          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>RESERVAR NÚMERO</div>
           <div style={{ fontSize:'2.6rem', color:'#fff', lineHeight:1, fontWeight:900 }}>{numero}</div>
           <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)', marginTop:3 }}>{rifa.nombre} · {fmt(rifa.precio)}</div>
           <div style={{ display:'flex', gap:6, marginTop:14 }}>
@@ -498,78 +498,114 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GRID DE NÚMEROS
+   GRID DE NÚMEROS — solo muestra disponibles al cliente
 ═══════════════════════════════════════════════════════════ */
 function GridNumeros({ rifa, onSelectNumero }) {
-  const [numeros,      setNumeros]      = useState([]);
+  const [todos,        setTodos]        = useState([]);   // los 1000 para contar
   const [loading,      setLoading]      = useState(true);
-  const [filtro,       setFiltro]       = useState('todos');
   const [busqueda,     setBusqueda]     = useState('');
   const [seleccionado, setSeleccionado] = useState(null);
 
   useEffect(() => {
     setLoading(true);
     API.get(`/publico/rifas/${rifa.id}/numeros-disponibles`)
-      .then(r => { setNumeros(r.data); setLoading(false); })
+      .then(r => { setTodos(r.data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [rifa.id]);
 
-  const colores = { disponible:'#06d6a0', vendido_1:'#ffc107', agotado:'#e63946', reservado:'#3b9ddd' };
-  const labels  = { disponible:'Disponibles', vendido_1:'1 venta', agotado:'Agotados', reservado:'Reservados' };
-  const totales = numeros.reduce((a, n) => { a[n.estado] = (a[n.estado] || 0) + 1; return a; }, {});
+  // Solo los disponibles aparecen en el grid
+  const disponibles = todos.filter(n => n.estado === 'disponible');
+  const tomados     = todos.length - disponibles.length; // vendidos + reservados + agotados
+  const pct         = todos.length > 0 ? Math.round((tomados / todos.length) * 100) : 0;
 
-  const visible = numeros.filter(n => {
-    if (filtro !== 'todos' && n.estado !== filtro) return false;
-    if (busqueda && !n.numero.includes(busqueda.padStart(3,'0').slice(-3))) return false;
-    return true;
+  const visible = disponibles.filter(n => {
+    if (!busqueda) return true;
+    return n.numero.includes(busqueda.padStart(3,'0').slice(-3));
   });
 
   if (loading) return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(40px,1fr))', gap:5, padding:'20px 0' }}>
-      {Array.from({length:80}).map((_,i) => <div key={i} className="shimmer" style={{ height:40, borderRadius:8 }}></div>)}
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(42px,1fr))', gap:5, padding:'20px 0' }}>
+      {Array.from({length:60}).map((_,i) => <div key={i} className="shimmer" style={{ height:42, borderRadius:8 }}></div>)}
     </div>
   );
 
   return (
     <div>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-        {Object.entries(totales).map(([est, n]) => (
-          <div key={est} onClick={() => setFiltro(filtro === est ? 'todos' : est)}
-            style={{ background: filtro === est ? `${colores[est]}20` : '#fff', border:`2px solid ${filtro === est ? colores[est] : '#e0ecec'}`, borderRadius:50, padding:'5px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, transition:'all .2s' }}>
-            <div style={{ width:9, height:9, borderRadius:'50%', background:colores[est] }}></div>
-            <span style={{ fontSize:'.6rem', color: filtro === est ? colores[est] : `${DARK}88` }}>{labels[est]}: {n}</span>
+      {/* Barra de ocupación */}
+      <div style={{ background:`${TURQ}0d`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+        <div style={{ flex:1, minWidth:180 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+            <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
+              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> números disponibles
+            </span>
+            <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>
+              {pct}% ocupado
+            </span>
           </div>
-        ))}
-        {filtro !== 'todos' && <button onClick={() => setFiltro('todos')} style={{ background:'none', border:'none', fontSize:'.58rem', color:'#aaa', cursor:'pointer' }}>✕ todos</button>}
+          <div style={{ background:'#e0f5f5', borderRadius:6, height:7, overflow:'hidden' }}>
+            <div style={{
+              width:`${pct}%`, height:'100%', borderRadius:6, transition:'width 1s ease',
+              background: pct > 80
+                ? 'linear-gradient(90deg,#e63946,#ff6b6b)'
+                : pct > 50
+                  ? 'linear-gradient(90deg,#f0a500,#ffd166)'
+                  : `linear-gradient(90deg,${TURQ},${TURQ2})`,
+            }}></div>
+          </div>
+        </div>
+        {disponibles.length === 0 && (
+          <span style={{ fontSize:'.72rem', color:'#e63946', fontWeight:700 }}>🔴 Rifa agotada</span>
+        )}
       </div>
 
+      {/* Buscador */}
       <div style={{ position:'relative', marginBottom:14 }}>
         <span style={{ position:'absolute', left:16, top:'50%', transform:'translateY(-50%)', fontSize:'.8rem', color:'#aaa' }}>🔍</span>
         <input className="pub-input" value={busqueda} onChange={e => setBusqueda(e.target.value.replace(/\D/,'').slice(0,3))}
           placeholder="Buscar número (ej: 007)" style={{ paddingLeft:44 }} maxLength={3} />
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(42px,1fr))', gap:5 }}>
-        {visible.map(n => (
-          <div key={n.numero}
-            className={`num-cell ${n.numero === seleccionado ? 'seleccionado' : n.estado}`}
-            onClick={() => { if (n.estado !== 'disponible') return; setSeleccionado(n.numero === seleccionado ? null : n.numero); }}
-            title={n.estado !== 'disponible' ? `${n.numero} — ${labels[n.estado]}` : `Número ${n.numero}`}>
-            {n.numero}
-          </div>
-        ))}
-        {visible.length === 0 && (
-          <div style={{ gridColumn:'1/-1', textAlign:'center', padding:36, color:'#aaa', fontSize:'.88rem' }}>
-            No hay números que coincidan
-          </div>
+        {busqueda && (
+          <button onClick={() => setBusqueda('')}
+            style={{ position:'absolute', right:14, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:'.8rem', color:'#aaa' }}>✕</button>
         )}
       </div>
 
+      {/* Grid — solo disponibles */}
+      {disponibles.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'48px 20px', background:'#fff5f5', borderRadius:16, border:'2px dashed #ffaaaa' }}>
+          <div style={{ fontSize:'2.5rem', marginBottom:12 }}>😔</div>
+          <div style={{ fontSize:'1.1rem', color:'#c0392b', fontWeight:700, marginBottom:6 }}>Esta rifa está agotada</div>
+          <div style={{ fontSize:'.88rem', color:`${DARK}66` }}>Todos los números han sido vendidos o reservados</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(52px,1fr))', gap:6 }}>
+            {visible.map(n => (
+              <div key={n.numero}
+                className={`num-cell ${n.numero === seleccionado ? 'seleccionado' : 'disponible'}`}
+                onClick={() => setSeleccionado(n.numero === seleccionado ? null : n.numero)}
+                title={`Número ${n.numero} — disponible`}>
+                {n.numero}
+              </div>
+            ))}
+            {visible.length === 0 && busqueda && (
+              <div style={{ gridColumn:'1/-1', textAlign:'center', padding:36, color:'#aaa', fontSize:'.88rem' }}>
+                El número <strong>{busqueda.padStart(3,'0')}</strong> no está disponible
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize:'.65rem', color:`${DARK}44`, textAlign:'center', marginTop:10 }}>
+            Mostrando {visible.length} número{visible.length !== 1 ? 's' : ''} disponible{visible.length !== 1 ? 's' : ''}
+            {busqueda && ` para "${busqueda.padStart(3,'0')}"`}
+          </div>
+        </>
+      )}
+
+      {/* Botón flotante */}
       {seleccionado && (
         <div style={{ position:'sticky', bottom:14, marginTop:18, animation:'fadeUp .2s ease' }}>
           <button className="pub-btn" onClick={() => onSelectNumero(seleccionado)}
             style={{ width:'100%', justifyContent:'center', borderRadius:16, padding:'15px', fontSize:'1rem', boxShadow:`0 12px 32px ${TURQ}55` }}>
-            🎟 Comprar número {seleccionado} por {fmt(rifa.precio)}
+            🎟 Reservar número {seleccionado} por {fmt(rifa.precio)}
           </button>
         </div>
       )}
@@ -590,24 +626,30 @@ function RifaCard({ rifa, onSeleccionar }) {
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
-      <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
-        {tieneImagen ? (
+      {/* Imagen completa de la rifa */}
+      {tieneImagen ? (
+        <div style={{ width:'100%', background:'#0a0a0a', borderRadius:'24px 24px 0 0', overflow:'hidden', position:'relative' }}>
           <img
             src={rifa.imagen_url}
             alt={rifa.nombre}
             onError={() => setImgError(true)}
-            style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
+            style={{ width:'100%', display:'block', maxHeight:500, objectFit:'contain', background:'#111' }}
           />
-        ) : (
+          <div style={{ position:'absolute', bottom:12, right:12, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:50, padding:'8px 18px', boxShadow:'0 4px 16px rgba(0,0,0,.4)' }}>
+            <span style={{ fontSize:'.85rem', color:'#fff', fontWeight:800 }}>{fmt(rifa.precio)}</span>
+          </div>
+        </div>
+      ) : (
+        <div style={{ position:'relative', height:200, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)`, borderRadius:'24px 24px 0 0' }}>
           <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
             <div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div>
             <div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div>
           </div>
-        )}
-        <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
-          <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
+          <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
+            <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ padding:'18px 22px 22px' }}>
         <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>

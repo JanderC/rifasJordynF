@@ -151,7 +151,7 @@ export default function Login() {
         </div>
 
         <p className="text-center mt-3" style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>
-          RIFAS JORDYN © 2026 — SISTEMA PRIVADO
+          RESUELVE TU SEMANA © 2026 — SISTEMA PRIVADO
         </p>
       </div>
     </div>

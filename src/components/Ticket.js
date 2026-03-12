@@ -1,16 +1,5 @@
 import React from 'react';
 
-/* ═══════════════════════════════════════════════════════
-   RIFAS JORDYN — Sistema de Boleto con Talón Desprendible
-
-   Estructura de cada impresión:
-   ┌────────────────────────────────────┐
-   │         PARTE CLIENTE              │  número grande, premio, sorteo, info
-   ├╌╌╌╌╌ ✂ TALÓN VENDEDOR ✂ ╌╌╌╌╌╌╌╌╌┤  línea de corte
-   │         TALÓN VENDEDOR             │  número + datos cliente
-   └────────────────────────────────────┘
-═══════════════════════════════════════════════════════ */
-
 export const TICKET_DESIGN_KEY = 'rifas_jordyn_ticket_design';
 
 export const DEFAULT_DESIGN = {
