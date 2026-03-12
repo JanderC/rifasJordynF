@@ -25,6 +25,7 @@ const LOTERIAS = [
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
+  vendedores_ids: [], // IDs de vendedores asignados a esta rifa
 };
 
 /* ─── Formateo COP ─── */
@@ -158,10 +159,10 @@ function ModalVendedoresRifa({ rifa, onClose }) {
              color:#0abfbc;background:rgba(10,191,188,0.06)}
         .footer{margin-top:18px;font-size:10px;color:#aaa;border-top:1px dashed #ddd;padding-top:8px}
       </style></head><body>
-      <h2>🎰  RESUELVE TU SEMANA — Números asignados</h2>
+      <h2>🎰 RIFAS JORDYN — Números asignados</h2>
       <p>Vendedor: <b>${vendedor.nombre}</b> · Rifa: <b>${rifa.nombre}</b> · Total: <b>${nums.length}</b></p>
       <div class="grid">${nums.map(n=>`<div class="num">${n}</div>`).join('')}</div>
-      <div class="footer">Impreso ${new Date().toLocaleString('es-CO')} · Sistema RESUELVE TU SEMANA</div>
+      <div class="footer">Impreso ${new Date().toLocaleString('es-CO')} · Sistema RIFAS JORDYN</div>
       </body></html>`;
     const win = window.open('', '_blank', 'width=700,height=600');
     win.document.write(html); win.document.close();
@@ -480,6 +481,7 @@ function ModalNumeros({ rifa, onClose }) {
 export default function GestionRifas() {
   const [rifas,          setRifas]          = useState([]);
   const [rifasArchivadas,setRifasArchivadas] = useState([]);
+  const [todosVendedores,setTodosVendedores] = useState([]); // lista global de vendedores activos
   const [loading,        setLoading]        = useState(true);
   const [form,           setForm]           = useState(emptyForm);
   const [editId,         setEditId]         = useState(null);
@@ -492,10 +494,14 @@ export default function GestionRifas() {
 
   const load = useCallback(async () => {
     try {
-      const res = await API.get('/rifas');
-      setRifas(res.data.filter(r => r.estado !== 'archivada'));
-      setRifasArchivadas(res.data.filter(r => r.estado === 'archivada'));
-    } catch { toast.error('Error cargando rifas'); }
+      const [resRifas, resVend] = await Promise.all([
+        API.get('/rifas'),
+        API.get('/vendedores'),
+      ]);
+      setRifas(resRifas.data.filter(r => r.estado !== 'archivada'));
+      setRifasArchivadas(resRifas.data.filter(r => r.estado === 'archivada'));
+      setTodosVendedores(resVend.data.filter(v => v.activo));
+    } catch { toast.error('Error cargando datos'); }
     finally { setLoading(false); }
   }, []);
 
@@ -517,7 +523,25 @@ export default function GestionRifas() {
   };
 
   /* ── Editar ── */
-  const handleEdit = (r) => {
+  const handleEdit = async (r) => {
+    // Cargar qué vendedores ya tienen números en esta rifa
+    let vIds = [];
+    try {
+      const res = await API.get('/vendedores');
+      const activos = res.data.filter(v => v.activo);
+      // Un vendedor "pertenece" a la rifa si tiene al menos 1 número asignado
+      const checks = await Promise.all(
+        activos.map(v => API.get(`/vendedores/${v.id}`)
+          .then(rv => {
+            const tieneNums = (rv.data.numeros_asignados || []).some(n => n.rifa_id === r.id);
+            return tieneNums ? v.id : null;
+          })
+          .catch(() => null)
+        )
+      );
+      vIds = checks.filter(Boolean);
+    } catch { /* si falla, abrimos sin pre-selección */ }
+
     setForm({
       nombre:         r.nombre        || '',
       descripcion:    r.descripcion   || '',
@@ -528,6 +552,7 @@ export default function GestionRifas() {
       loteria_ref:    r.loteria_ref   || '',
       tipo:           r.tipo          || 'sencilla',
       imagen_base64:  r.imagen_url    || '',
+      vendedores_ids: vIds,
     });
     setEditId(r.id);
     setShowForm(true);
@@ -560,13 +585,42 @@ export default function GestionRifas() {
         tipo:         form.tipo,
         imagen_url:   form.imagen_base64 || null,
       };
+
+      let rifaId = editId;
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
         toast.success('Rifa actualizada');
       } else {
-        await API.post('/rifas', payload);
+        const res = await API.post('/rifas', payload);
+        rifaId = res.data.rifa.id;
         toast.success('Rifa creada');
       }
+
+      // ── Sincronizar vendedores asignados ──
+      // Los que NO están en el nuevo listado → quitar todos sus números
+      // Los que SÍ están → se mantienen (sus números se gestionan en el modal de vendedores)
+      if (rifaId && todosVendedores.length > 0) {
+        const nuevosIds  = form.vendedores_ids;
+        const quitarVend = todosVendedores.filter(v => !nuevosIds.includes(v.id));
+
+        await Promise.allSettled(
+          quitarVend.map(async (v) => {
+            try {
+              // Obtener números que tiene ese vendedor en esta rifa
+              const rv = await API.get(`/vendedores/${v.id}`);
+              const nums = (rv.data.numeros_asignados || [])
+                .filter(n => n.rifa_id === rifaId)
+                .map(n => n.numero);
+              if (nums.length > 0) {
+                await API.delete('/numeros/asignar', {
+                  data: { vendedor_id: v.id, rifa_id: rifaId, numeros: nums }
+                });
+              }
+            } catch { /* ignorar errores individuales */ }
+          })
+        );
+      }
+
       setShowForm(false);
       setForm(emptyForm);
       setEditId(null);
@@ -665,6 +719,41 @@ export default function GestionRifas() {
             <div style={{ fontWeight:600, fontSize:'0.78rem' }}>🎲 {r.loteria_ref}</div>
           </div>
         )}
+
+        {/* Vendedores asignados */}
+        {(() => {
+          const vends = todosVendedores.filter(v =>
+            /* se detecta si tienen nums en esta rifa usando la caché del estado global */
+            false // placeholder — se muestra via modal; aquí solo mostramos si hay alguno
+          );
+          const COLORS = ['#0abfbc','#f0a500','#06d6a0','#118ab2','#e63946','#9b5de5','#ff6b6b','#3a7d44'];
+          // Mostramos todos los vendedores activos como referencia visual rápida
+          // (el detalle real se ve en el modal de vendedores)
+          return todosVendedores.length > 0 ? (
+            <div className="col-12">
+              <div style={{ color:'var(--jordyn-muted)', fontSize:'0.65rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:5 }}>VENDEDORES</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {todosVendedores.slice(0,6).map((v, idx) => (
+                  <span key={v.id} style={{
+                    display:'inline-flex', alignItems:'center', gap:4,
+                    background:`${COLORS[idx % COLORS.length]}15`,
+                    border:`1px solid ${COLORS[idx % COLORS.length]}44`,
+                    color: COLORS[idx % COLORS.length],
+                    borderRadius:20, padding:'2px 8px',
+                    fontSize:'0.65rem', fontWeight:700,
+                  }}>
+                    {v.nombre.charAt(0).toUpperCase()}{v.nombre.split(' ')[0].slice(1).slice(0,6)}
+                  </span>
+                ))}
+                {todosVendedores.length > 6 && (
+                  <span style={{ fontSize:'0.65rem', color:'var(--jordyn-muted)', padding:'2px 6px' }}>
+                    +{todosVendedores.length - 6} más
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Barra de progreso */}
@@ -867,6 +956,73 @@ export default function GestionRifas() {
                   onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                   placeholder="Detalles del premio, condiciones, etc."
                   style={{ resize:'vertical' }} />
+              </div>
+
+              {/* ── VENDEDORES ── */}
+              <div className="col-12">
+                <label className="jd-label">
+                  VENDEDORES ASIGNADOS A ESTA RIFA
+                  {form.vendedores_ids.length > 0 && (
+                    <span style={{ marginLeft:8, background:'var(--jordyn-primary)', color:'#fff', borderRadius:20, padding:'1px 9px', fontSize:'0.65rem', fontWeight:700 }}>
+                      {form.vendedores_ids.length} seleccionado{form.vendedores_ids.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </label>
+
+                {todosVendedores.length === 0 ? (
+                  <div style={{ padding:'0.75rem 1rem', background:'var(--jordyn-bg2)', borderRadius:8, fontSize:'0.8rem', color:'var(--jordyn-muted)', border:'1px dashed var(--jordyn-border)' }}>
+                    No hay vendedores activos. Créalos en la sección "Vendedores".
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, padding:'10px 12px', background:'var(--jordyn-bg2)', borderRadius:10, border:'1.5px solid var(--jordyn-border)' }}>
+                      {todosVendedores.map((v, idx) => {
+                        const sel = form.vendedores_ids.includes(v.id);
+                        const COLORS = ['#0abfbc','#f0a500','#06d6a0','#118ab2','#e63946','#9b5de5','#ff6b6b','#3a7d44'];
+                        const color  = COLORS[idx % COLORS.length];
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setForm(p => ({
+                              ...p,
+                              vendedores_ids: sel
+                                ? p.vendedores_ids.filter(id => id !== v.id)
+                                : [...p.vendedores_ids, v.id]
+                            }))}
+                            style={{
+                              display:'inline-flex', alignItems:'center', gap:7,
+                              background: sel ? `${color}18` : '#fff',
+                              border: `2px solid ${sel ? color : 'var(--jordyn-border)'}`,
+                              borderRadius:24, padding:'5px 14px',
+                              cursor:'pointer', transition:'all .15s',
+                              fontFamily:'var(--jordyn-font)', fontSize:'0.8rem',
+                              fontWeight: sel ? 700 : 500,
+                              color: sel ? color : 'var(--jordyn-muted)',
+                              boxShadow: sel ? `0 2px 10px ${color}33` : 'none',
+                            }}
+                          >
+                            {/* Avatar pequeño */}
+                            <span style={{
+                              width:22, height:22, borderRadius:'50%',
+                              background: sel ? color : 'var(--jordyn-border)',
+                              color:'#fff', display:'flex', alignItems:'center',
+                              justifyContent:'center', fontSize:'0.62rem', fontWeight:800, flexShrink:0,
+                            }}>
+                              {v.nombre.charAt(0).toUpperCase()}
+                            </span>
+                            {v.nombre}
+                            {sel && <i className="bi bi-check-lg" style={{ fontSize:'0.75rem' }}></i>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize:'0.68rem', color:'var(--jordyn-muted)', marginTop:5 }}>
+                      <i className="bi bi-info-circle me-1"></i>
+                      Solo los vendedores seleccionados podrán tener números asignados en esta rifa. Los que se quiten perderán sus números automáticamente.
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
