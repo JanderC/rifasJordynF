@@ -711,7 +711,7 @@ export default function ClientePublico() {
         <div style={{ maxWidth:1100, margin:'0 auto', height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-            <span style={{ fontSize:'1.2rem', fontWeight:700, color:DARK }}>Rifas Jordyn</span>
+            <span style={{ fontSize:'1.2rem', fontWeight:700, color:DARK }}>RESUELVE TU SEMANA</span>
           </div>
           <div style={{ display:'flex', gap:24 }}>
             <span className="nav-link" onClick={() => document.getElementById('rifas-sec')?.scrollIntoView({behavior:'smooth'})}>Rifas</span>

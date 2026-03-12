@@ -59,7 +59,7 @@ export default function Sidebar() {
 
   const navs = user?.rol === 'dueno' ? navsDueno : navsVendedor;
   const currentNav = navs.find(n => location.pathname === n.to);
-  const pageTitle  = currentNav?.label || 'Rifas Jordyn';
+  const pageTitle  = currentNav?.label || 'RESUELVE TU SEMANA';
 
   /* Ítem de nav */
   const NavItem = ({ n }) => (

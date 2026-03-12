@@ -56,7 +56,7 @@ export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) 
   const serial    = `JDY-${numero}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
   const hoy       = new Date().toLocaleDateString('es-CO');
   const ac        = d.accentColor || '#f5c518';
-  const brand     = `${d.brandEmoji || '🎰'} ${d.brandText || 'RIFAS JORDYN'}`;
+  const brand     = `${d.brandEmoji || '🎰'} ${d.brandText || 'RESUELVE TU SEMANA'}`;
   const compNombre = comprador?.nombre || '';
   const compTel    = comprador?.telefono || '';
 
@@ -457,7 +457,7 @@ export function printTickets(rifasArr, numero, comprador, vendedor) {
   const html  = rifasArr.flatMap(r => [1, 2].map(c => buildTicketHTMLCustom(d, r, numero, comprador, vendedor, c))).join('\n');
 
   const win = window.open('', '_blank', 'width=480,height=920');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Boleto #${numero} — RIFAS JORDYN</title>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Boleto #${numero} — RESUELVE TU SEMANA</title>
 <style>${FONTS}*{box-sizing:border-box;margin:0;padding:0;}body{background:#1a1a1a;display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;font-family:'Oswald',sans-serif;}
 @media print{body{background:#fff;padding:6px;gap:12px;}}</style>
 </head><body>${html}
