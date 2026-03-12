@@ -128,7 +128,7 @@ export default function Sidebar() {
         {/* Brand */}
         <div className="jd-sidebar-brand" style={{ paddingRight: '3rem' }}>
           <h1 style={{ fontSize: '1.25rem', color: '#fff', fontWeight: 900, letterSpacing: '1px' }}>
-            🎰 RIFAS JORDYN
+             RESUELVE TU SEMANA
           </h1>
           <small style={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.6rem', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase' }}>
             {user?.rol === 'dueno' ? '◆ Administrador' : '◆ Vendedor'}

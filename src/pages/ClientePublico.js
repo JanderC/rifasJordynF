@@ -77,7 +77,7 @@ const METODOS_PAGO = {
 const buildWhatsAppLink = ({ numero, rifa, nombre, telefono, reservaId }) => {
   const id  = reservaId?.slice(0,8).toUpperCase() || '-------';
   const msg =
-    `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
+    `*RESUELVE TU SEMANA* — Confirmación de reserva\n\n` +
     `Hola *${nombre}* 👋 tu número quedó bloqueado:\n\n` +
     `🎟 Número: *${numero}*\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
@@ -309,11 +309,11 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
 
   const compartirNativo = async () => {
     const texto =
-      `🎰 RIFAS JORDYN\n🎟 Número: ${numero}\n🏆 Premio: ${rifa?.premio}\n` +
+      `RESUELVE TU SEMANA\n🎟 Número: ${numero}\n🏆 Premio: ${rifa?.premio}\n` +
       `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n👤 ${form.nombre}\n` +
       `🔖 Reserva: #${reservaId?.slice(0,8).toUpperCase()}\n✅ Número bloqueado pendiente de confirmación.`;
     if (navigator.share) {
-      try { await navigator.share({ title:'Tu boleto — Rifas Jordyn', text: texto }); } catch {}
+      try { await navigator.share({ title:'Tu boleto — RESUELVE TU SEMANA', text: texto }); } catch {}
     } else {
       await navigator.clipboard.writeText(texto);
       alert('Texto copiado al portapapeles 📋');
@@ -875,7 +875,7 @@ export default function ClientePublico() {
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
                 <div style={{ width:38, height:38, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>Rifas Jordyn</span>
+                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>RESUELVE TU SEMANA</span>
               </div>
               <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>
                 Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.
@@ -897,7 +897,7 @@ export default function ClientePublico() {
             </div>
           </div>
           <div style={{ borderTop:'1px solid rgba(255,255,255,.08)', paddingTop:22, textAlign:'center' }}>
-            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RIFAS JORDYN · TODOS LOS DERECHOS RESERVADOS</span>
+            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RESUELVE TU SEMANA · TODOS LOS DERECHOS RESERVADOS</span>
           </div>
         </div>
       </footer>

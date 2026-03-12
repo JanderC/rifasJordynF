@@ -6,7 +6,7 @@ export const DEFAULT_DESIGN = {
   headerBg:        '#0a0a0a',
   headerBg2:       '#1c1800',
   accentColor:     '#f5c518',
-  brandText:       'RIFAS JORDYN',
+  brandText:       'RESUELVE TU SEMANA',
   brandEmoji:      '🎰',
   showSubrifa:     true,
   heroBg:          '#080808',

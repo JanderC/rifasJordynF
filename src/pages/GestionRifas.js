@@ -158,10 +158,10 @@ function ModalVendedoresRifa({ rifa, onClose }) {
              color:#0abfbc;background:rgba(10,191,188,0.06)}
         .footer{margin-top:18px;font-size:10px;color:#aaa;border-top:1px dashed #ddd;padding-top:8px}
       </style></head><body>
-      <h2>🎰 RIFAS JORDYN — Números asignados</h2>
+      <h2>🎰  RESUELVE TU SEMANA — Números asignados</h2>
       <p>Vendedor: <b>${vendedor.nombre}</b> · Rifa: <b>${rifa.nombre}</b> · Total: <b>${nums.length}</b></p>
       <div class="grid">${nums.map(n=>`<div class="num">${n}</div>`).join('')}</div>
-      <div class="footer">Impreso ${new Date().toLocaleString('es-CO')} · Sistema RIFAS JORDYN</div>
+      <div class="footer">Impreso ${new Date().toLocaleString('es-CO')} · Sistema RESUELVE TU SEMANA</div>
       </body></html>`;
     const win = window.open('', '_blank', 'width=700,height=600');
     win.document.write(html); win.document.close();

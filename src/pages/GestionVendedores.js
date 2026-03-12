@@ -34,7 +34,7 @@ function imprimirNumeros(vendedor, rifa, numeros) {
     </head>
     <body>
       <div class="header">
-        <h1>🎰 RIFAS JORDYN</h1>
+        <h1>🎰  RESUELVE TU SEMANA</h1>
         <p>Números asignados para venta</p>
       </div>
       <div class="meta">
@@ -47,7 +47,7 @@ function imprimirNumeros(vendedor, rifa, numeros) {
         ${numeros.map(n => `<div class="num">${n}</div>`).join('')}
       </div>
       <div class="footer">
-        Impreso el ${new Date().toLocaleString('es-CO')} · Sistema RIFAS JORDYN
+        Impreso el ${new Date().toLocaleString('es-CO')} · Sistema RESUELVE TU SEMANA
       </div>
     </body>
     </html>

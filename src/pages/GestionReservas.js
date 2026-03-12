@@ -24,7 +24,7 @@ const WaIcon = ({ size=18 }) => (
 const buildTicketMsg = (r, nota) => {
   const id = r.id?.slice(0,8).toUpperCase() || '-------';
   return (
-    `🎰 *RIFAS JORDYN* — ✅ PAGO CONFIRMADO\n\n` +
+    `*RESUELVE TU SEMANA* — ✅ PAGO CONFIRMADO\n\n` +
     `Hola *${r.nombre_cliente}* 🎉 ¡Tu número fue aprobado!\n\n` +
     `🎟 Número: *${r.numero}*\n` +
     `🏆 Premio: ${r.premio || ''}\n` +

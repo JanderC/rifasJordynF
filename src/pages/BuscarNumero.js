@@ -23,14 +23,14 @@ const buildTicketWA = ({ numero, rifa, comprador, vendedor }) => {
   const fmtF = f => f ? new Date(f).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Por definir';
   const COP  = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n||0);
   return (
-    `🎰 *RIFAS JORDYN* — 🎟 Ticket de compra\n\n` +
+    `*RESUELVE TU SEMANA* — 🎟 Ticket de compra\n\n` +
     `Hola *${comprador.nombre}* 🎉\n\n` +
     `🎟 Número: *${numero}*\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
     `🎪 Rifa: ${rifa?.rifa_nombre || ''}\n` +
     `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
     `💰 Valor: ${COP(rifa?.precio)}\n` +
-    `👤 Vendedor: ${vendedor || 'Rifas Jordyn'}\n\n` +
+    `👤 Vendedor: ${vendedor || 'RESUELVE TU SEMANA'}\n\n` +
     `✅ _¡Tu número está registrado! Guarda este mensaje como comprobante._\n` +
     `🌐 rifasjordyn.com`
   );
