@@ -314,74 +314,98 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
   const tieneImagen = rifa.imagen_url && !imgError;
 
   return (
-    <div className="hero-feat-card">
-      {/* Fondo: imagen del premio o gradiente */}
-      {tieneImagen ? (
-        <img
-          src={rifa.imagen_url}
-          alt={rifa.premio}
-          className="hero-feat-img"
-          onError={() => setImgError(true)}
-        />
-      ) : (
+    <div style={{
+      borderRadius:28, overflow:'hidden',
+      boxShadow:'0 24px 64px rgba(0,0,0,.18)',
+      display:'grid',
+      gridTemplateColumns:'1fr 1fr',
+      minHeight:520,
+      background:DARK,
+    }}
+    className="hero-feat-card"
+    >
+      {/* ── Columna izquierda: imagen completa ── */}
+      <div style={{ position:'relative', overflow:'hidden', minHeight:340 }}>
+        {tieneImagen ? (
+          <img
+            src={rifa.imagen_url}
+            alt={rifa.premio}
+            onError={() => setImgError(true)}
+            style={{
+              width:'100%', height:'100%',
+              objectFit:'contain',       /* imagen completa sin recorte */
+              objectPosition:'center',
+              display:'block',
+              background:'#0d1e1e',      /* fondo neutro detrás si hay espacio */
+            }}
+          />
+        ) : (
+          <div style={{
+            width:'100%', height:'100%',
+            background:`linear-gradient(135deg,${TURQ_DK}44,${DARK})`,
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>
+            <div style={{ fontSize:'8rem', opacity:.2, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
+          </div>
+        )}
+        {/* Degradado sutil en el borde derecho para fusionar con el panel */}
         <div style={{
           position:'absolute', inset:0,
-          background:`linear-gradient(135deg,${TURQ_DK} 0%,${DARK} 100%)`,
-        }}>
-          <div style={{ position:'absolute', top:'30%', left:'50%', transform:'translate(-50%,-50%)', fontSize:'6rem', opacity:.18, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
-        </div>
-      )}
-      <div className="hero-feat-overlay"></div>
+          background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`,
+          pointerEvents:'none',
+        }}></div>
+      </div>
 
-      {/* Contenido sobre la imagen */}
-      <div className="hero-feat-content">
+      {/* ── Columna derecha: info + contador ── */}
+      <div style={{
+        background:`linear-gradient(160deg,#0d2424 0%,${DARK} 100%)`,
+        padding:'36px 32px 32px',
+        display:'flex', flexDirection:'column', justifyContent:'center',
+        position:'relative', overflow:'hidden',
+      }}>
+        {/* Círculos decorativos de fondo */}
+        <div style={{ position:'absolute', top:-60, right:-60, width:220, height:220, borderRadius:'50%', background:`${TURQ}0a`, pointerEvents:'none' }}></div>
+        <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:`${TURQ}07`, pointerEvents:'none' }}></div>
 
-        {/* Badge "Rifa Principal" */}
-        <div style={{ marginBottom:16, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+        {/* Badges */}
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18, position:'relative' }}>
           <span style={{
             background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
             color:'#fff', borderRadius:50, padding:'5px 14px',
-            fontSize:'.6rem', fontWeight:800, letterSpacing:'2px',
-            textTransform:'uppercase', animation:'badgePop .5s ease',
-            boxShadow:`0 4px 16px ${TURQ}55`,
-          }}>
-            ⭐ Rifa Principal
-          </span>
+            fontSize:'.58rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase',
+            boxShadow:`0 4px 16px ${TURQ}55`, animation:'badgePop .5s ease',
+          }}>⭐ Rifa Principal</span>
           {rifa.loteria_ref && (
             <span style={{
-              background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.25)',
-              color:'rgba(255,255,255,.9)', borderRadius:50, padding:'5px 12px',
-              fontSize:'.6rem', fontWeight:600, letterSpacing:'1px',
-              backdropFilter:'blur(8px)',
-            }}>
-              🎲 {rifa.loteria_ref}
-            </span>
+              background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.18)',
+              color:'rgba(255,255,255,.85)', borderRadius:50, padding:'5px 12px',
+              fontSize:'.58rem', fontWeight:600, backdropFilter:'blur(8px)',
+            }}>🎲 {rifa.loteria_ref}</span>
           )}
         </div>
 
-        {/* Nombre del premio */}
+        {/* Nombre y premio */}
         <h2 style={{
-          fontSize:'clamp(1.6rem,4vw,2.6rem)', color:'#fff', fontWeight:900,
-          lineHeight:1.1, marginBottom:6,
-          textShadow:'0 2px 20px rgba(0,0,0,.5)',
-        }}>
-          {rifa.nombre}
-        </h2>
-        <p style={{ fontSize:'1rem', color:'rgba(255,255,255,.75)', marginBottom:20, fontWeight:500 }}>
+          fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900,
+          lineHeight:1.15, marginBottom:6,
+          textShadow:'0 2px 16px rgba(0,0,0,.5)',
+          position:'relative',
+        }}>{rifa.nombre}</h2>
+        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:24, fontWeight:500, position:'relative' }}>
           🏆 {rifa.premio}
         </p>
 
-        {/* Contador regresivo */}
+        {/* Contador */}
         {rifa.fecha_sorteo && !cd.expired && (
-          <div style={{ marginBottom:24 }}>
-            <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.55)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>
+          <div style={{ marginBottom:24, position:'relative' }}>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>
               ⏳ Tiempo para el sorteo
             </div>
-            <div style={{ display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:6, alignItems:'flex-start' }}>
               {unidades.map((u, i) => (
                 <React.Fragment key={u.lbl}>
                   <div className="count-unit">
-                    <span className="count-num" key={u.val}>{u.val}</span>
+                    <span className="count-num">{u.val}</span>
                     <span className="count-lbl">{u.lbl}</span>
                   </div>
                   {i < 3 && <span className="count-sep">:</span>}
@@ -392,23 +416,22 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
         )}
 
         {cd.expired && rifa.fecha_sorteo && (
-          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(230,57,70,.2)', border:'1px solid rgba(230,57,70,.4)', borderRadius:12, padding:'10px 16px' }}>
-            <span style={{ fontSize:'1.1rem' }}>🔔</span>
-            <span style={{ fontSize:'.85rem', color:'#ff8a8a', fontWeight:700 }}>¡Sorteo realizado! Próximamente nuevo sorteo</span>
+          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(230,57,70,.15)', border:'1px solid rgba(230,57,70,.35)', borderRadius:12, padding:'10px 16px', position:'relative' }}>
+            <span style={{ fontSize:'.85rem', color:'#ff8a8a', fontWeight:700 }}>🔔 ¡Sorteo realizado! Próximamente nuevo sorteo</span>
           </div>
         )}
 
         {!rifa.fecha_sorteo && (
-          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.2)', borderRadius:12, padding:'10px 16px', backdropFilter:'blur(8px)' }}>
-            <span style={{ fontSize:'.85rem', color:'rgba(255,255,255,.75)', fontWeight:600 }}>📅 Fecha de sorteo por confirmar</span>
+          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'10px 16px', position:'relative' }}>
+            <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.65)', fontWeight:600 }}>📅 Fecha de sorteo por confirmar</span>
           </div>
         )}
 
         {/* Precio + CTA */}
-        <div style={{ display:'flex', gap:14, alignItems:'center', flexWrap:'wrap' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:12, position:'relative' }}>
           <div>
-            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700 }}>Por número</div>
-            <div style={{ fontSize:'1.8rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 20px ${TURQ}88` }}>
+            <div style={{ fontSize:'.52rem', color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:2 }}>Por número</div>
+            <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>
               {fmt(rifa.precio)}
             </div>
           </div>
@@ -417,8 +440,9 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
             onClick={() => onVerNumeros(rifa)}
             style={{
               background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
-              padding:'14px 28px', borderRadius:50,
-              fontSize:'.95rem', fontWeight:700,
+              padding:'15px 28px', borderRadius:50,
+              fontSize:'.95rem', fontWeight:700, width:'100%',
+              justifyContent:'center',
               animation:'glowPulse 2.5s ease-in-out infinite',
             }}
           >
@@ -426,6 +450,14 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
           </button>
         </div>
       </div>
+
+      {/* Responsive: apilar en mobile */}
+      <style>{`
+        @media (max-width: 640px) {
+          .hero-feat-card { grid-template-columns:1fr !important; }
+          .hero-feat-card > div:first-child { min-height:260px !important; }
+        }
+      `}</style>
     </div>
   );
 }
