@@ -38,7 +38,7 @@ const METODOS_PAGO = {
     colorHex: '#c2007a', bg: '#fdf0f9', border: '#f0c0e8', icono: '💜',
     pais: '🇨🇴 Colombia',
     campos: [
-      { label: 'Número Nequi', valor: '3224012780'   },
+      { label: 'Número Nequi', valor: '3224012780'    },
       { label: 'Titular',      valor: 'Carmen Rangel' },
     ],
     nota: '⚠️ Solo de Nequi a Nequi',
@@ -73,7 +73,7 @@ const METODOS_PAGO = {
   },
 };
 
-/* ─── Tasa COP/USD — se carga desde la API, fallback 4200 ─── */
+/* ─── Tasa COP/USD ─── */
 let _copUsdCache = 4200;
 async function fetchTasaCopUsd() {
   try {
@@ -83,83 +83,70 @@ async function fetchTasaCopUsd() {
   } catch {}
   return _copUsdCache;
 }
-
-/* ─── Hook que expone la tasa COP/USD actualizada ─── */
 function useTasaCopUsd() {
   const [tasa, setTasa] = useState(_copUsdCache);
-  useEffect(() => {
-    fetchTasaCopUsd().then(setTasa);
-  }, []);
+  useEffect(() => { fetchTasaCopUsd().then(setTasa); }, []);
   return tasa;
 }
 
-/* ─── Moneda de cada método ─── */
 const METODO_MONEDA = {
-  'Pago Móvil':  'VES',   // Bolívares — usa tasa paralela
+  'Pago Móvil':  'VES',
   'Nequi':       'COP',
   'Bancolombia': 'COP',
   'Zelle':       'USD',
   'Efectivo':    'COP',
 };
 
-/* ─── Hook: trae tasa dólar paralelo Venezuela ─── */
 let _tasaCache = null;
 let _tasaTs    = 0;
 function useTasaDolar() {
   const [tasa, setTasa] = useState(_tasaCache);
   useEffect(() => {
-    // Refrescar máximo cada 10 minutos
     if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
     fetch('https://ve.dolarapi.com/v1/dolares')
       .then(r => r.json())
       .then(data => {
         const paralelo = data.find(d => d.fuente === 'paralelo');
-        if (paralelo?.promedio) {
-          _tasaCache = paralelo.promedio;
-          _tasaTs    = Date.now();
-          setTasa(paralelo.promedio);
-        }
+        if (paralelo?.promedio) { _tasaCache = paralelo.promedio; _tasaTs = Date.now(); setTasa(paralelo.promedio); }
       })
-      .catch(() => {}); // silencioso — si falla no mostramos conversión
+      .catch(() => {});
   }, []);
-  return tasa; // Bs por 1 USD
+  return tasa;
 }
 
-/* ─── Calcular precio en moneda del método ─── */
 function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
   const moneda = METODO_MONEDA[metodo];
-  if (!moneda || moneda === 'COP') return null; // ya está en COP, no mostrar extra
+  if (!moneda || moneda === 'COP') return null;
   const usd = precioCOP / copUsd;
-  if (moneda === 'USD') {
-    return { valor: usd, texto: `$${usd.toFixed(2)} USD`, moneda: 'USD', icono: '💵' };
-  }
+  if (moneda === 'USD') return { valor: usd, texto: `$${usd.toFixed(2)} USD`, moneda: 'USD', icono: '💵' };
   if (moneda === 'VES' && tasaBsUSD) {
     const bs = usd * tasaBsUSD;
-    const fmtBs = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(bs);
-    return { valor: bs, texto: `Bs. ${fmtBs}`, moneda: 'VES', icono: '🇻🇪' };
+    return { valor: bs, texto: `Bs. ${new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(bs)}`, moneda: 'VES', icono: '🇻🇪' };
   }
   return null;
 }
 
-
-const buildWhatsAppLink = ({ numero, rifa, nombre, telefono, reservaId }) => {
-  const id  = reservaId?.slice(0,8).toUpperCase() || '-------';
+/* ─── Mensaje WhatsApp multi-número ─── */
+const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds }) => {
+  const todos   = Array.isArray(numeros) ? numeros : [numeros];
+  const numStr  = todos.map(n => `*${n}*`).join(' · ');
+  const id      = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
+  const total   = rifa?.precio * todos.length;
   const msg =
     `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
-    `Hola *${nombre}* 👋 tu número quedó bloqueado:\n\n` +
-    `🎟 Número: *${numero}*\n` +
+    `Hola *${nombre}* 👋 tu${todos.length > 1 ? 's números quedaron bloqueados' : ' número quedó bloqueado'}:\n\n` +
+    `🎟 Número${todos.length > 1 ? 's' : ''}: ${numStr}\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
     `🎪 Rifa: ${rifa?.nombre || ''}\n` +
     `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
-    `💰 Valor: ${fmt(rifa?.precio)}\n` +
+    `💰 Valor: ${fmt(rifa?.precio)} c/u${todos.length > 1 ? ` · Total: ${fmt(total)}` : ''}\n` +
     `🔖 ID Reserva: #${id}\n\n` +
     `⏳ _Pendiente de verificación. El admin revisará tu pago pronto._\n` +
     `🌐 rifasjordyn.com`;
   const num = telefono?.replace(/\D/g,'') || '';
-  const url = num
+  return num
     ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
     : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  return url;
 };
 
 /* ─── Inyectar estilos ─── */
@@ -219,21 +206,35 @@ const injectStyles = () => {
       margin-bottom:6px; font-family:'Poppins',sans-serif;
     }
 
+    /* ── Celda normal ── */
     .num-cell {
       width:100%; aspect-ratio:1;
       display:flex; align-items:center; justify-content:center;
       border-radius:8px; cursor:pointer;
       font-family:'Poppins',sans-serif; font-size:.72rem; font-weight:700;
-      transition:transform .12s, box-shadow .12s;
-      border:2px solid transparent; user-select:none;
+      transition:transform .12s, box-shadow .12s, background .12s;
+      border:2px solid transparent; user-select:none; position:relative;
     }
-    .num-cell:hover { transform:scale(1.15); z-index:2; }
+    .num-cell:hover { transform:scale(1.13); z-index:2; }
     .num-cell.disponible   { background:#fff; border-color:#d0ecec; color:${DARK}; }
     .num-cell.disponible:hover { border-color:${TURQ}; box-shadow:0 4px 16px ${TURQ}44; background:${TURQ}08; }
     .num-cell.vendido_1    { background:#fff8e0; border-color:#ffd166; color:#b8860b; cursor:not-allowed; }
     .num-cell.agotado      { background:#ffe8e8; border-color:#ffaaaa; color:#c0392b; cursor:not-allowed; }
     .num-cell.reservado    { background:#e8f4ff; border-color:#a0c8ff; color:#2874a6; cursor:not-allowed; }
-    .num-cell.seleccionado { background:linear-gradient(135deg,${TURQ},${TURQ2}); border-color:${TURQ_DK}; color:#fff; transform:scale(1.18); box-shadow:0 6px 20px ${TURQ}66; }
+    /* ── Celda seleccionada ── */
+    .num-cell.seleccionado {
+      background:linear-gradient(135deg,${TURQ},${TURQ2});
+      border-color:${TURQ_DK}; color:#fff;
+      transform:scale(1.18); box-shadow:0 6px 20px ${TURQ}66;
+    }
+    .num-cell.seleccionado::after {
+      content:'✓';
+      position:absolute; top:-5px; right:-5px;
+      width:16px; height:16px; background:#fff; color:${TURQ_DK};
+      border-radius:50%; font-size:.55rem; font-weight:900;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 2px 6px rgba(0,0,0,.2);
+    }
 
     .phone-row { display:flex; gap:8px; align-items:stretch; }
     .phone-select {
@@ -258,6 +259,22 @@ const injectStyles = () => {
     }
     .copy-pill:hover { opacity:1; background:rgba(0,0,0,.06); }
 
+    /* ── Chip de número seleccionado ── */
+    .num-chip {
+      display:inline-flex; align-items:center; gap:5px;
+      background:linear-gradient(135deg,${TURQ}18,${TURQ2}22);
+      border:1.5px solid ${TURQ}44; border-radius:20px;
+      padding:4px 10px 4px 12px;
+      font-family:'Poppins',sans-serif; font-size:.82rem;
+      font-weight:800; color:${TURQ_DK}; letter-spacing:.5px;
+    }
+    .num-chip-remove {
+      background:none; border:none; cursor:pointer; color:${TURQ_DK};
+      font-size:.8rem; padding:0; line-height:1; opacity:.7;
+      transition:opacity .15s;
+    }
+    .num-chip-remove:hover { opacity:1; }
+
     @keyframes fadeUp  { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
     @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
     @keyframes spin    { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
@@ -273,12 +290,6 @@ const injectStyles = () => {
     .nav-link { font-family:'Poppins',sans-serif; font-weight:500; color:${DARK}88; text-decoration:none; font-size:.9rem; transition:color .2s; cursor:pointer; }
     .nav-link:hover { color:${TURQ}; }
 
-    @keyframes countFlip {
-      0%  { transform:translateY(-8px); opacity:0; }
-      20% { transform:translateY(0);    opacity:1; }
-      80% { transform:translateY(0);    opacity:1; }
-      100%{ transform:translateY(8px);  opacity:0; }
-    }
     @keyframes heroFloat {
       0%,100%{ transform:translateY(0); }
       50%    { transform:translateY(-10px); }
@@ -316,6 +327,7 @@ const injectStyles = () => {
       font-size:2rem; font-weight:900; color:rgba(255,255,255,.3);
       margin-top:14px; line-height:1; flex-shrink:0;
     }
+
     .hero-feat-card {
       position:relative; border-radius:28px; overflow:hidden;
       min-height:520px; display:flex; align-items:flex-end;
@@ -329,20 +341,21 @@ const injectStyles = () => {
     .hero-feat-card:hover .hero-feat-img { transform:scale(1.03); }
     .hero-feat-overlay {
       position:absolute; inset:0;
-      background:linear-gradient(
-        170deg,
-        rgba(5,15,15,.08) 0%,
-        rgba(5,15,15,.45) 40%,
-        rgba(5,15,15,.93) 100%
-      );
+      background:linear-gradient(170deg,rgba(5,15,15,.08) 0%,rgba(5,15,15,.45) 40%,rgba(5,15,15,.93) 100%);
     }
     .hero-feat-content { position:relative; z-index:2; width:100%; padding:28px 32px 32px; }
+
+    /* ── Barra flotante de selección ── */
+    .carrito-bar {
+      position:sticky; bottom:14px; z-index:50;
+      animation:fadeUp .22s ease;
+    }
   `;
   document.head.appendChild(s);
 };
 
 /* ═══════════════════════════════════════════════════════════
-   HOOK: Cuenta regresiva en tiempo real
+   HOOK: Cuenta regresiva
 ═══════════════════════════════════════════════════════════ */
 function useCountdown(targetDate) {
   const calc = () => {
@@ -366,116 +379,55 @@ function useCountdown(targetDate) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   COMPONENTE: Hero de la rifa principal con contador
+   HERO DE LA RIFA PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
 function HeroRifaPrincipal({ rifa, onVerNumeros }) {
   const cd = useCountdown(rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
-
-  const unidades = [
-    { val: String(cd.dias).padStart(2,'0'),     lbl: 'Días'    },
-    { val: String(cd.horas).padStart(2,'0'),    lbl: 'Horas'   },
-    { val: String(cd.minutos).padStart(2,'0'),  lbl: 'Min'     },
-    { val: String(cd.segundos).padStart(2,'0'), lbl: 'Seg'     },
-  ];
-
   const tieneImagen = rifa.imagen_url && !imgError;
 
+  const unidades = [
+    { val: String(cd.dias).padStart(2,'0'),     lbl: 'Días'  },
+    { val: String(cd.horas).padStart(2,'0'),    lbl: 'Horas' },
+    { val: String(cd.minutos).padStart(2,'0'),  lbl: 'Min'   },
+    { val: String(cd.segundos).padStart(2,'0'), lbl: 'Seg'   },
+  ];
+
   return (
-    <div style={{
-      borderRadius:28, overflow:'hidden',
-      boxShadow:'0 24px 64px rgba(0,0,0,.18)',
-      display:'grid',
-      gridTemplateColumns:'1fr 1fr',
-      minHeight:520,
-      background:DARK,
-    }}
-    className="hero-feat-card"
-    >
-      {/* ── Columna izquierda: imagen completa ── */}
+    <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
       <div style={{ position:'relative', overflow:'hidden', minHeight:340 }}>
         {tieneImagen ? (
-          <img
-            src={rifa.imagen_url}
-            alt={rifa.premio}
-            onError={() => setImgError(true)}
-            style={{
-              width:'100%', height:'100%',
-              objectFit:'contain',       /* imagen completa sin recorte */
-              objectPosition:'center',
-              display:'block',
-              background:'#0d1e1e',      /* fondo neutro detrás si hay espacio */
-            }}
-          />
+          <img src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
+            style={{ width:'100%', height:'100%', objectFit:'contain', objectPosition:'center', display:'block', background:'#0d1e1e' }} />
         ) : (
-          <div style={{
-            width:'100%', height:'100%',
-            background:`linear-gradient(135deg,${TURQ_DK}44,${DARK})`,
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}>
+          <div style={{ width:'100%', height:'100%', background:`linear-gradient(135deg,${TURQ_DK}44,${DARK})`, display:'flex', alignItems:'center', justifyContent:'center' }}>
             <div style={{ fontSize:'8rem', opacity:.2, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
           </div>
         )}
-        {/* Degradado sutil en el borde derecho para fusionar con el panel */}
-        <div style={{
-          position:'absolute', inset:0,
-          background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`,
-          pointerEvents:'none',
-        }}></div>
+        <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`, pointerEvents:'none' }}></div>
       </div>
 
-      {/* ── Columna derecha: info + contador ── */}
-      <div style={{
-        background:`linear-gradient(160deg,#0d2424 0%,${DARK} 100%)`,
-        padding:'36px 32px 32px',
-        display:'flex', flexDirection:'column', justifyContent:'center',
-        position:'relative', overflow:'hidden',
-      }}>
-        {/* Círculos decorativos de fondo */}
+      <div style={{ background:`linear-gradient(160deg,#0d2424 0%,${DARK} 100%)`, padding:'36px 32px 32px', display:'flex', flexDirection:'column', justifyContent:'center', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-60, right:-60, width:220, height:220, borderRadius:'50%', background:`${TURQ}0a`, pointerEvents:'none' }}></div>
         <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:`${TURQ}07`, pointerEvents:'none' }}></div>
 
-        {/* Badges */}
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18, position:'relative' }}>
-          <span style={{
-            background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
-            color:'#fff', borderRadius:50, padding:'5px 14px',
-            fontSize:'.58rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase',
-            boxShadow:`0 4px 16px ${TURQ}55`, animation:'badgePop .5s ease',
-          }}>⭐ Rifa Principal</span>
+          <span style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:50, padding:'5px 14px', fontSize:'.58rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', boxShadow:`0 4px 16px ${TURQ}55`, animation:'badgePop .5s ease' }}>⭐ Rifa Principal</span>
           {rifa.loteria_ref && (
-            <span style={{
-              background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.18)',
-              color:'rgba(255,255,255,.85)', borderRadius:50, padding:'5px 12px',
-              fontSize:'.58rem', fontWeight:600, backdropFilter:'blur(8px)',
-            }}>🎲 {rifa.loteria_ref}</span>
+            <span style={{ background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.18)', color:'rgba(255,255,255,.85)', borderRadius:50, padding:'5px 12px', fontSize:'.58rem', fontWeight:600, backdropFilter:'blur(8px)' }}>🎲 {rifa.loteria_ref}</span>
           )}
         </div>
 
-        {/* Nombre y premio */}
-        <h2 style={{
-          fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900,
-          lineHeight:1.15, marginBottom:6,
-          textShadow:'0 2px 16px rgba(0,0,0,.5)',
-          position:'relative',
-        }}>{rifa.nombre}</h2>
-        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:24, fontWeight:500, position:'relative' }}>
-          🏆 {rifa.premio}
-        </p>
+        <h2 style={{ fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900, lineHeight:1.15, marginBottom:6, textShadow:'0 2px 16px rgba(0,0,0,.5)', position:'relative' }}>{rifa.nombre}</h2>
+        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
 
-        {/* Contador */}
         {rifa.fecha_sorteo && !cd.expired && (
           <div style={{ marginBottom:24, position:'relative' }}>
-            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>
-              ⏳ Tiempo para el sorteo
-            </div>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>⏳ Tiempo para el sorteo</div>
             <div style={{ display:'flex', gap:6, alignItems:'flex-start' }}>
               {unidades.map((u, i) => (
                 <React.Fragment key={u.lbl}>
-                  <div className="count-unit">
-                    <span className="count-num">{u.val}</span>
-                    <span className="count-lbl">{u.lbl}</span>
-                  </div>
+                  <div className="count-unit"><span className="count-num">{u.val}</span><span className="count-lbl">{u.lbl}</span></div>
                   {i < 3 && <span className="count-sep">:</span>}
                 </React.Fragment>
               ))}
@@ -483,65 +435,31 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
           </div>
         )}
 
-        {cd.expired && rifa.fecha_sorteo && (
-          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(230,57,70,.15)', border:'1px solid rgba(230,57,70,.35)', borderRadius:12, padding:'10px 16px', position:'relative' }}>
-            <span style={{ fontSize:'.85rem', color:'#ff8a8a', fontWeight:700 }}>🔔 ¡Sorteo realizado! Próximamente nuevo sorteo</span>
-          </div>
-        )}
-
-        {!rifa.fecha_sorteo && (
-          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,.08)', border:'1px solid rgba(255,255,255,.15)', borderRadius:12, padding:'10px 16px', position:'relative' }}>
-            <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.65)', fontWeight:600 }}>📅 Fecha de sorteo por confirmar</span>
-          </div>
-        )}
-
-        {/* Precio + CTA */}
         <div style={{ display:'flex', flexDirection:'column', gap:12, position:'relative' }}>
           <div>
             <div style={{ fontSize:'.52rem', color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:2 }}>Por número</div>
-            <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>
-              {fmt(rifa.precio)}
-            </div>
+            <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>{fmt(rifa.precio)}</div>
           </div>
-          <button
-            className="pub-btn"
-            onClick={() => onVerNumeros(rifa)}
-            style={{
-              background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
-              padding:'15px 28px', borderRadius:50,
-              fontSize:'.95rem', fontWeight:700, width:'100%',
-              justifyContent:'center',
-              animation:'glowPulse 2.5s ease-in-out infinite',
-            }}
-          >
+          <button className="pub-btn" onClick={() => onVerNumeros(rifa)} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, padding:'15px 28px', borderRadius:50, fontSize:'.95rem', fontWeight:700, width:'100%', justifyContent:'center', animation:'glowPulse 2.5s ease-in-out infinite' }}>
             🎟 Ver números disponibles
           </button>
         </div>
       </div>
-
-      {/* Responsive: apilar en mobile */}
-      <style>{`
-        @media (max-width: 640px) {
-          .hero-feat-card { grid-template-columns:1fr !important; }
-          .hero-feat-card > div:first-child { min-height:260px !important; }
-        }
-      `}</style>
+      <style>{`@media (max-width: 640px) { .hero-feat-card { grid-template-columns:1fr !important; } .hero-feat-card > div:first-child { min-height:260px !important; } }`}</style>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CARD DE DATOS DE PAGO (inline al seleccionar método)
+   CARD DE DATOS DE PAGO
 ═══════════════════════════════════════════════════════════ */
 function PagoInlineCard({ metodo }) {
   const [copiado, setCopiado] = useState('');
   const info = METODOS_PAGO[metodo];
   if (!info) return null;
-
   const copiar = async (val, key) => {
     try { await navigator.clipboard.writeText(val); setCopiado(key); setTimeout(() => setCopiado(''), 2000); } catch {}
   };
-
   return (
     <div className="pago-inline-card" style={{ background: info.bg, border: `2px solid ${info.border}`, marginTop: 12 }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
@@ -551,46 +469,41 @@ function PagoInlineCard({ metodo }) {
           <div style={{ fontSize:'.65rem', color:`${DARK}66` }}>{info.pais}</div>
         </div>
       </div>
-
       {info.campos.map(({ label, valor }) => (
         <div key={label} className="pago-campo-row">
           <div>
             <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>{label}</div>
             <div style={{ fontSize:'.9rem', fontWeight:700, color: DARK }}>{valor}</div>
           </div>
-          <button className="copy-pill" onClick={() => copiar(valor, label)} title="Copiar">
-            {copiado === label ? '✅' : '📋'}
-          </button>
+          <button className="copy-pill" onClick={() => copiar(valor, label)} title="Copiar">{copiado === label ? '✅' : '📋'}</button>
         </div>
       ))}
-
-      {info.nota && (
-        <div style={{ fontSize:'.72rem', fontWeight:600, color: info.colorHex, textAlign:'center', marginTop:6, padding:'6px 10px', background:'rgba(255,255,255,.5)', borderRadius:8 }}>
-          {info.nota}
-        </div>
-      )}
+      {info.nota && <div style={{ fontSize:'.72rem', fontWeight:600, color: info.colorHex, textAlign:'center', marginTop:6, padding:'6px 10px', background:'rgba(255,255,255,.5)', borderRadius:8 }}>{info.nota}</div>}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MODAL DE RESERVA
+   MODAL DE RESERVA — acepta array de números
 ═══════════════════════════════════════════════════════════ */
-function ModalReserva({ rifa, numero, onClose, onSuccess }) {
-  const [step,      setStep]     = useState(1);
-  const [form,      setForm]     = useState({ nombre:'', codPais:'+58', telefono:'', metodo_pago:'' });
-  const [imagen,    setImagen]   = useState(null);
-  const [imgB64,    setImgB64]   = useState('');
-  const [imgNombre, setImgN]     = useState('');
-  const [error,     setError]    = useState('');
-  const [sending,   setSending]  = useState(false);
-  const [reservaId, setReservaId]= useState('');
-  const fileRef  = useRef();
-  const tasaBs   = useTasaDolar();    // tasa paralela Bs/USD
-  const copUsd   = useTasaCopUsd();   // tasa COP/USD desde BD
+function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
+  // numeros: string[] — puede ser [uno] o varios
+  const [step,       setStep]     = useState(1);
+  const [form,       setForm]     = useState({ nombre:'', codPais:'+58', telefono:'', metodo_pago:'' });
+  const [imagen,     setImagen]   = useState(null);
+  const [imgB64,     setImgB64]   = useState('');
+  const [imgNombre,  setImgN]     = useState('');
+  const [error,      setError]    = useState('');
+  const [sending,    setSending]  = useState(false);
+  const [reservaIds, setReservaIds] = useState([]);
+  const [conflictos, setConflictos] = useState([]);
+  const fileRef = useRef();
+  const tasaBs  = useTasaDolar();
+  const copUsd  = useTasaCopUsd();
 
-  const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const upd          = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
+  const totalCOP     = rifa.precio * numeros.length;
 
   const handleFile = e => {
     const f = e.target.files[0];
@@ -611,14 +524,16 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
     try {
       const r = await API.post('/publico/reservar', {
         rifa_id:            rifa.id,
-        numero,
+        numeros,                        // ← array
         nombre_cliente:     form.nombre.trim(),
         telefono:           telefonoFull,
         metodo_pago:        form.metodo_pago,
         comprobante_base64: imgB64,
         comprobante_nombre: imgNombre,
       });
-      setReservaId(r.data.reserva.id);
+      const ids = (r.data.reservas || [r.data.reserva]).map(rv => rv?.id).filter(Boolean);
+      setReservaIds(ids);
+      setConflictos(r.data.conflictos || []);
       setStep(2);
       onSuccess?.();
     } catch (e) {
@@ -627,15 +542,15 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
   };
 
   const abrirWA = () => {
-    const url = buildWhatsAppLink({ numero, rifa, nombre: form.nombre, telefono: telefonoFull, reservaId });
+    const url = buildWhatsAppLink({ numeros, rifa, nombre: form.nombre, telefono: telefonoFull, reservaIds });
     window.open(url, '_blank');
   };
 
   const compartirNativo = async () => {
     const texto =
-      `🎰 RIFAS JORDYN\n🎟 Número: ${numero}\n🏆 Premio: ${rifa?.premio}\n` +
+      `🎰 RIFAS JORDYN\n🎟 Número${numeros.length>1?'s':''}: ${numeros.join(' · ')}\n🏆 Premio: ${rifa?.premio}\n` +
       `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n👤 ${form.nombre}\n` +
-      `🔖 Reserva: #${reservaId?.slice(0,8).toUpperCase()}\n✅ Número bloqueado pendiente de confirmación.`;
+      `🔖 Reserva: #${reservaIds[0]?.slice(0,8).toUpperCase()}\n✅ Número${numeros.length>1?'s bloqueados':'bloqueado'} pendiente${numeros.length>1?'s':''} de confirmación.`;
     if (navigator.share) {
       try { await navigator.share({ title:'Tu boleto — Rifas Jordyn', text: texto }); } catch {}
     } else {
@@ -644,17 +559,36 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
     }
   };
 
+  /* ── Calcular precio en moneda del método ── */
+  const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
+  const convTotal    = convUnitario
+    ? { ...convUnitario, valor: convUnitario.valor * numeros.length,
+        texto: convUnitario.moneda === 'USD'
+          ? `$${(convUnitario.valor * numeros.length).toFixed(2)} USD`
+          : `Bs. ${new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(convUnitario.valor * numeros.length)}` }
+    : null;
+
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position:'fixed', inset:0, background:'rgba(10,30,30,.65)', backdropFilter:'blur(8px)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'#fff', borderRadius:24, width:'100%', maxWidth:500, maxHeight:'93vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,60,60,.3)', animation:'fadeUp .3s ease' }}>
+      <div style={{ background:'#fff', borderRadius:24, width:'100%', maxWidth:520, maxHeight:'93vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(0,60,60,.3)', animation:'fadeUp .3s ease' }}>
 
         {/* Header */}
         <div style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'24px 24px 0 0', padding:'22px 26px 18px', position:'relative' }}>
           <button onClick={onClose} style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>COMPRAR NÚMERO</div>
-          <div style={{ fontSize:'2.6rem', color:'#fff', lineHeight:1, fontWeight:900 }}>{numero}</div>
-          <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)', marginTop:3 }}>{rifa.nombre} · {fmt(rifa.precio)}</div>
+          <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>
+            {numeros.length > 1 ? `COMPRAR ${numeros.length} NÚMEROS` : 'COMPRAR NÚMERO'}
+          </div>
+          {/* Chips de números */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+            {numeros.map(n => (
+              <span key={n} style={{ background:'rgba(255,255,255,.22)', border:'1px solid rgba(255,255,255,.4)', color:'#fff', borderRadius:20, padding:'3px 12px', fontFamily:"'Poppins',sans-serif", fontSize:'1rem', fontWeight:900, letterSpacing:2 }}>{n}</span>
+            ))}
+          </div>
+          <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)' }}>
+            {rifa.nombre} · {numeros.length > 1 ? `${fmt(rifa.precio)} c/u · Total: ${fmt(totalCOP)}` : fmt(rifa.precio)}
+          </div>
+          {/* Barra de pasos */}
           <div style={{ display:'flex', gap:6, marginTop:14 }}>
             {[1,2].map(s => <div key={s} style={{ flex:1, height:3, borderRadius:2, background: s <= step ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.25)', transition:'background .3s' }}></div>)}
           </div>
@@ -666,48 +600,47 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
           {step === 1 && (
             <div style={{ animation:'fadeUp .25s ease' }}>
 
-              {/* Número resumen */}
-              <div style={{ background:`linear-gradient(135deg,${TURQ}12,${TURQ2}18)`, border:`1.5px solid ${TURQ}33`, borderRadius:14, padding:'12px 16px', marginBottom:20, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div>
-                  <div style={{ fontSize:'.62rem', color:TURQ_DK, fontWeight:600, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:2 }}>Número seleccionado</div>
-                  <div style={{ fontSize:'2.2rem', color:TURQ, lineHeight:1, fontWeight:900 }}>{numero}</div>
+              {/* Resumen de números */}
+              <div style={{ background:`linear-gradient(135deg,${TURQ}12,${TURQ2}18)`, border:`1.5px solid ${TURQ}33`, borderRadius:14, padding:'12px 16px', marginBottom:20 }}>
+                <div style={{ fontSize:'.62rem', color:TURQ_DK, fontWeight:600, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>
+                  🎟 {numeros.length > 1 ? `Tus ${numeros.length} números` : 'Número seleccionado'}
                 </div>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontSize:'.65rem', color:`${DARK}66`, marginBottom:2 }}>Valor</div>
-                  <div style={{ fontSize:'1.3rem', color:DARK, fontWeight:700 }}>{fmt(rifa.precio)}</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: numeros.length > 1 ? 10 : 0 }}>
+                  {numeros.map(n => (
+                    <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 12px', fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n}</span>
+                  ))}
                 </div>
+                {numeros.length > 1 && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:8, borderTop:`1px solid ${TURQ}22` }}>
+                    <span style={{ fontSize:'.7rem', color:`${DARK}66` }}>{fmt(rifa.precio)} × {numeros.length} números</span>
+                    <span style={{ fontSize:'1.2rem', color:TURQ_DK, fontWeight:900 }}>= {fmt(totalCOP)}</span>
+                  </div>
+                )}
               </div>
 
               {/* ① Datos */}
               <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>① Tus datos</div>
-
               <div style={{ marginBottom:14 }}>
                 <label className="pub-label">Nombre completo *</label>
                 <input className="pub-input" value={form.nombre} onChange={e => upd('nombre', e.target.value)} placeholder="¿Cómo te llamas?" autoFocus />
               </div>
-
               <div style={{ marginBottom:20 }}>
                 <label className="pub-label">WhatsApp / Teléfono</label>
                 <div className="phone-row">
                   <select className="phone-select" value={form.codPais} onChange={e => upd('codPais', e.target.value)}>
-                    {PAISES.map(p => (
-                      <option key={p.code} value={p.code}>{p.flag} {p.code}</option>
-                    ))}
+                    {PAISES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
                   </select>
                   <input className="pub-input" style={{ borderRadius:12 }} value={form.telefono}
                     onChange={e => upd('telefono', e.target.value.replace(/\D/g,'').slice(0,12))}
                     placeholder="Número sin código" type="tel" />
                 </div>
                 {form.telefono && (
-                  <div style={{ fontSize:'.7rem', color:TURQ_DK, marginTop:5, fontWeight:600 }}>
-                    📱 Número completo: <strong>{telefonoFull}</strong>
-                  </div>
+                  <div style={{ fontSize:'.7rem', color:TURQ_DK, marginTop:5, fontWeight:600 }}>📱 Número completo: <strong>{telefonoFull}</strong></div>
                 )}
               </div>
 
-              {/* ② Método de pago + datos inline */}
+              {/* ② Método de pago */}
               <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>② Método de pago</div>
-
               <div>
                 <label className="pub-label">¿Cómo vas a pagar?</label>
                 <select className="pub-input" value={form.metodo_pago} onChange={e => upd('metodo_pago', e.target.value)} style={{ cursor:'pointer' }}>
@@ -716,71 +649,42 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                 </select>
               </div>
 
-              {/* Banner de precio en moneda local — aparece al seleccionar método */}
+              {/* Banner precio en moneda local */}
               {form.metodo_pago && (() => {
-                const conv = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
                 const info = METODOS_PAGO[form.metodo_pago];
-                if (!conv) return (
-                  /* COP — solo mostrar el precio base con énfasis */
-                  <div style={{
-                    marginTop:12, borderRadius:14, padding:'14px 18px',
-                    background:`linear-gradient(135deg,${info.bg},${info.bg})`,
-                    border:`2px solid ${info.border}`,
-                    display:'flex', alignItems:'center', justifyContent:'space-between',
-                    animation:'fadeUp .2s ease',
-                  }}>
-                    <div>
-                      <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
-                        {info.icono} Valor a pagar
-                      </div>
-                      <div style={{ fontSize:'1.6rem', fontWeight:900, color:info.colorHex, lineHeight:1 }}>
-                        {fmt(rifa.precio)}
-                      </div>
-                      <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>Pesos colombianos</div>
-                    </div>
-                    <div style={{ fontSize:'2rem', opacity:.3 }}>{info.icono}</div>
+                if (!convUnitario) return (
+                  <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:`linear-gradient(135deg,${info.bg},${info.bg})`, border:`2px solid ${info.border}`, animation:'fadeUp .2s ease' }}>
+                    <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>{info.icono} Valor a pagar</div>
+                    <div style={{ fontSize:'1.6rem', fontWeight:900, color:info.colorHex, lineHeight:1 }}>{fmt(totalCOP)}</div>
+                    {numeros.length > 1 && <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>{fmt(rifa.precio)} × {numeros.length} números · Pesos colombianos</div>}
                   </div>
                 );
-                /* Moneda extranjera — mostrar conversión */
-                const isVes = conv.moneda === 'VES';
+                const isVes = convTotal?.moneda === 'VES';
                 return (
-                  <div style={{
-                    marginTop:12, borderRadius:14, padding:'14px 18px',
-                    background: isVes
-                      ? 'linear-gradient(135deg,#f0fff8,#e8fdf5)'
-                      : 'linear-gradient(135deg,#f0f4ff,#e8eeff)',
-                    border:`2px solid ${isVes ? TURQ+'55' : '#c5d3ff'}`,
-                    animation:'fadeUp .2s ease',
-                  }}>
-                    {/* Fila principal: precio en moneda local */}
+                  <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background: isVes ? 'linear-gradient(135deg,#f0fff8,#e8fdf5)' : 'linear-gradient(135deg,#f0f4ff,#e8eeff)', border:`2px solid ${isVes ? TURQ+'55' : '#c5d3ff'}`, animation:'fadeUp .2s ease' }}>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
                       <div>
                         <div style={{ fontSize:'.58rem', fontWeight:700, color: isVes ? TURQ_DK : '#4a5bbf', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
-                          {conv.icono} Debes pagar exactamente
+                          {convTotal.icono} Debes pagar exactamente
                         </div>
                         <div style={{ fontSize:'1.9rem', fontWeight:900, color: isVes ? TURQ_DK : '#3a4abf', lineHeight:1, letterSpacing:'-0.5px' }}>
-                          {conv.texto}
+                          {convTotal.texto}
                         </div>
+                        {numeros.length > 1 && (
+                          <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>
+                            {convUnitario.texto} × {numeros.length} números
+                          </div>
+                        )}
                       </div>
-                      <div style={{
-                        background: isVes ? `${TURQ}18` : 'rgba(74,91,191,.1)',
-                        border:`1px solid ${isVes ? TURQ+'33' : 'rgba(74,91,191,.2)'}`,
-                        borderRadius:10, padding:'6px 10px', textAlign:'center',
-                      }}>
-                        <div style={{ fontSize:'1.4rem' }}>{conv.icono}</div>
-                        <div style={{ fontSize:'.5rem', fontWeight:700, color:`${DARK}55`, marginTop:2 }}>{conv.moneda}</div>
+                      <div style={{ background: isVes ? `${TURQ}18` : 'rgba(74,91,191,.1)', border:`1px solid ${isVes ? TURQ+'33' : 'rgba(74,91,191,.2)'}`, borderRadius:10, padding:'6px 10px', textAlign:'center' }}>
+                        <div style={{ fontSize:'1.4rem' }}>{convTotal.icono}</div>
+                        <div style={{ fontSize:'.5rem', fontWeight:700, color:`${DARK}55`, marginTop:2 }}>{convTotal.moneda}</div>
                       </div>
                     </div>
-                    {/* Equivalencia COP */}
-                    <div style={{
-                      background:'rgba(255,255,255,.65)', borderRadius:8,
-                      padding:'7px 12px', fontSize:'.7rem', color:`${DARK}66`,
-                      display:'flex', alignItems:'center', gap:6,
-                    }}>
-                      <span style={{ fontSize:'.75rem' }}>≈</span>
-                      <span>{fmt(rifa.precio)} · </span>
+                    <div style={{ background:'rgba(255,255,255,.65)', borderRadius:8, padding:'7px 12px', fontSize:'.7rem', color:`${DARK}66`, display:'flex', alignItems:'center', gap:6 }}>
+                      <span>≈ {fmt(totalCOP)} · </span>
                       <span style={{ fontWeight:600 }}>
-                        {conv.moneda === 'VES'
+                        {convTotal.moneda === 'VES'
                           ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'} (tasa referencia)`
                           : `1 USD = COP ${copUsd.toLocaleString('es-CO')}`}
                       </span>
@@ -789,9 +693,7 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                 );
               })()}
 
-              {/* Datos del banco — aparecen al seleccionar */}
               {form.metodo_pago && <PagoInlineCard metodo={form.metodo_pago} />}
-
               <div style={{ height:20 }}></div>
 
               {/* ③ Comprobante */}
@@ -800,7 +702,8 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                 <span style={{ background:'#ff6b6b', color:'#fff', fontSize:'.52rem', padding:'2px 7px', borderRadius:4, fontWeight:700 }}>OBLIGATORIO</span>
               </div>
               <div style={{ fontSize:'.82rem', color:`${DARK}66`, marginBottom:12, lineHeight:1.5 }}>
-                Realiza el pago con los datos de arriba y sube la captura. El número queda <strong style={{ color:TURQ_DK }}>bloqueado para ti</strong> en cuanto se envíe.
+                Realiza el pago del total ({fmt(totalCOP)}) y sube la captura.
+                {numeros.length > 1 && <strong style={{ color:TURQ_DK }}> Un solo comprobante para todos los números.</strong>}
               </div>
 
               <div onClick={() => fileRef.current?.click()}
@@ -822,9 +725,7 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
               </div>
 
               {error && (
-                <div style={{ background:'#fff0f0', border:'1px solid #ffcccc', borderRadius:8, padding:'8px 12px', marginTop:10, fontSize:'.78rem', color:'#c0392b', fontWeight:500 }}>
-                  ⚠️ {error}
-                </div>
+                <div style={{ background:'#fff0f0', border:'1px solid #ffcccc', borderRadius:8, padding:'8px 12px', marginTop:10, fontSize:'.78rem', color:'#c0392b', fontWeight:500 }}>⚠️ {error}</div>
               )}
 
               <div style={{ marginTop:16 }}>
@@ -832,7 +733,9 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                   style={{ width:'100%', justifyContent:'center', fontSize:'1rem', padding:'16px', borderRadius:14 }}>
                   {sending
                     ? <><span style={{ display:'inline-block', animation:'spin .8s linear infinite' }}>⏳</span> Enviando...</>
-                    : '🎟 Confirmar reserva y bloquear número'}
+                    : numeros.length > 1
+                      ? `🎟 Confirmar ${numeros.length} números y bloquearlos`
+                      : '🎟 Confirmar reserva y bloquear número'}
                 </button>
               </div>
             </div>
@@ -844,21 +747,37 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
               <div style={{ width:76, height:76, borderRadius:'50%', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, margin:'0 auto 18px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.2rem', animation:'pulse-ring 2s infinite' }}>
                 🔒
               </div>
-              <div style={{ fontSize:'1.6rem', color:DARK, marginBottom:6, fontWeight:800 }}>¡Número bloqueado!</div>
-              <div style={{ fontSize:'.9rem', color:`${DARK}77`, marginBottom:20, lineHeight:1.7 }}>
-                El número <strong style={{ color:TURQ, fontSize:'1.4rem' }}>{numero}</strong> está reservado.<br/>
-                Nadie más puede tomarlo mientras verifican tu pago.
+              <div style={{ fontSize:'1.6rem', color:DARK, marginBottom:6, fontWeight:800 }}>
+                {numeros.length > 1 ? `¡${numeros.length} números bloqueados!` : '¡Número bloqueado!'}
               </div>
+              <div style={{ fontSize:'.9rem', color:`${DARK}77`, marginBottom:20, lineHeight:1.7 }}>
+                {numeros.length > 1
+                  ? <>Los números <strong style={{ color:TURQ }}>{numeros.join(' · ')}</strong> están reservados.<br/>Nadie más puede tomarlos mientras verifican tu pago.</>
+                  : <>El número <strong style={{ color:TURQ, fontSize:'1.4rem' }}>{numeros[0]}</strong> está reservado.<br/>Nadie más puede tomarlo mientras verifican tu pago.</>
+                }
+              </div>
+
+              {/* Aviso de conflictos parciales */}
+              {conflictos.length > 0 && (
+                <div style={{ background:'#fff8e8', border:'1.5px solid #ffd166', borderRadius:12, padding:'10px 14px', marginBottom:16, textAlign:'left', fontSize:'.78rem', color:'#7a5c00' }}>
+                  ⚠️ Los siguientes números no pudieron reservarse porque ya estaban ocupados: <strong>{conflictos.map(c=>c.numero).join(', ')}</strong>
+                </div>
+              )}
 
               {/* Resumen */}
               <div style={{ background:`${TURQ}08`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, textAlign:'left' }}>
+                {/* Chips de números */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                  {numeros.filter(n => !conflictos.map(c=>c.numero).includes(n)).map(n => (
+                    <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 14px', fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n}</span>
+                  ))}
+                </div>
                 {[
-                  { icon:'🎟', l:'Número',    v: numero,                                             c: TURQ       },
-                  { icon:'🏆', l:'Premio',    v: rifa.premio,                                        c: DARK       },
-                  { icon:'💰', l:'Valor',     v: fmt(rifa.precio),                                   c: '#3a7d44'  },
-                  { icon:'📅', l:'Sorteo',    v: fmtF(rifa.fecha_sorteo),                            c: DARK       },
-                  { icon:'⏳', l:'Estado',    v: 'Pendiente de verificación',                        c: '#f5a623'  },
-                  { icon:'🔖', l:'ID',        v: '#' + (reservaId?.slice(0,8).toUpperCase() || '---'), c: `${DARK}77` },
+                  { icon:'🏆', l:'Premio',  v: rifa.premio,                                              c: DARK       },
+                  { icon:'💰', l:'Total',   v: fmt(rifa.precio * (numeros.length - conflictos.length)), c: '#3a7d44'  },
+                  { icon:'📅', l:'Sorteo',  v: fmtF(rifa.fecha_sorteo),                                 c: DARK       },
+                  { icon:'⏳', l:'Estado',  v: 'Pendiente de verificación',                             c: '#f5a623'  },
+                  { icon:'🔖', l:'ID',      v: '#' + (reservaIds[0]?.slice(0,8).toUpperCase() || '---'), c:`${DARK}77` },
                 ].map(({ icon, l, v, c }) => (
                   <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:`1px solid ${TURQ}12` }}>
                     <span style={{ fontSize:'.77rem', color:`${DARK}66` }}>{icon} {l}</span>
@@ -871,12 +790,9 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                 📲 Guarda este boleto compartiendo por WhatsApp. El admin confirmará tu pago pronto.
               </div>
 
-              {/* Botones compartir */}
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                 <button className="pub-btn-wa" onClick={abrirWA} style={{ width:'100%', justifyContent:'center', padding:'15px', borderRadius:14 }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                   Compartir boleto por WhatsApp
                 </button>
                 <button className="pub-btn" onClick={compartirNativo} style={{ width:'100%', justifyContent:'center', padding:'13px', borderRadius:14, background:`linear-gradient(135deg,${TURQ}cc,${TURQ2}cc)` }}>
@@ -895,30 +811,45 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GRID DE NÚMEROS — solo muestra disponibles al cliente
+   GRID DE NÚMEROS — selección múltiple
 ═══════════════════════════════════════════════════════════ */
-function GridNumeros({ rifa, onSelectNumero }) {
-  const [todos,        setTodos]        = useState([]);   // los 1000 para contar
-  const [loading,      setLoading]      = useState(true);
-  const [busqueda,     setBusqueda]     = useState('');
-  const [seleccionado, setSeleccionado] = useState(null);
+function GridNumeros({ rifa, onComprar }) {
+  const [todos,       setTodos]      = useState([]);
+  const [loading,     setLoading]    = useState(true);
+  const [busqueda,    setBusqueda]   = useState('');
+  // ── Selección múltiple ──
+  const [seleccion,   setSeleccion]  = useState(new Set()); // Set de strings
 
   useEffect(() => {
     setLoading(true);
+    setSeleccion(new Set());
     API.get(`/publico/rifas/${rifa.id}/numeros-disponibles`)
       .then(r => { setTodos(r.data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [rifa.id]);
 
-  // Solo los disponibles aparecen en el grid
   const disponibles = todos.filter(n => n.estado === 'disponible');
-  const tomados     = todos.length - disponibles.length; // vendidos + reservados + agotados
+  const tomados     = todos.length - disponibles.length;
   const pct         = todos.length > 0 ? Math.round((tomados / todos.length) * 100) : 0;
 
   const visible = disponibles.filter(n => {
     if (!busqueda) return true;
     return n.numero.includes(busqueda.padStart(3,'0').slice(-3));
   });
+
+  const toggleNumero = (n) => {
+    setSeleccion(prev => {
+      const next = new Set(prev);
+      if (next.has(n)) next.delete(n);
+      else next.add(n);
+      return next;
+    });
+  };
+
+  const limpiar = () => setSeleccion(new Set());
+
+  const selArr = [...seleccion].sort();
+  const totalSel = rifa.precio * selArr.length;
 
   if (loading) return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(42px,1fr))', gap:5, padding:'20px 0' }}>
@@ -933,26 +864,21 @@ function GridNumeros({ rifa, onSelectNumero }) {
         <div style={{ flex:1, minWidth:180 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
             <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
-              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> números disponibles de 1000
+              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de 1000
             </span>
-            <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>
-              {pct}% ocupado
-            </span>
+            <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>{pct}% ocupado</span>
           </div>
           <div style={{ background:'#e0f5f5', borderRadius:6, height:7, overflow:'hidden' }}>
-            <div style={{
-              width:`${pct}%`, height:'100%', borderRadius:6, transition:'width 1s ease',
-              background: pct > 80
-                ? 'linear-gradient(90deg,#e63946,#ff6b6b)'
-                : pct > 50
-                  ? 'linear-gradient(90deg,#f0a500,#ffd166)'
-                  : `linear-gradient(90deg,${TURQ},${TURQ2})`,
-            }}></div>
+            <div style={{ width:`${pct}%`, height:'100%', borderRadius:6, transition:'width 1s ease', background: pct > 80 ? 'linear-gradient(90deg,#e63946,#ff6b6b)' : pct > 50 ? 'linear-gradient(90deg,#f0a500,#ffd166)' : `linear-gradient(90deg,${TURQ},${TURQ2})` }}></div>
           </div>
         </div>
-        {disponibles.length === 0 && (
-          <span style={{ fontSize:'.72rem', color:'#e63946', fontWeight:700 }}>🔴 Rifa agotada</span>
-        )}
+        {disponibles.length === 0 && <span style={{ fontSize:'.72rem', color:'#e63946', fontWeight:700 }}>🔴 Rifa agotada</span>}
+      </div>
+
+      {/* Instrucción de selección múltiple */}
+      <div style={{ background:`${TURQ}08`, border:`1px solid ${TURQ}22`, borderRadius:10, padding:'10px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:8, fontSize:'.78rem', color:TURQ_DK, fontWeight:600 }}>
+        <span style={{ fontSize:'1.1rem' }}>👆</span>
+        <span>Puedes seleccionar <strong>uno o varios números</strong>. Toca cada uno que quieras y luego presiona el botón para reservarlos.</span>
       </div>
 
       {/* Buscador */}
@@ -966,7 +892,28 @@ function GridNumeros({ rifa, onSelectNumero }) {
         )}
       </div>
 
-      {/* Grid — solo disponibles */}
+      {/* Chips de selección actual */}
+      {selArr.length > 0 && (
+        <div style={{ background:'#f0fafa', border:`1.5px solid ${TURQ}33`, borderRadius:12, padding:'10px 14px', marginBottom:14 }}>
+          <div style={{ fontSize:'.65rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+            Seleccionados ({selArr.length}):
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {selArr.map(n => (
+              <span key={n} className="num-chip">
+                {n}
+                <button className="num-chip-remove" onClick={() => toggleNumero(n)} title={`Quitar ${n}`}>✕</button>
+              </span>
+            ))}
+            <button onClick={limpiar}
+              style={{ background:'none', border:`1px solid #ffaaaa`, color:'#c0392b', borderRadius:20, padding:'4px 10px', fontSize:'.68rem', fontWeight:600, cursor:'pointer' }}>
+              Limpiar todo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Grid */}
       {disponibles.length === 0 ? (
         <div style={{ textAlign:'center', padding:'48px 20px', background:'#fff5f5', borderRadius:16, border:'2px dashed #ffaaaa' }}>
           <div style={{ fontSize:'2.5rem', marginBottom:12 }}>😔</div>
@@ -978,9 +925,9 @@ function GridNumeros({ rifa, onSelectNumero }) {
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(52px,1fr))', gap:6 }}>
             {visible.map(n => (
               <div key={n.numero}
-                className={`num-cell ${n.numero === seleccionado ? 'seleccionado' : 'disponible'}`}
-                onClick={() => setSeleccionado(n.numero === seleccionado ? null : n.numero)}
-                title={`Número ${n.numero} — disponible`}>
+                className={`num-cell ${seleccion.has(n.numero) ? 'seleccionado' : 'disponible'}`}
+                onClick={() => toggleNumero(n.numero)}
+                title={seleccion.has(n.numero) ? `Quitar ${n.numero}` : `Seleccionar ${n.numero}`}>
                 {n.numero}
               </div>
             ))}
@@ -997,13 +944,38 @@ function GridNumeros({ rifa, onSelectNumero }) {
         </>
       )}
 
-      {/* Botón flotante */}
-      {seleccionado && (
-        <div style={{ position:'sticky', bottom:14, marginTop:18, animation:'fadeUp .2s ease' }}>
-          <button className="pub-btn" onClick={() => onSelectNumero(seleccionado)}
-            style={{ width:'100%', justifyContent:'center', borderRadius:16, padding:'15px', fontSize:'1rem', boxShadow:`0 12px 32px ${TURQ}55` }}>
-            🎟 Comprar número {seleccionado} por {fmt(rifa.precio)}
-          </button>
+      {/* ── Barra flotante de carrito ── */}
+      {selArr.length > 0 && (
+        <div className="carrito-bar">
+          <div style={{
+            background:`linear-gradient(135deg,${DARK},#0d2424)`,
+            borderRadius:20, padding:'14px 20px',
+            display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+            boxShadow:`0 -4px 32px rgba(0,0,0,.2), 0 12px 40px ${TURQ}44`,
+          }}>
+            {/* Info */}
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.55)', fontWeight:600, marginBottom:2 }}>
+                {selArr.length} número{selArr.length>1?'s':''} seleccionado{selArr.length>1?'s':''}
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {selArr.slice(0, 8).map(n => (
+                  <span key={n} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>
+                ))}
+                {selArr.length > 8 && <span style={{ color:'rgba(255,255,255,.5)', fontSize:'.72rem', alignSelf:'center' }}>+{selArr.length-8} más</span>}
+              </div>
+            </div>
+            {/* Total */}
+            <div style={{ textAlign:'right', flexShrink:0 }}>
+              <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Total</div>
+              <div style={{ fontSize:'1.2rem', color:'#fff', fontWeight:900 }}>{fmt(totalSel)}</div>
+            </div>
+            {/* Botón */}
+            <button className="pub-btn" onClick={() => onComprar(selArr)}
+              style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
+              🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1011,7 +983,7 @@ function GridNumeros({ rifa, onSelectNumero }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CARD DE RIFA — con imagen base64/url robusta
+   CARD DE RIFA
 ═══════════════════════════════════════════════════════════ */
 function RifaCard({ rifa, onSeleccionar }) {
   const [imgError, setImgError] = useState(false);
@@ -1022,35 +994,19 @@ function RifaCard({ rifa, onSeleccionar }) {
     <div style={{ background:'#fff', borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(10,100,100,.08)', transition:'transform .2s, box-shadow .2s' }}
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
-
       <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
-        {tieneImagen ? (
-          <img
-            src={rifa.imagen_url}
-            alt={rifa.nombre}
-            onError={() => setImgError(true)}
-            style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
-          />
-        ) : (
-          <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-            <div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div>
-            <div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div>
-          </div>
-        )}
+        {tieneImagen
+          ? <img src={rifa.imagen_url} alt={rifa.nombre} onError={() => setImgError(true)} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
+          : <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}><div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div><div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div></div>
+        }
         <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
           <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
         </div>
       </div>
-
       <div style={{ padding:'18px 22px 22px' }}>
-        <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>
-          {rifa.loteria_ref || 'SORTEO'} · {fmtF(rifa.fecha_sorteo)}
-        </div>
+        <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>{rifa.loteria_ref || 'SORTEO'} · {fmtF(rifa.fecha_sorteo)}</div>
         <div style={{ fontSize:'1.3rem', color:DARK, lineHeight:1.2, marginBottom:7, fontWeight:700 }}>{rifa.nombre}</div>
-        <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom:14, display:'flex', alignItems:'center', gap:5 }}>
-          🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span>
-        </div>
-
+        <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom:14, display:'flex', alignItems:'center', gap:5 }}>🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span></div>
         <div style={{ marginBottom:14 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
             <span style={{ fontSize:'.56rem', color:`${DARK}66` }}>{rifa.numeros_vendidos} vendidos</span>
@@ -1060,7 +1016,6 @@ function RifaCard({ rifa, onSeleccionar }) {
             <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:6, transition:'width 1s ease' }}></div>
           </div>
         </div>
-
         <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14 }}>
           Ver números disponibles
         </button>
@@ -1076,10 +1031,10 @@ export default function ClientePublico() {
   const [rifas,      setRifas]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [rifaSel,    setRifaSel]    = useState(null);
-  const [numReserva, setNumReserva] = useState(null);
+  const [numerosCarrito, setNumerosCarrito] = useState(null); // string[] | null
   const [refreshKey, setRefreshKey] = useState(0);
   const gridRef = useRef();
-  const tasaBs  = useTasaDolar(); // para mostrar en sección de pagos
+  const tasaBs  = useTasaDolar();
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -1095,95 +1050,58 @@ export default function ClientePublico() {
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
   };
 
+  // rifas ordenadas: la primera activa va al hero
+  const rifasActivas   = rifas.filter(r => r.activa);
+  const rifaHero       = rifasActivas[0] || null;
+  const rifasSecundarias = rifasActivas.slice(1);
+
   return (
     <div style={{ minHeight:'100vh', background:'#f0fafa' }}>
 
-      {/* NAVBAR */}
-      <nav style={{ position:'sticky', top:0, zIndex:100, background:'rgba(240,250,250,.92)', backdropFilter:'blur(16px)', borderBottom:'1px solid #d0ecec', padding:'0 5vw' }}>
-        <div style={{ maxWidth:1100, margin:'0 auto', height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-            <span style={{ fontSize:'1.2rem', fontWeight:700, color:DARK }}>Rifas Jordyn</span>
-          </div>
-          <div style={{ display:'flex', gap:24 }}>
-            <span className="nav-link" onClick={() => document.getElementById('rifas-sec')?.scrollIntoView({behavior:'smooth'})}>Rifas</span>
-            <span className="nav-link" onClick={() => document.getElementById('pagos-sec')?.scrollIntoView({behavior:'smooth'})}>Cómo pagar</span>
-            <span className="nav-link" onClick={() => document.getElementById('contacto-sec')?.scrollIntoView({behavior:'smooth'})}>Contacto</span>
-          </div>
+      {/* NAV */}
+      <nav style={{ background:'rgba(255,255,255,.95)', backdropFilter:'blur(12px)', borderBottom:'1px solid #e0f0f0', padding:'0 5vw', position:'sticky', top:0, zIndex:100, height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>🎰</div>
+          <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:700, fontFamily:"'Poppins',sans-serif" }}>Rifas Jordyn</span>
+        </div>
+        <div style={{ display:'flex', gap:24, alignItems:'center' }}>
+          {[['#rifas-sec','Rifas'],['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
+            <a key={href} href={href} className="nav-link">{label}</a>
+          ))}
         </div>
       </nav>
 
-      {/* HERO */}
-      <section style={{ background:`linear-gradient(135deg,${TURQ} 0%,${TURQ2} 40%,#00b8b5 100%)`, padding:'80px 5vw 100px', textAlign:'center', position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute', top:-80, right:-80, width:320, height:320, borderRadius:'50%', background:'rgba(255,255,255,.07)' }}></div>
-        <div style={{ position:'absolute', bottom:-60, left:-60, width:240, height:240, borderRadius:'50%', background:'rgba(255,255,255,.05)' }}></div>
-        <div style={{ position:'relative', maxWidth:680, margin:'0 auto' }}>
-          <div style={{ fontSize:'.65rem', color:'rgba(255,255,255,.75)', letterSpacing:'2px', marginBottom:16 }}>🎟 TÁCHIRA, VENEZUELA</div>
-          <h1 style={{ fontSize:'clamp(2.8rem,7vw,4.5rem)', color:'#fff', lineHeight:1.05, fontWeight:800, marginBottom:20 }}>
-            Gana premios<br/>increíbles
-          </h1>
-          <p style={{ fontSize:'1.1rem', color:'rgba(255,255,255,.85)', lineHeight:1.7, maxWidth:480, margin:'0 auto 36px' }}>
-            Escoge tu número de la suerte, realiza el pago y participa en nuestros sorteos semanales.
-          </p>
-          <button className="pub-btn" onClick={() => document.getElementById('rifas-sec')?.scrollIntoView({behavior:'smooth'})}
-            style={{ background:'rgba(255,255,255,.95)', color:TURQ_DK, boxShadow:'0 8px 32px rgba(0,0,0,.15)', fontSize:'1rem', padding:'16px 36px' }}>
-            Ver rifas disponibles ↓
-          </button>
+      {/* HERO PRINCIPAL */}
+      {loading ? (
+        <div style={{ padding:'5vw', maxWidth:1100, margin:'0 auto' }}>
+          <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
         </div>
-        <svg viewBox="0 0 1440 60" style={{ position:'absolute', bottom:-1, left:0, width:'100%' }} preserveAspectRatio="none">
-          <path d="M0,40 C360,80 1080,0 1440,40 L1440,60 L0,60 Z" fill="#f0fafa"/>
-        </svg>
-      </section>
+      ) : rifaHero ? (
+        <section style={{ padding:'40px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} />
+        </section>
+      ) : null}
 
-      {/* RIFAS */}
-      <section id="rifas-sec" style={{ padding:'80px 5vw', maxWidth:1100, margin:'0 auto' }}>
-        <div style={{ textAlign:'center', marginBottom:48 }}>
-          <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:12, fontWeight:600 }}>PARTICIPAR ES FÁCIL</div>
-          <h2 style={{ fontSize:'clamp(2rem,4vw,2.8rem)', color:DARK, fontWeight:800, marginBottom:14 }}>Rifas activas</h2>
-          <p style={{ fontSize:'1rem', color:`${DARK}77`, maxWidth:480, margin:'0 auto' }}>
-            Elige la rifa que más te guste, selecciona tu número favorito y sigue los pasos.
-          </p>
-        </div>
-
-        {loading ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
-            <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:24 }}>
-              {[1,2].map(i => <div key={i} className="shimmer" style={{ height:200, borderRadius:24 }}></div>)}
-            </div>
+      {/* RIFAS SECUNDARIAS */}
+      {rifasSecundarias.length > 0 && (
+        <section id="rifas-sec" style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <div style={{ textAlign:'center', marginBottom:36 }}>
+            <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:8, fontWeight:600 }}>MÁS RIFAS</div>
+            <h2 style={{ fontSize:'clamp(1.8rem,3.5vw,2.4rem)', color:DARK, fontWeight:800 }}>Otras rifas activas</h2>
           </div>
-        ) : rifas.length === 0 ? (
-          <div style={{ textAlign:'center', padding:'60px 20px', background:'#fff', borderRadius:24 }}>
-            <div style={{ fontSize:'3rem', marginBottom:16 }}>🎰</div>
-            <div style={{ fontSize:'1.4rem', color:`${DARK}66`, fontWeight:700 }}>No hay rifas activas por ahora</div>
-            <div style={{ fontSize:'.9rem', color:`${DARK}44`, marginTop:8 }}>Vuelve pronto para ver nuevos sorteos</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:24 }}>
+            {rifasSecundarias.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} />)}
           </div>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:32 }}>
-            {/* Hero: primera rifa con contador */}
-            <HeroRifaPrincipal rifa={rifas[0]} onVerNumeros={handleSelRifa} />
+        </section>
+      )}
 
-            {/* Si hay más rifas, mostrarlas como cards secundarias */}
-            {rifas.length > 1 && (
-              <div>
-                <div style={{ fontSize:'.65rem', color:TURQ, letterSpacing:'2px', fontWeight:700, textTransform:'uppercase', marginBottom:16 }}>
-                  También disponibles
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:22 }}>
-                  {rifas.slice(1).map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} />)}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* GRID NÚMEROS */}
+      {/* SECCIÓN GRID DE NÚMEROS */}
       {rifaSel && (
-        <section ref={gridRef} style={{ padding:'0 5vw 80px', maxWidth:1100, margin:'0 auto' }}>
-          <div style={{ background:'#fff', borderRadius:28, padding:'32px 28px', boxShadow:'0 8px 48px rgba(10,180,180,.1)' }}>
-            <div style={{ display:'flex', alignItems:'flex-start', gap:14, marginBottom:24, flexWrap:'wrap' }}>
-              <div style={{ flex:1 }}>
+        <section ref={gridRef} style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <div style={{ background:'#fff', borderRadius:24, padding:'28px', boxShadow:'0 4px 32px rgba(10,100,100,.08)' }}>
+            {/* Cabecera de rifa seleccionada */}
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:24, flexWrap:'wrap' }}>
+              <div>
                 <div style={{ fontSize:'.58rem', color:TURQ, letterSpacing:'0.5px', marginBottom:5, fontWeight:600 }}>ESCOGE TU NÚMERO</div>
                 <div style={{ fontSize:'1.5rem', color:DARK, marginBottom:5, fontWeight:700 }}>{rifaSel.nombre}</div>
                 <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
@@ -1199,9 +1117,9 @@ export default function ClientePublico() {
 
             <div style={{ display:'flex', gap:8, marginBottom:22, flexWrap:'wrap' }}>
               {[
-                { n:'1', t:'Selecciona',  d:'Toca un número disponible' },
+                { n:'1', t:'Selecciona',  d:'Toca uno o varios números disponibles' },
                 { n:'2', t:'Paga',        d:'Usa los datos del método elegido' },
-                { n:'3', t:'Confirma',    d:'Sube el comprobante y bloquea tu número' },
+                { n:'3', t:'Confirma',    d:'Sube el comprobante y bloquea tus números' },
               ].map(({ n, t, d }) => (
                 <div key={n} style={{ flex:'1 1 140px', background:'#f8fdfd', borderRadius:12, padding:'11px 13px', display:'flex', gap:9, alignItems:'flex-start' }}>
                   <div style={{ width:26, height:26, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -1215,7 +1133,12 @@ export default function ClientePublico() {
               ))}
             </div>
 
-            <GridNumeros key={`${rifaSel.id}-${refreshKey}`} rifa={rifaSel} onSelectNumero={n => setNumReserva(n)} />
+            {/* ── Grid con selección múltiple ── */}
+            <GridNumeros
+              key={`${rifaSel.id}-${refreshKey}`}
+              rifa={rifaSel}
+              onComprar={nums => setNumerosCarrito(nums)}
+            />
           </div>
         </section>
       )}
@@ -1229,9 +1152,9 @@ export default function ClientePublico() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:24 }}>
             {[
-              { icon:'🔢', titulo:'1. Elige tu número',     desc:'Navega por el grid y selecciona el número de la suerte.' },
-              { icon:'💳', titulo:'2. Realiza el pago',     desc:'Los datos del banco aparecen automáticamente al seleccionar el método.' },
-              { icon:'📸', titulo:'3. Sube el comprobante',desc:'Adjunta la captura del pago junto con tus datos.' },
+              { icon:'🔢', titulo:'1. Elige tus números',   desc:'Toca uno o varios números en el grid. Puedes elegir todos los que quieras.' },
+              { icon:'💳', titulo:'2. Realiza el pago',     desc:'Los datos del banco aparecen al seleccionar el método. Paga el total.' },
+              { icon:'📸', titulo:'3. Sube el comprobante', desc:'Adjunta la captura del pago junto con tus datos. Un comprobante para todos.' },
               { icon:'✅', titulo:'4. Confirmación',         desc:'El admin verifica y te envía tu ticket por WhatsApp.' },
             ].map(({ icon, titulo, desc }) => (
               <div key={titulo} style={{ textAlign:'center', padding:'22px 18px' }}>
@@ -1267,29 +1190,16 @@ export default function ClientePublico() {
                     <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700 }}>{valor}</div>
                   </div>
                 ))}
-                {/* Badge tasa en vivo solo para Pago Móvil */}
                 {nombre === 'Pago Móvil' && tasaBs && (
-                  <div style={{
-                    marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`,
-                    borderRadius:10, padding:'9px 13px',
-                    display:'flex', alignItems:'center', justifyContent:'space-between',
-                  }}>
+                  <div style={{ marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`, borderRadius:10, padding:'9px 13px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div>
                       <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
-                      <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>
-                        1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}
-                      </div>
+                      <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}</div>
                     </div>
-                    <span style={{
-                      background:`${TURQ}22`, border:`1px solid ${TURQ}44`,
-                      color:TURQ_DK, borderRadius:20, padding:'3px 9px',
-                      fontSize:'.55rem', fontWeight:800, letterSpacing:'1px',
-                    }}>🔴 EN VIVO</span>
+                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>🔴 EN VIVO</span>
                   </div>
                 )}
-                {d.nota && (
-                  <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>
-                )}
+                {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
               </div>
             ))}
           </div>
@@ -1305,9 +1215,7 @@ export default function ClientePublico() {
                 <div style={{ width:38, height:38, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
                 <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>Rifas Jordyn</span>
               </div>
-              <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>
-                Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.
-              </p>
+              <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.</p>
             </div>
             <div>
               <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'0.5px', marginBottom:14, fontWeight:600 }}>CONTACTO</div>
@@ -1330,13 +1238,13 @@ export default function ClientePublico() {
         </div>
       </footer>
 
-      {/* MODAL */}
-      {numReserva && rifaSel && (
+      {/* MODAL — se abre con array de números */}
+      {numerosCarrito && rifaSel && (
         <ModalReserva
           rifa={rifaSel}
-          numero={numReserva}
-          onClose={() => setNumReserva(null)}
-          onSuccess={() => { setNumReserva(null); setRefreshKey(k => k + 1); }}
+          numeros={numerosCarrito}
+          onClose={() => setNumerosCarrito(null)}
+          onSuccess={() => { setNumerosCarrito(null); setRefreshKey(k => k + 1); }}
         />
       )}
     </div>
