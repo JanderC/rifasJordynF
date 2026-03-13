@@ -77,7 +77,7 @@ const METODOS_PAGO = {
 const buildWhatsAppLink = ({ numero, rifa, nombre, telefono, reservaId }) => {
   const id  = reservaId?.slice(0,8).toUpperCase() || '-------';
   const msg =
-    `*RESUELVE TU SEMANA* — Confirmación de reserva\n\n` +
+    `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
     `Hola *${nombre}* 👋 tu número quedó bloqueado:\n\n` +
     `🎟 Número: *${numero}*\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
@@ -204,9 +204,231 @@ const injectStyles = () => {
     }
     .nav-link { font-family:'Poppins',sans-serif; font-weight:500; color:${DARK}88; text-decoration:none; font-size:.9rem; transition:color .2s; cursor:pointer; }
     .nav-link:hover { color:${TURQ}; }
+
+    @keyframes countFlip {
+      0%  { transform:translateY(-8px); opacity:0; }
+      20% { transform:translateY(0);    opacity:1; }
+      80% { transform:translateY(0);    opacity:1; }
+      100%{ transform:translateY(8px);  opacity:0; }
+    }
+    @keyframes heroFloat {
+      0%,100%{ transform:translateY(0); }
+      50%    { transform:translateY(-10px); }
+    }
+    @keyframes glowPulse {
+      0%,100%{ box-shadow:0 0 30px ${TURQ}55, 0 8px 32px rgba(0,0,0,.3); }
+      50%    { box-shadow:0 0 50px ${TURQ}88, 0 8px 48px rgba(0,0,0,.4); }
+    }
+    @keyframes badgePop {
+      0%  { transform:scale(0.8); opacity:0; }
+      60% { transform:scale(1.08); }
+      100%{ transform:scale(1); opacity:1; }
+    }
+
+    .count-unit {
+      display:flex; flex-direction:column; align-items:center;
+      background:rgba(255,255,255,.13);
+      border:1.5px solid rgba(255,255,255,.22);
+      border-radius:16px; padding:14px 8px 10px;
+      min-width:68px; flex:1; max-width:90px;
+      backdrop-filter:blur(12px);
+      transition:transform .15s, background .15s;
+    }
+    .count-unit:hover { background:rgba(255,255,255,.2); transform:translateY(-2px); }
+    .count-num {
+      font-size:clamp(2rem,6vw,3.2rem); font-weight:900; color:#fff;
+      line-height:1; font-variant-numeric:tabular-nums;
+      text-shadow:0 2px 16px rgba(0,0,0,.35); letter-spacing:-1px;
+    }
+    .count-lbl {
+      font-size:.48rem; font-weight:700; color:rgba(255,255,255,.6);
+      letter-spacing:2.5px; text-transform:uppercase; margin-top:6px;
+    }
+    .count-sep {
+      font-size:2rem; font-weight:900; color:rgba(255,255,255,.3);
+      margin-top:14px; line-height:1; flex-shrink:0;
+    }
+    .hero-feat-card {
+      position:relative; border-radius:28px; overflow:hidden;
+      min-height:520px; display:flex; align-items:flex-end;
+      box-shadow:0 32px 80px rgba(0,0,0,.25);
+    }
+    .hero-feat-img {
+      position:absolute; inset:0;
+      object-fit:cover; width:100%; height:100%;
+      transition:transform .6s ease;
+    }
+    .hero-feat-card:hover .hero-feat-img { transform:scale(1.03); }
+    .hero-feat-overlay {
+      position:absolute; inset:0;
+      background:linear-gradient(
+        170deg,
+        rgba(5,15,15,.08) 0%,
+        rgba(5,15,15,.45) 40%,
+        rgba(5,15,15,.93) 100%
+      );
+    }
+    .hero-feat-content { position:relative; z-index:2; width:100%; padding:28px 32px 32px; }
   `;
   document.head.appendChild(s);
 };
+
+/* ═══════════════════════════════════════════════════════════
+   HOOK: Cuenta regresiva en tiempo real
+═══════════════════════════════════════════════════════════ */
+function useCountdown(targetDate) {
+  const calc = () => {
+    const diff = new Date(targetDate) - new Date();
+    if (diff <= 0) return { dias:0, horas:0, minutos:0, segundos:0, expired:true };
+    return {
+      dias:     Math.floor(diff / 86400000),
+      horas:    Math.floor((diff % 86400000) / 3600000),
+      minutos:  Math.floor((diff % 3600000)  / 60000),
+      segundos: Math.floor((diff % 60000)    / 1000),
+      expired:  false,
+    };
+  };
+  const [time, setTime] = useState(calc);
+  useEffect(() => {
+    if (!targetDate) return;
+    const t = setInterval(() => setTime(calc()), 1000);
+    return () => clearInterval(t);
+  }, [targetDate]);
+  return time;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPONENTE: Hero de la rifa principal con contador
+═══════════════════════════════════════════════════════════ */
+function HeroRifaPrincipal({ rifa, onVerNumeros }) {
+  const cd = useCountdown(rifa.fecha_sorteo);
+  const [imgError, setImgError] = useState(false);
+
+  const unidades = [
+    { val: String(cd.dias).padStart(2,'0'),     lbl: 'Días'    },
+    { val: String(cd.horas).padStart(2,'0'),    lbl: 'Horas'   },
+    { val: String(cd.minutos).padStart(2,'0'),  lbl: 'Min'     },
+    { val: String(cd.segundos).padStart(2,'0'), lbl: 'Seg'     },
+  ];
+
+  const tieneImagen = rifa.imagen_url && !imgError;
+
+  return (
+    <div className="hero-feat-card">
+      {/* Fondo: imagen del premio o gradiente */}
+      {tieneImagen ? (
+        <img
+          src={rifa.imagen_url}
+          alt={rifa.premio}
+          className="hero-feat-img"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <div style={{
+          position:'absolute', inset:0,
+          background:`linear-gradient(135deg,${TURQ_DK} 0%,${DARK} 100%)`,
+        }}>
+          <div style={{ position:'absolute', top:'30%', left:'50%', transform:'translate(-50%,-50%)', fontSize:'6rem', opacity:.18, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
+        </div>
+      )}
+      <div className="hero-feat-overlay"></div>
+
+      {/* Contenido sobre la imagen */}
+      <div className="hero-feat-content">
+
+        {/* Badge "Rifa Principal" */}
+        <div style={{ marginBottom:16, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <span style={{
+            background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
+            color:'#fff', borderRadius:50, padding:'5px 14px',
+            fontSize:'.6rem', fontWeight:800, letterSpacing:'2px',
+            textTransform:'uppercase', animation:'badgePop .5s ease',
+            boxShadow:`0 4px 16px ${TURQ}55`,
+          }}>
+            ⭐ Rifa Principal
+          </span>
+          {rifa.loteria_ref && (
+            <span style={{
+              background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.25)',
+              color:'rgba(255,255,255,.9)', borderRadius:50, padding:'5px 12px',
+              fontSize:'.6rem', fontWeight:600, letterSpacing:'1px',
+              backdropFilter:'blur(8px)',
+            }}>
+              🎲 {rifa.loteria_ref}
+            </span>
+          )}
+        </div>
+
+        {/* Nombre del premio */}
+        <h2 style={{
+          fontSize:'clamp(1.6rem,4vw,2.6rem)', color:'#fff', fontWeight:900,
+          lineHeight:1.1, marginBottom:6,
+          textShadow:'0 2px 20px rgba(0,0,0,.5)',
+        }}>
+          {rifa.nombre}
+        </h2>
+        <p style={{ fontSize:'1rem', color:'rgba(255,255,255,.75)', marginBottom:20, fontWeight:500 }}>
+          🏆 {rifa.premio}
+        </p>
+
+        {/* Contador regresivo */}
+        {rifa.fecha_sorteo && !cd.expired && (
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.55)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>
+              ⏳ Tiempo para el sorteo
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap' }}>
+              {unidades.map((u, i) => (
+                <React.Fragment key={u.lbl}>
+                  <div className="count-unit">
+                    <span className="count-num" key={u.val}>{u.val}</span>
+                    <span className="count-lbl">{u.lbl}</span>
+                  </div>
+                  {i < 3 && <span className="count-sep">:</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {cd.expired && rifa.fecha_sorteo && (
+          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(230,57,70,.2)', border:'1px solid rgba(230,57,70,.4)', borderRadius:12, padding:'10px 16px' }}>
+            <span style={{ fontSize:'1.1rem' }}>🔔</span>
+            <span style={{ fontSize:'.85rem', color:'#ff8a8a', fontWeight:700 }}>¡Sorteo realizado! Próximamente nuevo sorteo</span>
+          </div>
+        )}
+
+        {!rifa.fecha_sorteo && (
+          <div style={{ marginBottom:20, display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.2)', borderRadius:12, padding:'10px 16px', backdropFilter:'blur(8px)' }}>
+            <span style={{ fontSize:'.85rem', color:'rgba(255,255,255,.75)', fontWeight:600 }}>📅 Fecha de sorteo por confirmar</span>
+          </div>
+        )}
+
+        {/* Precio + CTA */}
+        <div style={{ display:'flex', gap:14, alignItems:'center', flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700 }}>Por número</div>
+            <div style={{ fontSize:'1.8rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 20px ${TURQ}88` }}>
+              {fmt(rifa.precio)}
+            </div>
+          </div>
+          <button
+            className="pub-btn"
+            onClick={() => onVerNumeros(rifa)}
+            style={{
+              background:`linear-gradient(135deg,${TURQ},${TURQ2})`,
+              padding:'14px 28px', borderRadius:50,
+              fontSize:'.95rem', fontWeight:700,
+              animation:'glowPulse 2.5s ease-in-out infinite',
+            }}
+          >
+            🎟 Ver números disponibles
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════════
    CARD DE DATOS DE PAGO (inline al seleccionar método)
@@ -309,11 +531,11 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
 
   const compartirNativo = async () => {
     const texto =
-      `RESUELVE TU SEMANA\n🎟 Número: ${numero}\n🏆 Premio: ${rifa?.premio}\n` +
+      `🎰 RIFAS JORDYN\n🎟 Número: ${numero}\n🏆 Premio: ${rifa?.premio}\n` +
       `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n👤 ${form.nombre}\n` +
       `🔖 Reserva: #${reservaId?.slice(0,8).toUpperCase()}\n✅ Número bloqueado pendiente de confirmación.`;
     if (navigator.share) {
-      try { await navigator.share({ title:'Tu boleto — RESUELVE TU SEMANA', text: texto }); } catch {}
+      try { await navigator.share({ title:'Tu boleto — Rifas Jordyn', text: texto }); } catch {}
     } else {
       await navigator.clipboard.writeText(texto);
       alert('Texto copiado al portapapeles 📋');
@@ -536,7 +758,7 @@ function GridNumeros({ rifa, onSelectNumero }) {
         <div style={{ flex:1, minWidth:180 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
             <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
-              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> números disponibles
+              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> números disponibles de 1000
             </span>
             <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>
               {pct}% ocupado
@@ -626,30 +848,24 @@ function RifaCard({ rifa, onSeleccionar }) {
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
-      {/* Imagen completa de la rifa */}
-      {tieneImagen ? (
-        <div style={{ width:'100%', background:'#0a0a0a', borderRadius:'24px 24px 0 0', overflow:'hidden', position:'relative' }}>
+      <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
+        {tieneImagen ? (
           <img
             src={rifa.imagen_url}
             alt={rifa.nombre}
             onError={() => setImgError(true)}
-            style={{ width:'100%', display:'block', maxHeight:500, objectFit:'contain', background:'#111' }}
+            style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
           />
-          <div style={{ position:'absolute', bottom:12, right:12, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:50, padding:'8px 18px', boxShadow:'0 4px 16px rgba(0,0,0,.4)' }}>
-            <span style={{ fontSize:'.85rem', color:'#fff', fontWeight:800 }}>{fmt(rifa.precio)}</span>
-          </div>
-        </div>
-      ) : (
-        <div style={{ position:'relative', height:200, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)`, borderRadius:'24px 24px 0 0' }}>
+        ) : (
           <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
             <div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div>
             <div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div>
           </div>
-          <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
-            <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
-          </div>
+        )}
+        <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
+          <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
         </div>
-      )}
+      </div>
 
       <div style={{ padding:'18px 22px 22px' }}>
         <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>
@@ -711,7 +927,7 @@ export default function ClientePublico() {
         <div style={{ maxWidth:1100, margin:'0 auto', height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-            <span style={{ fontSize:'1.2rem', fontWeight:700, color:DARK }}>RESUELVE TU SEMANA</span>
+            <span style={{ fontSize:'1.2rem', fontWeight:700, color:DARK }}>Rifas Jordyn</span>
           </div>
           <div style={{ display:'flex', gap:24 }}>
             <span className="nav-link" onClick={() => document.getElementById('rifas-sec')?.scrollIntoView({behavior:'smooth'})}>Rifas</span>
@@ -754,8 +970,11 @@ export default function ClientePublico() {
         </div>
 
         {loading ? (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:24 }}>
-            {[1,2].map(i => <div key={i} className="shimmer" style={{ height:380, borderRadius:24 }}></div>)}
+          <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+            <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:24 }}>
+              {[1,2].map(i => <div key={i} className="shimmer" style={{ height:200, borderRadius:24 }}></div>)}
+            </div>
           </div>
         ) : rifas.length === 0 ? (
           <div style={{ textAlign:'center', padding:'60px 20px', background:'#fff', borderRadius:24 }}>
@@ -764,8 +983,21 @@ export default function ClientePublico() {
             <div style={{ fontSize:'.9rem', color:`${DARK}44`, marginTop:8 }}>Vuelve pronto para ver nuevos sorteos</div>
           </div>
         ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:28 }}>
-            {rifas.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} />)}
+          <div style={{ display:'flex', flexDirection:'column', gap:32 }}>
+            {/* Hero: primera rifa con contador */}
+            <HeroRifaPrincipal rifa={rifas[0]} onVerNumeros={handleSelRifa} />
+
+            {/* Si hay más rifas, mostrarlas como cards secundarias */}
+            {rifas.length > 1 && (
+              <div>
+                <div style={{ fontSize:'.65rem', color:TURQ, letterSpacing:'2px', fontWeight:700, textTransform:'uppercase', marginBottom:16 }}>
+                  También disponibles
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:22 }}>
+                  {rifas.slice(1).map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} />)}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -875,7 +1107,7 @@ export default function ClientePublico() {
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
                 <div style={{ width:38, height:38, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>RESUELVE TU SEMANA</span>
+                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>Rifas Jordyn</span>
               </div>
               <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>
                 Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.
@@ -897,7 +1129,7 @@ export default function ClientePublico() {
             </div>
           </div>
           <div style={{ borderTop:'1px solid rgba(255,255,255,.08)', paddingTop:22, textAlign:'center' }}>
-            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RESUELVE TU SEMANA · TODOS LOS DERECHOS RESERVADOS</span>
+            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RIFAS JORDYN · TODOS LOS DERECHOS RESERVADOS</span>
           </div>
         </div>
       </footer>
