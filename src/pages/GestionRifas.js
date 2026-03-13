@@ -943,9 +943,9 @@ export default function GestionRifas() {
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <p style={{ fontFamily:'var(--jordyn-font)', fontSize:'0.8rem', color:'var(--jordyn-muted)', margin:0 }}>
           <i className="bi bi-info-circle me-1"></i>
-          Máximo 2 rifas activas simultáneas — {rifasActivas.length}/2 activas
+          {rifasActivas.length} rifa{rifasActivas.length !== 1 ? 's' : ''} activa{rifasActivas.length !== 1 ? 's' : ''}
         </p>
-        <button className="btn-jordyn" onClick={handleNueva} disabled={rifasActivas.length >= 2}>
+        <button className="btn-jordyn" onClick={handleNueva}>
           <i className="bi bi-plus-lg me-1"></i>NUEVA RIFA
         </button>
       </div>
