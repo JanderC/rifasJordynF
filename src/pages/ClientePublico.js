@@ -5,6 +5,8 @@ const TURQ    = '#0abfbc';
 const TURQ2   = '#00d4d0';
 const TURQ_DK = '#089a97';
 const DARK    = '#1a2e2e';
+const NARANJA = '#ff6b2b';
+const VERDE   = '#22c55e';
 
 const fmt  = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
 const fmtF = f => f ? new Date(f).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Por definir';
@@ -126,12 +128,67 @@ function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
   return null;
 }
 
-/* ─── Mensaje WhatsApp multi-número ─── */
-const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds }) => {
+/* ═══════════════════════════════════════════════════════════
+   LÓGICA DE OFERTAS
+═══════════════════════════════════════════════════════════ */
+/**
+ * Dada una cantidad seleccionada y el array de ofertas,
+ * retorna { oferta, totalConOferta, ahorro, pct } o null.
+ *
+ * Regla: si la cantidad es múltiplo exacto de la cantidad
+ * de la oferta (o igual), se aplica el pack proporcional.
+ * Se usa la oferta más beneficiosa (mayor ahorro).
+ */
+function calcularOferta(cantidad, ofertas, precioUnitario) {
+  if (!ofertas || ofertas.length === 0 || cantidad === 0) return null;
+
+  let mejor = null;
+  let mejorAhorro = -1;
+
+  for (const o of ofertas) {
+    if (cantidad >= o.cantidad && cantidad % o.cantidad === 0) {
+      const veces           = cantidad / o.cantidad;
+      const totalConOferta  = o.precio_total * veces;
+      const totalNormal     = precioUnitario * cantidad;
+      const ahorro          = totalNormal - totalConOferta;
+      const pct             = Math.round((ahorro / totalNormal) * 100);
+      if (ahorro > mejorAhorro) {
+        mejorAhorro = ahorro;
+        mejor = { oferta: o, totalConOferta, ahorro, pct, veces };
+      }
+    }
+  }
+  return mejor;
+}
+
+/**
+ * Retorna la siguiente oferta más cercana que el cliente
+ * podría activar, y cuántos números le faltan.
+ */
+function siguienteOferta(cantidad, ofertas, precioUnitario) {
+  if (!ofertas || ofertas.length === 0) return null;
+  let menor = null;
+  let menorFaltan = Infinity;
+  for (const o of ofertas) {
+    // próximo múltiplo de o.cantidad > cantidad
+    const siguiente = Math.ceil((cantidad + 1) / o.cantidad) * o.cantidad;
+    const faltan    = siguiente - cantidad;
+    const totalNormal = precioUnitario * siguiente;
+    const ahorro      = totalNormal - o.precio_total * (siguiente / o.cantidad);
+    if (faltan < menorFaltan && ahorro > 0) {
+      menorFaltan = faltan;
+      menor = { oferta: o, faltan, siguiente };
+    }
+  }
+  return menor;
+}
+
+/* ─── Mensaje WhatsApp multi-número (con oferta) ─── */
+const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds, totalReal }) => {
   const todos   = Array.isArray(numeros) ? numeros : [numeros];
   const numStr  = todos.map(n => `*${n}*`).join(' · ');
   const id      = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
-  const total   = rifa?.precio * todos.length;
+  const total   = totalReal ?? (rifa?.precio * todos.length);
   const msg =
     `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
     `Hola *${nombre}* 👋 tu${todos.length > 1 ? 's números quedaron bloqueados' : ' número quedó bloqueado'}:\n\n` +
@@ -139,7 +196,7 @@ const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds }) => {
     `🏆 Premio: ${rifa?.premio || ''}\n` +
     `🎪 Rifa: ${rifa?.nombre || ''}\n` +
     `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
-    `💰 Valor: ${fmt(rifa?.precio)} c/u${todos.length > 1 ? ` · Total: ${fmt(total)}` : ''}\n` +
+    `💰 Total pagado: ${fmt(total)}\n` +
     `🔖 ID Reserva: #${id}\n\n` +
     `⏳ _Pendiente de verificación. El admin revisará tu pago pronto._\n` +
     `🌐 rifasjordyn.com`;
@@ -275,6 +332,42 @@ const injectStyles = () => {
     }
     .num-chip-remove:hover { opacity:1; }
 
+    /* ── Badge OFERTA ── */
+    .badge-oferta {
+      background:linear-gradient(135deg,${NARANJA},#ff8c42);
+      color:#fff; border-radius:20px; padding:3px 10px;
+      font-size:.55rem; font-weight:800; letter-spacing:1.5px;
+      text-transform:uppercase; box-shadow:0 3px 10px ${NARANJA}55;
+      animation:badgePop .4s ease;
+    }
+
+    /* ── Banner de oferta activa en carrito ── */
+    .oferta-activa-bar {
+      background:linear-gradient(135deg,#0d3320,#0a4a28);
+      border:1.5px solid ${VERDE}55;
+      border-radius:14px; padding:10px 16px;
+      animation:fadeUp .2s ease;
+    }
+
+    /* ── Sugerencia de oferta próxima ── */
+    .oferta-sugerencia {
+      background:linear-gradient(135deg,#2a1a00,#3d2600);
+      border:1.5px solid ${NARANJA}55;
+      border-radius:14px; padding:10px 16px;
+      animation:fadeUp .2s ease;
+    }
+
+    /* ── Pack card en banner ── */
+    .pack-card {
+      background:rgba(255,255,255,.07);
+      border:1.5px solid rgba(255,255,255,.15);
+      border-radius:14px; padding:14px 16px;
+      display:flex; flex-direction:column; gap:4px;
+      transition:transform .15s, background .15s;
+      flex:1; min-width:120px; max-width:200px;
+    }
+    .pack-card:hover { background:rgba(255,255,255,.13); transform:translateY(-2px); }
+
     @keyframes fadeUp  { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
     @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
     @keyframes spin    { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
@@ -282,6 +375,10 @@ const injectStyles = () => {
       0%  {transform:scale(.95);box-shadow:0 0 0 0 ${TURQ}66}
       70% {transform:scale(1);  box-shadow:0 0 0 12px ${TURQ}00}
       100%{transform:scale(.95);box-shadow:0 0 0 0 ${TURQ}00}
+    }
+    @keyframes ofertaPulse {
+      0%,100%{ box-shadow:0 0 0 0 ${VERDE}44 }
+      50%    { box-shadow:0 0 0 6px ${VERDE}00 }
     }
     .shimmer {
       background:linear-gradient(90deg,#e8f0f0 25%,#f4fafa 50%,#e8f0f0 75%);
@@ -379,12 +476,66 @@ function useCountdown(targetDate) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   BANNER DE OFERTAS — encima del grid
+═══════════════════════════════════════════════════════════ */
+function BannerOfertas({ ofertas, precioUnitario }) {
+  if (!ofertas || ofertas.length === 0) return null;
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg,#0d2e1a,#0a3d22)',
+      border: `1.5px solid ${VERDE}44`,
+      borderRadius: 18, padding: '18px 22px',
+      marginBottom: 20, animation: 'fadeUp .3s ease',
+    }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+        <span style={{ fontSize:'1.3rem' }}>🎁</span>
+        <div>
+          <div style={{ fontSize:'.6rem', color:'rgba(255,255,255,.5)', letterSpacing:'2px', textTransform:'uppercase', fontWeight:700 }}>Ofertas especiales</div>
+          <div style={{ fontSize:'.95rem', color:'#fff', fontWeight:700, lineHeight:1.2 }}>¡Compra más y ahorra más!</div>
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+        {ofertas.map((o, i) => {
+          const totalNormal = precioUnitario * o.cantidad;
+          const ahorro      = totalNormal - o.precio_total;
+          const pct         = Math.round((ahorro / totalNormal) * 100);
+          return (
+            <div key={i} className="pack-card">
+              <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
+                <span style={{ fontSize:'1.1rem' }}>🏷️</span>
+                <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.9)', fontWeight:700 }}>
+                  {o.etiqueta || `Pack x${o.cantidad}`}
+                </span>
+              </div>
+              <div style={{ display:'flex', alignItems:'baseline', gap:7, flexWrap:'wrap' }}>
+                <span style={{ fontSize:'1.1rem', color:VERDE, fontWeight:900 }}>{fmt(o.precio_total)}</span>
+                <span style={{ fontSize:'.72rem', color:'rgba(255,255,255,.4)', textDecoration:'line-through', fontWeight:600 }}>{fmt(totalNormal)}</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                <span style={{ fontSize:'.62rem', color:'rgba(255,255,255,.5)' }}>{o.cantidad} números</span>
+                <span style={{
+                  background:`linear-gradient(135deg,${NARANJA},#ff8c42)`,
+                  color:'#fff', borderRadius:20, padding:'1px 7px',
+                  fontSize:'.55rem', fontWeight:800,
+                }}>-{pct}%</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    HERO DE LA RIFA PRINCIPAL
 ═══════════════════════════════════════════════════════════ */
 function HeroRifaPrincipal({ rifa, onVerNumeros }) {
   const cd = useCountdown(rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
   const tieneImagen = rifa.imagen_url && !imgError;
+  const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
 
   const unidades = [
     { val: String(cd.dias).padStart(2,'0'),     lbl: 'Días'  },
@@ -413,6 +564,9 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
 
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18, position:'relative' }}>
           <span style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:50, padding:'5px 14px', fontSize:'.58rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', boxShadow:`0 4px 16px ${TURQ}55`, animation:'badgePop .5s ease' }}>⭐ Rifa Principal</span>
+          {tieneOfertas && (
+            <span style={{ background:`linear-gradient(135deg,${NARANJA},#ff8c42)`, color:'#fff', borderRadius:50, padding:'5px 14px', fontSize:'.58rem', fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', boxShadow:`0 4px 16px ${NARANJA}55`, animation:'badgePop .6s ease' }}>🎁 OFERTA</span>
+          )}
           {rifa.loteria_ref && (
             <span style={{ background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.18)', color:'rgba(255,255,255,.85)', borderRadius:50, padding:'5px 12px', fontSize:'.58rem', fontWeight:600, backdropFilter:'blur(8px)' }}>🎲 {rifa.loteria_ref}</span>
           )}
@@ -420,6 +574,26 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
 
         <h2 style={{ fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900, lineHeight:1.15, marginBottom:6, textShadow:'0 2px 16px rgba(0,0,0,.5)', position:'relative' }}>{rifa.nombre}</h2>
         <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
+
+        {/* Resumen de packs si hay ofertas */}
+        {tieneOfertas && (
+          <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', borderRadius:12, padding:'10px 14px', marginBottom:18, position:'relative' }}>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:8 }}>🎁 Packs disponibles</div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {rifa.ofertas.map((o, i) => {
+                const totalNormal = rifa.precio * o.cantidad;
+                const pct = Math.round(((totalNormal - o.precio_total) / totalNormal) * 100);
+                return (
+                  <div key={i} style={{ background:'rgba(255,255,255,.08)', borderRadius:8, padding:'5px 10px', display:'flex', flexDirection:'column', gap:1 }}>
+                    <span style={{ fontSize:'.62rem', color:'rgba(255,255,255,.7)', fontWeight:700 }}>{o.etiqueta || `x${o.cantidad}`}</span>
+                    <span style={{ fontSize:'.7rem', color:VERDE, fontWeight:900 }}>{fmt(o.precio_total)}</span>
+                    <span style={{ fontSize:'.52rem', color:`${NARANJA}`, fontWeight:700 }}>ahorra {pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {rifa.fecha_sorteo && !cd.expired && (
           <div style={{ marginBottom:24, position:'relative' }}>
@@ -484,10 +658,77 @@ function PagoInlineCard({ metodo }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MODAL DE RESERVA — acepta array de números
+   BLOQUE DE OFERTA APLICADA (reutilizable en modal y carrito)
+═══════════════════════════════════════════════════════════ */
+function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = false }) {
+  if (!ofertaInfo) return null;
+  const { oferta, totalConOferta, ahorro, pct } = ofertaInfo;
+  const totalNormal = precioUnitario * cantidad;
+
+  if (compact) {
+    return (
+      <div className="oferta-activa-bar" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:'1.1rem' }}>🎁</span>
+          <div>
+            <div style={{ fontSize:'.6rem', color:`${VERDE}bb`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px' }}>
+              {oferta.etiqueta || `Pack x${oferta.cantidad}`} activado
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:'.95rem', color:VERDE, fontWeight:900 }}>{fmt(totalConOferta)}</span>
+              <span style={{ fontSize:'.72rem', color:'rgba(255,255,255,.35)', textDecoration:'line-through' }}>{fmt(totalNormal)}</span>
+              <span style={{ background:NARANJA, color:'#fff', borderRadius:20, padding:'1px 7px', fontSize:'.55rem', fontWeight:800 }}>-{pct}%</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ background:`${VERDE}22`, border:`1px solid ${VERDE}44`, borderRadius:10, padding:'5px 12px', textAlign:'center' }}>
+          <div style={{ fontSize:'.52rem', color:`${VERDE}99`, fontWeight:700, textTransform:'uppercase' }}>ahorras</div>
+          <div style={{ fontSize:'.95rem', color:VERDE, fontWeight:900 }}>{fmt(ahorro)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background:'linear-gradient(135deg,#0a3320,#0d4228)',
+      border:`2px solid ${VERDE}55`,
+      borderRadius:16, padding:'16px 20px',
+      marginBottom:16, animation:'ofertaPulse 2s infinite',
+    }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+        <span style={{ fontSize:'1.4rem' }}>🎉</span>
+        <div>
+          <div style={{ fontSize:'.6rem', color:`${VERDE}bb`, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px' }}>
+            ¡Oferta aplicada!
+          </div>
+          <div style={{ fontSize:'1rem', color:'#fff', fontWeight:800 }}>
+            {oferta.etiqueta || `Pack x${oferta.cantidad}`}
+          </div>
+        </div>
+      </div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12, flexWrap:'wrap' }}>
+        <div>
+          <div style={{ fontSize:'.6rem', color:'rgba(255,255,255,.5)', marginBottom:3 }}>Precio con oferta</div>
+          <div style={{ fontSize:'1.8rem', color:VERDE, fontWeight:900, lineHeight:1 }}>{fmt(totalConOferta)}</div>
+          <div style={{ fontSize:'.72rem', color:'rgba(255,255,255,.35)', textDecoration:'line-through', marginTop:2 }}>
+            Normal: {fmt(totalNormal)}
+          </div>
+        </div>
+        <div style={{ background:`${VERDE}22`, border:`1.5px solid ${VERDE}44`, borderRadius:14, padding:'10px 16px', textAlign:'center', flexShrink:0 }}>
+          <div style={{ fontSize:'.52rem', color:`${VERDE}88`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px' }}>Ahorras</div>
+          <div style={{ fontSize:'1.5rem', color:VERDE, fontWeight:900 }}>{fmt(ahorro)}</div>
+          <div style={{ background:NARANJA, color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:'.6rem', fontWeight:800, marginTop:4, display:'inline-block' }}>-{pct}%</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL DE RESERVA — con soporte de ofertas
 ═══════════════════════════════════════════════════════════ */
 function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
-  // numeros: string[] — puede ser [uno] o varios
   const [step,       setStep]     = useState(1);
   const [form,       setForm]     = useState({ nombre:'', codPais:'+58', telefono:'', metodo_pago:'' });
   const [imagen,     setImagen]   = useState(null);
@@ -503,7 +744,12 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
 
   const upd          = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
-  const totalCOP     = rifa.precio * numeros.length;
+
+  // Calcular oferta aplicada
+  const ofertas    = rifa.ofertas || [];
+  const ofertaInfo = calcularOferta(numeros.length, ofertas, rifa.precio);
+  const totalReal  = ofertaInfo ? ofertaInfo.totalConOferta : rifa.precio * numeros.length;
+  const totalNormal = rifa.precio * numeros.length;
 
   const handleFile = e => {
     const f = e.target.files[0];
@@ -524,7 +770,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
     try {
       const r = await API.post('/publico/reservar', {
         rifa_id:            rifa.id,
-        numeros,                        // ← array
+        numeros,
         nombre_cliente:     form.nombre.trim(),
         telefono:           telefonoFull,
         metodo_pago:        form.metodo_pago,
@@ -542,7 +788,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
   };
 
   const abrirWA = () => {
-    const url = buildWhatsAppLink({ numeros, rifa, nombre: form.nombre, telefono: telefonoFull, reservaIds });
+    const url = buildWhatsAppLink({ numeros, rifa, nombre: form.nombre, telefono: telefonoFull, reservaIds, totalReal });
     window.open(url, '_blank');
   };
 
@@ -550,6 +796,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
     const texto =
       `🎰 RIFAS JORDYN\n🎟 Número${numeros.length>1?'s':''}: ${numeros.join(' · ')}\n🏆 Premio: ${rifa?.premio}\n` +
       `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n👤 ${form.nombre}\n` +
+      `💰 Total: ${fmt(totalReal)}${ofertaInfo ? ` (ahorraste ${fmt(ofertaInfo.ahorro)})` : ''}\n` +
       `🔖 Reserva: #${reservaIds[0]?.slice(0,8).toUpperCase()}\n✅ Número${numeros.length>1?'s bloqueados':'bloqueado'} pendiente${numeros.length>1?'s':''} de confirmación.`;
     if (navigator.share) {
       try { await navigator.share({ title:'Tu boleto — Rifas Jordyn', text: texto }); } catch {}
@@ -560,13 +807,8 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
   };
 
   /* ── Calcular precio en moneda del método ── */
+  const convTotal = calcularPrecioMetodo(totalReal, form.metodo_pago, tasaBs, copUsd);
   const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
-  const convTotal    = convUnitario
-    ? { ...convUnitario, valor: convUnitario.valor * numeros.length,
-        texto: convUnitario.moneda === 'USD'
-          ? `$${(convUnitario.valor * numeros.length).toFixed(2)} USD`
-          : `Bs. ${new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(convUnitario.valor * numeros.length)}` }
-    : null;
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
@@ -579,16 +821,19 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
           <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>
             {numeros.length > 1 ? `COMPRAR ${numeros.length} NÚMEROS` : 'COMPRAR NÚMERO'}
           </div>
-          {/* Chips de números */}
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
             {numeros.map(n => (
               <span key={n} style={{ background:'rgba(255,255,255,.22)', border:'1px solid rgba(255,255,255,.4)', color:'#fff', borderRadius:20, padding:'3px 12px', fontFamily:"'Poppins',sans-serif", fontSize:'1rem', fontWeight:900, letterSpacing:2 }}>{n}</span>
             ))}
           </div>
           <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)' }}>
-            {rifa.nombre} · {numeros.length > 1 ? `${fmt(rifa.precio)} c/u · Total: ${fmt(totalCOP)}` : fmt(rifa.precio)}
+            {rifa.nombre} · {numeros.length > 1
+              ? ofertaInfo
+                ? <><s style={{ opacity:.6 }}>{fmt(totalNormal)}</s> <strong style={{ color:'#b3ffd4' }}>{fmt(totalReal)}</strong></>
+                : `${fmt(rifa.precio)} c/u · Total: ${fmt(totalReal)}`
+              : fmt(rifa.precio)
+            }
           </div>
-          {/* Barra de pasos */}
           <div style={{ display:'flex', gap:6, marginTop:14 }}>
             {[1,2].map(s => <div key={s} style={{ flex:1, height:3, borderRadius:2, background: s <= step ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.25)', transition:'background .3s' }}></div>)}
           </div>
@@ -599,6 +844,15 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
           {/* ── STEP 1 ── */}
           {step === 1 && (
             <div style={{ animation:'fadeUp .25s ease' }}>
+
+              {/* Bloque de oferta aplicada */}
+              {ofertaInfo && (
+                <BloqueOfertaAplicada
+                  ofertaInfo={ofertaInfo}
+                  cantidad={numeros.length}
+                  precioUnitario={rifa.precio}
+                />
+              )}
 
               {/* Resumen de números */}
               <div style={{ background:`linear-gradient(135deg,${TURQ}12,${TURQ2}18)`, border:`1.5px solid ${TURQ}33`, borderRadius:14, padding:'12px 16px', marginBottom:20 }}>
@@ -613,7 +867,12 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                 {numeros.length > 1 && (
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:8, borderTop:`1px solid ${TURQ}22` }}>
                     <span style={{ fontSize:'.7rem', color:`${DARK}66` }}>{fmt(rifa.precio)} × {numeros.length} números</span>
-                    <span style={{ fontSize:'1.2rem', color:TURQ_DK, fontWeight:900 }}>= {fmt(totalCOP)}</span>
+                    <div style={{ textAlign:'right' }}>
+                      {ofertaInfo && (
+                        <div style={{ fontSize:'.7rem', color:`${DARK}55`, textDecoration:'line-through' }}>{fmt(totalNormal)}</div>
+                      )}
+                      <span style={{ fontSize:'1.2rem', color: ofertaInfo ? VERDE : TURQ_DK, fontWeight:900 }}>= {fmt(totalReal)}</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -652,11 +911,12 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
               {/* Banner precio en moneda local */}
               {form.metodo_pago && (() => {
                 const info = METODOS_PAGO[form.metodo_pago];
-                if (!convUnitario) return (
+                if (!convTotal) return (
                   <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:`linear-gradient(135deg,${info.bg},${info.bg})`, border:`2px solid ${info.border}`, animation:'fadeUp .2s ease' }}>
                     <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>{info.icono} Valor a pagar</div>
-                    <div style={{ fontSize:'1.6rem', fontWeight:900, color:info.colorHex, lineHeight:1 }}>{fmt(totalCOP)}</div>
-                    {numeros.length > 1 && <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>{fmt(rifa.precio)} × {numeros.length} números · Pesos colombianos</div>}
+                    <div style={{ fontSize:'1.6rem', fontWeight:900, color: ofertaInfo ? VERDE : info.colorHex, lineHeight:1 }}>{fmt(totalReal)}</div>
+                    {ofertaInfo && <div style={{ fontSize:'.65rem', color:'#22c55e', fontWeight:700, marginTop:3 }}>🎁 Ahorraste {fmt(ofertaInfo.ahorro)}</div>}
+                    {numeros.length > 1 && !ofertaInfo && <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>{fmt(rifa.precio)} × {numeros.length} números · Pesos colombianos</div>}
                   </div>
                 );
                 const isVes = convTotal?.moneda === 'VES';
@@ -670,9 +930,14 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                         <div style={{ fontSize:'1.9rem', fontWeight:900, color: isVes ? TURQ_DK : '#3a4abf', lineHeight:1, letterSpacing:'-0.5px' }}>
                           {convTotal.texto}
                         </div>
-                        {numeros.length > 1 && (
+                        {ofertaInfo && (
+                          <div style={{ fontSize:'.65rem', color:VERDE, fontWeight:700, marginTop:3 }}>
+                            🎁 Precio con oferta ({fmt(totalReal)} COP)
+                          </div>
+                        )}
+                        {!ofertaInfo && numeros.length > 1 && (
                           <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>
-                            {convUnitario.texto} × {numeros.length} números
+                            {convUnitario?.texto} × {numeros.length} números
                           </div>
                         )}
                       </div>
@@ -682,7 +947,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                       </div>
                     </div>
                     <div style={{ background:'rgba(255,255,255,.65)', borderRadius:8, padding:'7px 12px', fontSize:'.7rem', color:`${DARK}66`, display:'flex', alignItems:'center', gap:6 }}>
-                      <span>≈ {fmt(totalCOP)} · </span>
+                      <span>≈ {fmt(totalReal)} · </span>
                       <span style={{ fontWeight:600 }}>
                         {convTotal.moneda === 'VES'
                           ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'} (tasa referencia)`
@@ -702,8 +967,9 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                 <span style={{ background:'#ff6b6b', color:'#fff', fontSize:'.52rem', padding:'2px 7px', borderRadius:4, fontWeight:700 }}>OBLIGATORIO</span>
               </div>
               <div style={{ fontSize:'.82rem', color:`${DARK}66`, marginBottom:12, lineHeight:1.5 }}>
-                Realiza el pago del total ({fmt(totalCOP)}) y sube la captura.
-                {numeros.length > 1 && <strong style={{ color:TURQ_DK }}> Un solo comprobante para todos los números.</strong>}
+                Realiza el pago de <strong style={{ color: ofertaInfo ? VERDE : TURQ_DK }}>{fmt(totalReal)}</strong> y sube la captura.
+                {ofertaInfo && <span style={{ color:VERDE, fontWeight:700 }}> (precio con oferta)</span>}
+                {numeros.length > 1 && !ofertaInfo && <strong style={{ color:TURQ_DK }}> Un solo comprobante para todos los números.</strong>}
               </div>
 
               <div onClick={() => fileRef.current?.click()}
@@ -734,7 +1000,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                   {sending
                     ? <><span style={{ display:'inline-block', animation:'spin .8s linear infinite' }}>⏳</span> Enviando...</>
                     : numeros.length > 1
-                      ? `🎟 Confirmar ${numeros.length} números y bloquearlos`
+                      ? `🎟 Confirmar ${numeros.length} números · ${fmt(totalReal)}`
                       : '🎟 Confirmar reserva y bloquear número'}
                 </button>
               </div>
@@ -757,6 +1023,24 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                 }
               </div>
 
+              {/* Bloque de ahorro en paso de confirmación */}
+              {ofertaInfo && (
+                <div style={{ background:'linear-gradient(135deg,#0a3a1e,#0d4a25)', border:`2px solid ${VERDE}55`, borderRadius:16, padding:'16px 20px', marginBottom:16, textAlign:'left' }}>
+                  <div style={{ fontSize:'.6rem', color:`${VERDE}aa`, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', marginBottom:8 }}>🎁 Oferta aplicada</div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <div>
+                      <div style={{ fontSize:'1.5rem', color:VERDE, fontWeight:900 }}>{fmt(ofertaInfo.totalConOferta)}</div>
+                      <div style={{ fontSize:'.7rem', color:'rgba(255,255,255,.4)', textDecoration:'line-through' }}>{fmt(totalNormal)}</div>
+                    </div>
+                    <div style={{ background:`${VERDE}22`, border:`1px solid ${VERDE}44`, borderRadius:12, padding:'8px 14px', textAlign:'center' }}>
+                      <div style={{ fontSize:'.52rem', color:`${VERDE}88`, fontWeight:700 }}>AHORRASTE</div>
+                      <div style={{ fontSize:'1.2rem', color:VERDE, fontWeight:900 }}>{fmt(ofertaInfo.ahorro)}</div>
+                      <div style={{ background:NARANJA, color:'#fff', borderRadius:20, padding:'1px 7px', fontSize:'.55rem', fontWeight:800, marginTop:2 }}>-{ofertaInfo.pct}%</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Aviso de conflictos parciales */}
               {conflictos.length > 0 && (
                 <div style={{ background:'#fff8e8', border:'1.5px solid #ffd166', borderRadius:12, padding:'10px 14px', marginBottom:16, textAlign:'left', fontSize:'.78rem', color:'#7a5c00' }}>
@@ -766,17 +1050,16 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
 
               {/* Resumen */}
               <div style={{ background:`${TURQ}08`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, textAlign:'left' }}>
-                {/* Chips de números */}
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
                   {numeros.filter(n => !conflictos.map(c=>c.numero).includes(n)).map(n => (
                     <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 14px', fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n}</span>
                   ))}
                 </div>
                 {[
-                  { icon:'🏆', l:'Premio',  v: rifa.premio,                                              c: DARK       },
-                  { icon:'💰', l:'Total',   v: fmt(rifa.precio * (numeros.length - conflictos.length)), c: '#3a7d44'  },
-                  { icon:'📅', l:'Sorteo',  v: fmtF(rifa.fecha_sorteo),                                 c: DARK       },
-                  { icon:'⏳', l:'Estado',  v: 'Pendiente de verificación',                             c: '#f5a623'  },
+                  { icon:'🏆', l:'Premio',  v: rifa.premio,               c: DARK       },
+                  { icon:'💰', l:'Total',   v: fmt(totalReal),             c: ofertaInfo ? VERDE : '#3a7d44' },
+                  { icon:'📅', l:'Sorteo',  v: fmtF(rifa.fecha_sorteo),   c: DARK       },
+                  { icon:'⏳', l:'Estado',  v: 'Pendiente de verificación', c: '#f5a623' },
                   { icon:'🔖', l:'ID',      v: '#' + (reservaIds[0]?.slice(0,8).toUpperCase() || '---'), c:`${DARK}77` },
                 ].map(({ icon, l, v, c }) => (
                   <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:`1px solid ${TURQ}12` }}>
@@ -811,14 +1094,15 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GRID DE NÚMEROS — selección múltiple
+   GRID DE NÚMEROS — con barra de carrito inteligente
 ═══════════════════════════════════════════════════════════ */
 function GridNumeros({ rifa, onComprar }) {
   const [todos,       setTodos]      = useState([]);
   const [loading,     setLoading]    = useState(true);
   const [busqueda,    setBusqueda]   = useState('');
-  // ── Selección múltiple ──
-  const [seleccion,   setSeleccion]  = useState(new Set()); // Set de strings
+  const [seleccion,   setSeleccion]  = useState(new Set());
+
+  const ofertas = rifa.ofertas || [];
 
   useEffect(() => {
     setLoading(true);
@@ -847,9 +1131,13 @@ function GridNumeros({ rifa, onComprar }) {
   };
 
   const limpiar = () => setSeleccion(new Set());
+  const selArr  = [...seleccion].sort();
 
-  const selArr = [...seleccion].sort();
-  const totalSel = rifa.precio * selArr.length;
+  // Cálculo de oferta activa y sugerencia
+  const ofertaInfo  = calcularOferta(selArr.length, ofertas, rifa.precio);
+  const sugerencia  = !ofertaInfo ? siguienteOferta(selArr.length, ofertas, rifa.precio) : null;
+  const totalNormal = rifa.precio * selArr.length;
+  const totalReal   = ofertaInfo ? ofertaInfo.totalConOferta : totalNormal;
 
   if (loading) return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(42px,1fr))', gap:5, padding:'20px 0' }}>
@@ -859,6 +1147,11 @@ function GridNumeros({ rifa, onComprar }) {
 
   return (
     <div>
+      {/* Banner de ofertas disponibles */}
+      {ofertas.length > 0 && (
+        <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />
+      )}
+
       {/* Barra de ocupación */}
       <div style={{ background:`${TURQ}0d`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
         <div style={{ flex:1, minWidth:180 }}>
@@ -875,10 +1168,10 @@ function GridNumeros({ rifa, onComprar }) {
         {disponibles.length === 0 && <span style={{ fontSize:'.72rem', color:'#e63946', fontWeight:700 }}>🔴 Rifa agotada</span>}
       </div>
 
-      {/* Instrucción de selección múltiple */}
+      {/* Instrucción */}
       <div style={{ background:`${TURQ}08`, border:`1px solid ${TURQ}22`, borderRadius:10, padding:'10px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:8, fontSize:'.78rem', color:TURQ_DK, fontWeight:600 }}>
         <span style={{ fontSize:'1.1rem' }}>👆</span>
-        <span>Puedes seleccionar <strong>uno o varios números</strong>. Toca cada uno que quieras y luego presiona el botón para reservarlos.</span>
+        <span>Puedes seleccionar <strong>uno o varios números</strong>. {ofertas.length > 0 && <span style={{ color:NARANJA }}>¡Activa ofertas al llegar a la cantidad exacta!</span>}</span>
       </div>
 
       {/* Buscador */}
@@ -892,7 +1185,7 @@ function GridNumeros({ rifa, onComprar }) {
         )}
       </div>
 
-      {/* Chips de selección actual */}
+      {/* Chips de selección */}
       {selArr.length > 0 && (
         <div style={{ background:'#f0fafa', border:`1.5px solid ${TURQ}33`, borderRadius:12, padding:'10px 14px', marginBottom:14 }}>
           <div style={{ fontSize:'.65rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
@@ -944,37 +1237,69 @@ function GridNumeros({ rifa, onComprar }) {
         </>
       )}
 
-      {/* ── Barra flotante de carrito ── */}
+      {/* ── Barra flotante de carrito inteligente ── */}
       {selArr.length > 0 && (
         <div className="carrito-bar">
           <div style={{
             background:`linear-gradient(135deg,${DARK},#0d2424)`,
             borderRadius:20, padding:'14px 20px',
-            display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
             boxShadow:`0 -4px 32px rgba(0,0,0,.2), 0 12px 40px ${TURQ}44`,
+            border: ofertaInfo ? `1.5px solid ${VERDE}55` : 'none',
           }}>
-            {/* Info */}
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.55)', fontWeight:600, marginBottom:2 }}>
-                {selArr.length} número{selArr.length>1?'s':''} seleccionado{selArr.length>1?'s':''}
+
+            {/* Sugerencia de oferta próxima */}
+            {sugerencia && selArr.length > 0 && (
+              <div className="oferta-sugerencia" style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:'1rem' }}>💡</span>
+                  <span style={{ fontSize:'.78rem', color:`${NARANJA}ee`, fontWeight:700 }}>
+                    ¡Agrega <strong style={{ color:'#fff', background:NARANJA, borderRadius:4, padding:'0 5px' }}>{sugerencia.faltan}</strong> número{sugerencia.faltan > 1 ? 's' : ''} más y activa{' '}
+                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Pack x${sugerencia.oferta.cantidad}`}</strong>!
+                  </span>
+                </div>
               </div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-                {selArr.slice(0, 8).map(n => (
-                  <span key={n} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>
-                ))}
-                {selArr.length > 8 && <span style={{ color:'rgba(255,255,255,.5)', fontSize:'.72rem', alignSelf:'center' }}>+{selArr.length-8} más</span>}
+            )}
+
+            {/* Oferta activa */}
+            {ofertaInfo && (
+              <BloqueOfertaAplicada
+                ofertaInfo={ofertaInfo}
+                cantidad={selArr.length}
+                precioUnitario={rifa.precio}
+                compact
+              />
+            )}
+            {ofertaInfo && <div style={{ height:10 }}></div>}
+
+            <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+              {/* Info */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.55)', fontWeight:600, marginBottom:2 }}>
+                  {selArr.length} número{selArr.length>1?'s':''} seleccionado{selArr.length>1?'s':''}
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                  {selArr.slice(0, 8).map(n => (
+                    <span key={n} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>
+                  ))}
+                  {selArr.length > 8 && <span style={{ color:'rgba(255,255,255,.5)', fontSize:'.72rem', alignSelf:'center' }}>+{selArr.length-8} más</span>}
+                </div>
               </div>
+
+              {/* Total */}
+              <div style={{ textAlign:'right', flexShrink:0 }}>
+                <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Total</div>
+                {ofertaInfo && (
+                  <div style={{ fontSize:'.68rem', color:'rgba(255,255,255,.3)', textDecoration:'line-through' }}>{fmt(totalNormal)}</div>
+                )}
+                <div style={{ fontSize:'1.2rem', color: ofertaInfo ? VERDE : '#fff', fontWeight:900 }}>{fmt(totalReal)}</div>
+              </div>
+
+              {/* Botón */}
+              <button className="pub-btn" onClick={() => onComprar(selArr)}
+                style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
+                🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
+              </button>
             </div>
-            {/* Total */}
-            <div style={{ textAlign:'right', flexShrink:0 }}>
-              <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Total</div>
-              <div style={{ fontSize:'1.2rem', color:'#fff', fontWeight:900 }}>{fmt(totalSel)}</div>
-            </div>
-            {/* Botón */}
-            <button className="pub-btn" onClick={() => onComprar(selArr)}
-              style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
-              🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
-            </button>
           </div>
         </div>
       )}
@@ -983,30 +1308,80 @@ function GridNumeros({ rifa, onComprar }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CARD DE RIFA
+   CARD DE RIFA — con badge OFERTA
 ═══════════════════════════════════════════════════════════ */
 function RifaCard({ rifa, onSeleccionar }) {
   const [imgError, setImgError] = useState(false);
   const pct = Math.min(100, (rifa.numeros_vendidos / 1000) * 100);
-  const tieneImagen = rifa.imagen_url && !imgError;
+  const tieneImagen  = rifa.imagen_url && !imgError;
+  const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
+
+  // Mejor oferta para mostrar en el resumen
+  const mejorOferta = tieneOfertas
+    ? [...rifa.ofertas].sort((a, b) => {
+        const pctA = (rifa.precio * a.cantidad - a.precio_total) / (rifa.precio * a.cantidad);
+        const pctB = (rifa.precio * b.cantidad - b.precio_total) / (rifa.precio * b.cantidad);
+        return pctB - pctA;
+      })[0]
+    : null;
+
+  const mejorPct = mejorOferta
+    ? Math.round(((rifa.precio * mejorOferta.cantidad - mejorOferta.precio_total) / (rifa.precio * mejorOferta.cantidad)) * 100)
+    : 0;
 
   return (
-    <div style={{ background:'#fff', borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(10,100,100,.08)', transition:'transform .2s, box-shadow .2s' }}
+    <div style={{ background:'#fff', borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(10,100,100,.08)', transition:'transform .2s, box-shadow .2s', position:'relative' }}
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
+
       <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
         {tieneImagen
           ? <img src={rifa.imagen_url} alt={rifa.nombre} onError={() => setImgError(true)} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
           : <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}><div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div><div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div></div>
         }
+
+        {/* Badge OFERTA sobre la imagen */}
+        {tieneOfertas && (
+          <div style={{ position:'absolute', top:12, left:12, display:'flex', gap:6, flexDirection:'column', alignItems:'flex-start' }}>
+            <span className="badge-oferta">🏷️ OFERTA</span>
+            {mejorOferta && (
+              <span style={{ background:'rgba(0,0,0,.7)', color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:'.55rem', fontWeight:700, backdropFilter:'blur(4px)' }}>
+                Hasta -{mejorPct}% en packs
+              </span>
+            )}
+          </div>
+        )}
+
         <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
           <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
         </div>
       </div>
+
       <div style={{ padding:'18px 22px 22px' }}>
         <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>{rifa.loteria_ref || 'SORTEO'} · {fmtF(rifa.fecha_sorteo)}</div>
         <div style={{ fontSize:'1.3rem', color:DARK, lineHeight:1.2, marginBottom:7, fontWeight:700 }}>{rifa.nombre}</div>
-        <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom:14, display:'flex', alignItems:'center', gap:5 }}>🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span></div>
+        <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom: tieneOfertas ? 10 : 14, display:'flex', alignItems:'center', gap:5 }}>🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span></div>
+
+        {/* Resumen de packs */}
+        {tieneOfertas && (
+          <div style={{ background:`${NARANJA}0d`, border:`1px solid ${NARANJA}33`, borderRadius:10, padding:'8px 12px', marginBottom:12 }}>
+            <div style={{ fontSize:'.55rem', color:NARANJA, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:5 }}>🎁 Packs disponibles</div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {rifa.ofertas.map((o, i) => {
+                const totalN = rifa.precio * o.cantidad;
+                const p = Math.round(((totalN - o.precio_total) / totalN) * 100);
+                return (
+                  <div key={i} style={{ background:'rgba(255,107,43,.08)', border:`1px solid ${NARANJA}33`, borderRadius:8, padding:'3px 8px', display:'flex', flexDirection:'column', gap:1 }}>
+                    <span style={{ fontSize:'.55rem', color:NARANJA, fontWeight:700 }}>{o.etiqueta || `x${o.cantidad}`}</span>
+                    <span style={{ fontSize:'.68rem', color:VERDE, fontWeight:900 }}>{fmt(o.precio_total)}</span>
+                    <span style={{ fontSize:'.5rem', color:NARANJA, fontWeight:700 }}>-{p}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ marginBottom:14 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
             <span style={{ fontSize:'.56rem', color:`${DARK}66` }}>{rifa.numeros_vendidos} vendidos</span>
@@ -1031,7 +1406,7 @@ export default function ClientePublico() {
   const [rifas,      setRifas]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [rifaSel,    setRifaSel]    = useState(null);
-  const [numerosCarrito, setNumerosCarrito] = useState(null); // string[] | null
+  const [numerosCarrito, setNumerosCarrito] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const gridRef = useRef();
   const tasaBs  = useTasaDolar();
@@ -1050,9 +1425,8 @@ export default function ClientePublico() {
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
   };
 
-  // rifas ordenadas: la primera activa va al hero
-  const rifasActivas   = rifas.filter(r => r.activa);
-  const rifaHero       = rifasActivas[0] || null;
+  const rifasActivas     = rifas.filter(r => r.activa);
+  const rifaHero         = rifasActivas[0] || null;
   const rifasSecundarias = rifasActivas.slice(1);
 
   return (
@@ -1099,7 +1473,6 @@ export default function ClientePublico() {
       {rifaSel && (
         <section ref={gridRef} style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
           <div style={{ background:'#fff', borderRadius:24, padding:'28px', boxShadow:'0 4px 32px rgba(10,100,100,.08)' }}>
-            {/* Cabecera de rifa seleccionada */}
             <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:24, flexWrap:'wrap' }}>
               <div>
                 <div style={{ fontSize:'.58rem', color:TURQ, letterSpacing:'0.5px', marginBottom:5, fontWeight:600 }}>ESCOGE TU NÚMERO</div>
@@ -1117,8 +1490,8 @@ export default function ClientePublico() {
 
             <div style={{ display:'flex', gap:8, marginBottom:22, flexWrap:'wrap' }}>
               {[
-                { n:'1', t:'Selecciona',  d:'Toca uno o varios números disponibles' },
-                { n:'2', t:'Paga',        d:'Usa los datos del método elegido' },
+                { n:'1', t:'Selecciona',  d:'Toca uno o varios números. ¡Activa ofertas con packs!' },
+                { n:'2', t:'Paga',        d:'Los datos del banco aparecen al elegir el método' },
                 { n:'3', t:'Confirma',    d:'Sube el comprobante y bloquea tus números' },
               ].map(({ n, t, d }) => (
                 <div key={n} style={{ flex:'1 1 140px', background:'#f8fdfd', borderRadius:12, padding:'11px 13px', display:'flex', gap:9, alignItems:'flex-start' }}>
@@ -1133,7 +1506,6 @@ export default function ClientePublico() {
               ))}
             </div>
 
-            {/* ── Grid con selección múltiple ── */}
             <GridNumeros
               key={`${rifaSel.id}-${refreshKey}`}
               rifa={rifaSel}
@@ -1152,8 +1524,8 @@ export default function ClientePublico() {
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:24 }}>
             {[
-              { icon:'🔢', titulo:'1. Elige tus números',   desc:'Toca uno o varios números en el grid. Puedes elegir todos los que quieras.' },
-              { icon:'💳', titulo:'2. Realiza el pago',     desc:'Los datos del banco aparecen al seleccionar el método. Paga el total.' },
+              { icon:'🔢', titulo:'1. Elige tus números',   desc:'Toca uno o varios números en el grid. ¡Con packs activas ofertas automáticamente!' },
+              { icon:'💳', titulo:'2. Realiza el pago',     desc:'Los datos del banco aparecen al seleccionar el método. Paga el total con oferta.' },
               { icon:'📸', titulo:'3. Sube el comprobante', desc:'Adjunta la captura del pago junto con tus datos. Un comprobante para todos.' },
               { icon:'✅', titulo:'4. Confirmación',         desc:'El admin verifica y te envía tu ticket por WhatsApp.' },
             ].map(({ icon, titulo, desc }) => (
@@ -1238,7 +1610,7 @@ export default function ClientePublico() {
         </div>
       </footer>
 
-      {/* MODAL — se abre con array de números */}
+      {/* MODAL */}
       {numerosCarrito && rifaSel && (
         <ModalReserva
           rifa={rifaSel}
