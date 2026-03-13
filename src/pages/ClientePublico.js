@@ -73,7 +73,75 @@ const METODOS_PAGO = {
   },
 };
 
-/* ─── Generar link de WhatsApp ─── */
+/* ─── Tasa COP/USD — se carga desde la API, fallback 4200 ─── */
+let _copUsdCache = 4200;
+async function fetchTasaCopUsd() {
+  try {
+    const res  = await fetch('/api/tasas');
+    const data = await res.json();
+    if (data?.COP_POR_USD?.valor) _copUsdCache = data.COP_POR_USD.valor;
+  } catch {}
+  return _copUsdCache;
+}
+
+/* ─── Hook que expone la tasa COP/USD actualizada ─── */
+function useTasaCopUsd() {
+  const [tasa, setTasa] = useState(_copUsdCache);
+  useEffect(() => {
+    fetchTasaCopUsd().then(setTasa);
+  }, []);
+  return tasa;
+}
+
+/* ─── Moneda de cada método ─── */
+const METODO_MONEDA = {
+  'Pago Móvil':  'VES',   // Bolívares — usa tasa paralela
+  'Nequi':       'COP',
+  'Bancolombia': 'COP',
+  'Zelle':       'USD',
+  'Efectivo':    'COP',
+};
+
+/* ─── Hook: trae tasa dólar paralelo Venezuela ─── */
+let _tasaCache = null;
+let _tasaTs    = 0;
+function useTasaDolar() {
+  const [tasa, setTasa] = useState(_tasaCache);
+  useEffect(() => {
+    // Refrescar máximo cada 10 minutos
+    if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
+    fetch('https://ve.dolarapi.com/v1/dolares')
+      .then(r => r.json())
+      .then(data => {
+        const paralelo = data.find(d => d.fuente === 'paralelo');
+        if (paralelo?.promedio) {
+          _tasaCache = paralelo.promedio;
+          _tasaTs    = Date.now();
+          setTasa(paralelo.promedio);
+        }
+      })
+      .catch(() => {}); // silencioso — si falla no mostramos conversión
+  }, []);
+  return tasa; // Bs por 1 USD
+}
+
+/* ─── Calcular precio en moneda del método ─── */
+function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
+  const moneda = METODO_MONEDA[metodo];
+  if (!moneda || moneda === 'COP') return null; // ya está en COP, no mostrar extra
+  const usd = precioCOP / copUsd;
+  if (moneda === 'USD') {
+    return { valor: usd, texto: `$${usd.toFixed(2)} USD`, moneda: 'USD', icono: '💵' };
+  }
+  if (moneda === 'VES' && tasaBsUSD) {
+    const bs = usd * tasaBsUSD;
+    const fmtBs = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(bs);
+    return { valor: bs, texto: `Bs. ${fmtBs}`, moneda: 'VES', icono: '🇻🇪' };
+  }
+  return null;
+}
+
+
 const buildWhatsAppLink = ({ numero, rifa, nombre, telefono, reservaId }) => {
   const id  = reservaId?.slice(0,8).toUpperCase() || '-------';
   const msg =
@@ -517,7 +585,9 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
   const [error,     setError]    = useState('');
   const [sending,   setSending]  = useState(false);
   const [reservaId, setReservaId]= useState('');
-  const fileRef = useRef();
+  const fileRef  = useRef();
+  const tasaBs   = useTasaDolar();    // tasa paralela Bs/USD
+  const copUsd   = useTasaCopUsd();   // tasa COP/USD desde BD
 
   const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
@@ -645,6 +715,79 @@ function ModalReserva({ rifa, numero, onClose, onSuccess }) {
                   {Object.keys(METODOS_PAGO).map(m => <option key={m}>{m}</option>)}
                 </select>
               </div>
+
+              {/* Banner de precio en moneda local — aparece al seleccionar método */}
+              {form.metodo_pago && (() => {
+                const conv = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
+                const info = METODOS_PAGO[form.metodo_pago];
+                if (!conv) return (
+                  /* COP — solo mostrar el precio base con énfasis */
+                  <div style={{
+                    marginTop:12, borderRadius:14, padding:'14px 18px',
+                    background:`linear-gradient(135deg,${info.bg},${info.bg})`,
+                    border:`2px solid ${info.border}`,
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    animation:'fadeUp .2s ease',
+                  }}>
+                    <div>
+                      <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
+                        {info.icono} Valor a pagar
+                      </div>
+                      <div style={{ fontSize:'1.6rem', fontWeight:900, color:info.colorHex, lineHeight:1 }}>
+                        {fmt(rifa.precio)}
+                      </div>
+                      <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>Pesos colombianos</div>
+                    </div>
+                    <div style={{ fontSize:'2rem', opacity:.3 }}>{info.icono}</div>
+                  </div>
+                );
+                /* Moneda extranjera — mostrar conversión */
+                const isVes = conv.moneda === 'VES';
+                return (
+                  <div style={{
+                    marginTop:12, borderRadius:14, padding:'14px 18px',
+                    background: isVes
+                      ? 'linear-gradient(135deg,#f0fff8,#e8fdf5)'
+                      : 'linear-gradient(135deg,#f0f4ff,#e8eeff)',
+                    border:`2px solid ${isVes ? TURQ+'55' : '#c5d3ff'}`,
+                    animation:'fadeUp .2s ease',
+                  }}>
+                    {/* Fila principal: precio en moneda local */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:'.58rem', fontWeight:700, color: isVes ? TURQ_DK : '#4a5bbf', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
+                          {conv.icono} Debes pagar exactamente
+                        </div>
+                        <div style={{ fontSize:'1.9rem', fontWeight:900, color: isVes ? TURQ_DK : '#3a4abf', lineHeight:1, letterSpacing:'-0.5px' }}>
+                          {conv.texto}
+                        </div>
+                      </div>
+                      <div style={{
+                        background: isVes ? `${TURQ}18` : 'rgba(74,91,191,.1)',
+                        border:`1px solid ${isVes ? TURQ+'33' : 'rgba(74,91,191,.2)'}`,
+                        borderRadius:10, padding:'6px 10px', textAlign:'center',
+                      }}>
+                        <div style={{ fontSize:'1.4rem' }}>{conv.icono}</div>
+                        <div style={{ fontSize:'.5rem', fontWeight:700, color:`${DARK}55`, marginTop:2 }}>{conv.moneda}</div>
+                      </div>
+                    </div>
+                    {/* Equivalencia COP */}
+                    <div style={{
+                      background:'rgba(255,255,255,.65)', borderRadius:8,
+                      padding:'7px 12px', fontSize:'.7rem', color:`${DARK}66`,
+                      display:'flex', alignItems:'center', gap:6,
+                    }}>
+                      <span style={{ fontSize:'.75rem' }}>≈</span>
+                      <span>{fmt(rifa.precio)} · </span>
+                      <span style={{ fontWeight:600 }}>
+                        {conv.moneda === 'VES'
+                          ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'} (tasa referencia)`
+                          : `1 USD = COP ${copUsd.toLocaleString('es-CO')}`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Datos del banco — aparecen al seleccionar */}
               {form.metodo_pago && <PagoInlineCard metodo={form.metodo_pago} />}
@@ -936,6 +1079,7 @@ export default function ClientePublico() {
   const [numReserva, setNumReserva] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const gridRef = useRef();
+  const tasaBs  = useTasaDolar(); // para mostrar en sección de pagos
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -1123,8 +1267,28 @@ export default function ClientePublico() {
                     <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700 }}>{valor}</div>
                   </div>
                 ))}
+                {/* Badge tasa en vivo solo para Pago Móvil */}
+                {nombre === 'Pago Móvil' && tasaBs && (
+                  <div style={{
+                    marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`,
+                    borderRadius:10, padding:'9px 13px',
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                  }}>
+                    <div>
+                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
+                      <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>
+                        1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}
+                      </div>
+                    </div>
+                    <span style={{
+                      background:`${TURQ}22`, border:`1px solid ${TURQ}44`,
+                      color:TURQ_DK, borderRadius:20, padding:'3px 9px',
+                      fontSize:'.55rem', fontWeight:800, letterSpacing:'1px',
+                    }}>🔴 EN VIVO</span>
+                  </div>
+                )}
                 {d.nota && (
-                  <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:4 }}>{d.nota}</div>
+                  <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>
                 )}
               </div>
             ))}

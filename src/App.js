@@ -17,6 +17,7 @@ import Caja              from './pages/Caja';
 import DisenoTicket      from './pages/DisenoTicket';
 import ClientePublico    from './pages/ClientePublico';
 import GestionReservas   from './pages/GestionReservas';
+import Tasas             from './pages/Tasas';
 
 function PrivateRoute({ children, rol }) {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ function AppRoutes() {
       <Route path="/historial"     element={<PrivateRoute rol="dueno"><Historial /></PrivateRoute>} />
       <Route path="/caja"          element={<PrivateRoute rol="dueno"><Caja /></PrivateRoute>} />
       <Route path="/reservas"      element={<PrivateRoute rol="dueno"><GestionReservas /></PrivateRoute>} />
+      <Route path="/tasas"         element={<PrivateRoute rol="dueno"><Tasas /></PrivateRoute>} />
 
       {/* PÚBLICA — sin autenticación */}
       <Route path="/comprar" element={<ClientePublico />} />

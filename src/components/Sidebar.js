@@ -48,6 +48,7 @@ export default function Sidebar() {
     { to: '/historial',       icon: 'bi-clock-history',          label: 'Historial' },
     { to: '/diseno-ticket',   icon: 'bi-ticket-perforated-fill', label: 'Diseño boleto' },
     { to: '/caja',            icon: 'bi-cash-coin',              label: 'Caja' },
+    { to: '/tasas',           icon: 'bi-currency-exchange',      label: 'Tasas' },
   ];
 
   const navsVendedor = [
