@@ -1,545 +1,369 @@
-import React from 'react';
+// ============================================================
+//   RIFAS JORDYN — Componente Ticket
+//   ✅ Diseño completamente rediseñado: limpio, profesional
+//   ✅ Persistencia en BD via GET/PUT /api/ticket-design
+//   ✅ Sin localStorage
+//   ✅ Fuentes: DM Serif Display + DM Sans + Space Mono
+//   ✅ parseFecha + extraerHora sin desfase UTC
+// ============================================================
+import React, { useState, useEffect } from 'react';
+import API from '../services/api';
 
-export const TICKET_DESIGN_KEY = 'rifas_jordyn_ticket_design';
+const FONT_URL = 'https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap';
 
+// ── DEFAULT_DESIGN — solo los valores que el admin puede cambiar ──
 export const DEFAULT_DESIGN = {
-  headerBg:        '#0a0a0a',
-  headerBg2:       '#1c1800',
-  accentColor:     '#f5c518',
-  brandText:       'RESUELVE TU SEMANA',
-  brandEmoji:      '🎰',
-  showSubrifa:     true,
-  heroBg:          '#080808',
-  heroBg2:         '#121000',
-  numColor:        '#f5c518',
-  numSize:         '5rem',
-  numGlow:         true,
-  heroLines:       true,
-  premioImagen:    '',
-  premioImagenPos: 'hero',
-  premioImagenFit: 'cover',
-  showPremioBox:   true,
-  premioBoxBg:     '#fffbe6',
-  showPerf:        true,
-  footerText:      'Conserve este boleto · Válido con número legible',
-  watermark:       true,
-  watermarkText:   'JORDYN',
-  horaSort:        '',   // Vacío = usar hora de fecha_sorteo si existe
+  brandText:    'RIFAS JORDYN',
+  footerText:   'Conserve este boleto · Válido solo con número legible',
+  bgColor:      '#0f1923',
+  accentColor:  '#e8c84a',
+  accentColor2: '#3ecfcb',
+  textLight:    '#f5f5f0',
+  talonBg:      '#f8f7f2',
+  watermarkText:'JORDYN',
+  horaSort:     '',
 };
 
-export function getTicketDesign() {
-  try {
-    const s = localStorage.getItem(TICKET_DESIGN_KEY);
-    if (s) return { ...DEFAULT_DESIGN, ...JSON.parse(s) };
-  } catch {}
-  return { ...DEFAULT_DESIGN };
-}
-
-const fmtMoney = p => p
-  ? new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', minimumFractionDigits:0 }).format(p)
-  : '$0';
-
-/* ─────────────────────────────────────────────────────────────
-   FIX PUNTO 3B — parseFecha + fmtFecha con zona horaria
-   Problema original: new Date(f) sin normalizar causaba desfase
-   en Safari/Firefox y mostraba fecha incorrecta en el ticket.
-───────────────────────────────────────────────────────────── */
+// ── Helpers ───────────────────────────────────────────────────
 const parseFechaTicket = (f) => {
   if (!f) return null;
-  const iso = String(f).replace(' ', 'T');
-  const d = new Date(iso);
+  const d = new Date(String(f).replace(' ', 'T'));
   return isNaN(d.getTime()) ? null : d;
 };
-
-const fmtFecha = f => {
+const fmtFecha = (f) => {
   const d = parseFechaTicket(f);
   if (!d) return 'Por definir';
-  return d.toLocaleDateString('es-CO', {
-    day: '2-digit', month: 'long', year: 'numeric',
-    timeZone: 'America/Caracas',
-  });
+  return d.toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric', timeZone:'America/Caracas' });
 };
-
-/* ─────────────────────────────────────────────────────────────
-   FIX PUNTO 3B — extraerHora
-   Extrae la hora de fecha_sorteo si existe y es distinta de
-   medianoche. Si el diseño tiene horaSort manual configurado,
-   ese tiene prioridad (para compatibilidad con el editor).
-───────────────────────────────────────────────────────────── */
 const extraerHora = (fechaSorteo, horaDesign) => {
-  // Si el admin configuró hora manual en el editor de diseño, usarla
   if (horaDesign && horaDesign.trim()) return horaDesign.trim();
-  // Si no, extraer del campo fecha_sorteo
   const d = parseFechaTicket(fechaSorteo);
   if (!d) return '';
-  const h = d.getUTCHours();
-  const m = d.getUTCMinutes();
-  if (h === 0 && m === 0) return ''; // Sin hora registrada
-  return d.toLocaleTimeString('es-CO', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-    timeZone: 'America/Caracas',
-  });
+  const h = d.getUTCHours(), m = d.getUTCMinutes();
+  if (h === 0 && m === 0) return '';
+  return d.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'America/Caracas' });
 };
+const fmtMoney = (p) => p
+  ? new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', minimumFractionDigits:0 }).format(p)
+  : '$0';
+const mkSerial = (numero) =>
+  `JDY-${numero || '000'}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
-/* ═══════════════════════════════════════════════════════════
-   buildTicketHTMLCustom — HTML HORIZONTAL (720 × ~380px)
-   Layout: columna izquierda (número) + columna derecha (info)
-           + talón horizontal debajo
-   FIX PUNTO 3B: hora dinámica + fecha sin desfase
-═══════════════════════════════════════════════════════════ */
-export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) {
-  const nombre     = r.rifa_nombre || r.nombre || '';
-  const premio     = r.premio || '—';
-  const loteria    = r.loteria_ref || '';
-  const valor      = fmtMoney(r.precio);
-  const fechaSort  = fmtFecha(r.fecha_sorteo);
-  // FIX: hora dinámica — usa fecha_sorteo si no hay hora manual en diseño
-  const hora       = extraerHora(r.fecha_sorteo, d.horaSort);
-  const serial     = `JDY-${numero}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
-  const hoy        = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Caracas' });
-  const ac         = d.accentColor || '#f5c518';
-  const brand      = `${d.brandEmoji || '🎰'} ${d.brandText || 'RESUELVE TU SEMANA'}`;
-  const compNombre = comprador?.nombre || '';
-  const compTel    = comprador?.telefono || '';
-  const esOriginal = copia === 1;
-  const labelCopia = esOriginal ? 'ORIGINAL' : 'COPIA';
+// ── Hook: carga diseño desde BD ───────────────────────────────
+export function useTicketDesign() {
+  const [design,  setDesign]  = useState(DEFAULT_DESIGN);
+  const [loading, setLoading] = useState(true);
 
-  const numGlowCSS = d.numGlow ? `text-shadow:0 0 40px ${ac}99,0 0 15px ${ac}55;` : '';
-  const linesCSS   = d.heroLines
-    ? `background-image:repeating-linear-gradient(90deg,transparent,transparent 28px,rgba(245,197,24,.018) 28px,rgba(245,197,24,.018) 29px);`
-    : '';
+  const reload = () => {
+    setLoading(true);
+    API.get('/ticket-design')
+      .then(r => { if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...r.data.design }); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
-  const imgHeroHTML = d.premioImagen && d.premioImagenPos === 'hero' ? `
-    <div style="position:absolute;inset:0;overflow:hidden;">
-      <img src="${d.premioImagen}" style="width:100%;height:100%;object-fit:${d.premioImagenFit};display:block;opacity:.35;">
-      <div style="position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,.6) 0%,rgba(0,0,0,.1) 100%);"></div>
-    </div>` : '';
+  useEffect(() => { reload(); }, []);
+  return { design, loading, reload };
+}
 
-  const imgInfoHTML = d.premioImagen && d.premioImagenPos === 'info' ? `
-    <div style="width:100%;height:80px;overflow:hidden;border-radius:6px;margin-bottom:10px;">
-      <img src="${d.premioImagen}" style="width:100%;height:100%;object-fit:${d.premioImagenFit};display:block;">
-    </div>` : '';
+// ─────────────────────────────────────────────────────────────
+//   buildTicketHTML — HTML para ventana de impresión
+// ─────────────────────────────────────────────────────────────
+export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
+  const nombre  = r?.rifa_nombre || r?.nombre || 'RIFA';
+  const premio  = r?.premio      || '—';
+  const loteria = r?.loteria_ref || '';
+  const valor   = fmtMoney(r?.precio);
+  const fecha   = fmtFecha(r?.fecha_sorteo);
+  const hora    = extraerHora(r?.fecha_sorteo, d.horaSort);
+  const serial  = mkSerial(numero);
+  const hoy     = new Date().toLocaleDateString('es-CO', { timeZone:'America/Caracas' });
+  const nom     = comprador?.nombre   || '';
+  const tel     = comprador?.telefono || '';
+  const ced     = comprador?.cedula   || '';
+  const isOrig  = copia === 1;
 
-  const wmHTML = d.watermark ? `
-    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-20deg);
-      font-family:'Bebas Neue',cursive;font-size:4.5rem;color:rgba(0,0,0,.018);
-      letter-spacing:12px;white-space:nowrap;pointer-events:none;user-select:none;z-index:0;">
-      ${d.watermarkText} ${d.watermarkText}
-    </div>` : '';
-
-  const perfHTML = d.showPerf ? `
-    <div style="position:absolute;top:0;bottom:0;left:290px;border-left:2px dashed rgba(255,255,255,.15);z-index:10;pointer-events:none;"></div>
-    <div style="position:absolute;top:-7px;left:283px;width:14px;height:14px;background:#1a1a1a;border-radius:50%;z-index:11;"></div>
-    <div style="position:absolute;bottom:-7px;left:283px;width:14px;height:14px;background:#1a1a1a;border-radius:50%;z-index:11;"></div>` : '';
-
-  const dataRow = (label, value) => !value ? '' : `
-    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px dotted rgba(255,255,255,.08);">
-      <span style="font-family:'Share Tech Mono',monospace;font-size:.44rem;color:#666;letter-spacing:1px;flex-shrink:0;margin-right:8px;">${label}</span>
-      <span style="font-family:'Oswald',sans-serif;font-size:.8rem;color:#f0f0f0;font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:155px;">${value}</span>
-    </div>`;
+  const bg  = d.bgColor      || '#0f1923';
+  const ac  = d.accentColor  || '#e8c84a';
+  const ac2 = d.accentColor2 || '#3ecfcb';
+  const txt = d.textLight    || '#f5f5f0';
+  const tb  = d.talonBg      || '#f8f7f2';
 
   return `
-<div style="width:720px;font-family:'Oswald',sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.65);border-radius:12px;overflow:hidden;page-break-inside:avoid;margin:10px auto;">
+<div style="width:680px;margin:10px auto;font-family:'DM Sans',sans-serif;page-break-inside:avoid;">
 
-  <!-- ══ BOLETO PRINCIPAL ══ -->
-  <div style="display:flex;flex-direction:row;height:265px;position:relative;
-    background:linear-gradient(135deg,${d.headerBg} 0%,${d.headerBg2} 50%,${d.headerBg} 100%);
-    border-bottom:3px solid ${ac};">
-    ${wmHTML}
-    ${perfHTML}
+  <div style="background:${bg};border-radius:14px 14px 0 0;overflow:hidden;position:relative;border:1px solid rgba(255,255,255,.07);">
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);
+      font-family:'DM Serif Display',serif;font-size:5.5rem;color:rgba(255,255,255,.02);
+      white-space:nowrap;pointer-events:none;letter-spacing:22px;">${d.watermarkText || 'JORDYN'}</div>
 
-    <!-- Columna izquierda: número -->
-    <div style="width:290px;flex-shrink:0;
-      background:linear-gradient(160deg,${d.heroBg} 0%,${d.heroBg2} 100%);
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      position:relative;overflow:hidden;border-right:1px solid rgba(255,255,255,.06);">
-      ${imgHeroHTML}
-      <div style="position:absolute;inset:0;${linesCSS}pointer-events:none;"></div>
+    <div style="height:4px;background:linear-gradient(90deg,${ac},${ac2},${ac});"></div>
 
-      <div style="position:absolute;top:10px;right:12px;font-family:'Share Tech Mono',monospace;
-        font-size:.42rem;color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.15);
-        padding:2px 6px;border-radius:2px;letter-spacing:3px;z-index:5;">${labelCopia}</div>
+    <div style="display:flex;align-items:stretch;min-height:210px;">
 
-      <div style="position:absolute;top:10px;left:12px;font-family:'Bebas Neue',cursive;
-        font-size:.72rem;color:${ac};letter-spacing:3px;opacity:.75;z-index:5;">${brand}</div>
-
-      <div style="position:relative;z-index:5;text-align:center;margin-top:12px;">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.46rem;
-          color:rgba(255,255,255,.4);letter-spacing:5px;margin-bottom:5px;">NÚMERO DE LA SUERTE</div>
-        <div style="font-family:'Bebas Neue',cursive;font-size:${d.numSize};
-          color:${d.numColor};letter-spacing:16px;line-height:.9;padding-left:16px;${numGlowCSS}">${numero}</div>
-        ${d.showSubrifa && nombre ? `
-        <div style="font-family:'Oswald',sans-serif;font-weight:300;font-size:.56rem;
-          color:rgba(255,255,255,.45);letter-spacing:3px;margin-top:8px;">${nombre}</div>` : ''}
+      <!-- NÚMERO -->
+      <div style="width:196px;flex-shrink:0;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;padding:18px 14px;
+        border-right:1px dashed rgba(255,255,255,.1);position:relative;">
+        <div style="position:absolute;width:130px;height:130px;border-radius:50%;
+          background:radial-gradient(circle,${ac}14 0%,transparent 70%);"></div>
+        <div style="font-family:'Space Mono',monospace;font-size:.48rem;color:${ac}88;letter-spacing:4px;margin-bottom:5px;">N° DE LA SUERTE</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:4.6rem;color:${ac};line-height:1;
+          letter-spacing:8px;text-shadow:0 0 28px ${ac}55;position:relative;z-index:1;">${numero || '000'}</div>
+        <div style="margin-top:8px;font-family:'Space Mono',monospace;font-size:.43rem;color:rgba(255,255,255,.3);
+          letter-spacing:2px;text-align:center;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nombre}</div>
+        <div style="position:absolute;top:9px;right:9px;font-family:'Space Mono',monospace;
+          font-size:.37rem;color:${isOrig ? ac+'cc' : 'rgba(255,255,255,.25)'};
+          border:1px solid ${isOrig ? ac+'44' : 'rgba(255,255,255,.12)'};
+          padding:2px 6px;border-radius:2px;letter-spacing:2px;">${isOrig ? 'ORIGINAL' : 'COPIA'}</div>
       </div>
 
-      <div style="position:absolute;bottom:10px;left:12px;right:12px;text-align:center;z-index:5;">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.4rem;
-          color:rgba(255,255,255,.28);letter-spacing:2px;
-          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🏆 ${premio}</div>
+      <!-- DATOS -->
+      <div style="flex:1;padding:16px 20px;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;
+          margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);">
+          <div>
+            <div style="font-family:'DM Serif Display',serif;font-size:1.05rem;color:${ac};letter-spacing:2px;">${d.brandText || 'RIFAS JORDYN'}</div>
+            ${loteria ? `<div style="font-family:'Space Mono',monospace;font-size:.41rem;color:rgba(255,255,255,.3);letter-spacing:1px;margin-top:3px;">🎲 ${loteria}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-family:'Space Mono',monospace;font-size:.39rem;color:rgba(255,255,255,.28);line-height:1.8;">
+            <div style="color:${ac2};font-size:.45rem;font-weight:700;">${serial}</div>
+            <div>${hoy}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div style="font-family:'Space Mono',monospace;font-size:.41rem;color:${ac2}88;letter-spacing:3px;margin-bottom:3px;">PRIMER PREMIO</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:1.28rem;color:${txt};line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${premio}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;flex:1;">
+          <div style="border-left:2px solid ${ac}40;padding-left:9px;">
+            <div style="font-family:'Space Mono',monospace;font-size:.39rem;color:rgba(255,255,255,.28);letter-spacing:2px;margin-bottom:3px;">SORTEO</div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:.77rem;font-weight:600;color:${txt};">${fecha}</div>
+            ${hora ? `<div style="font-family:'Space Mono',monospace;font-size:.55rem;color:${ac};margin-top:1px;">${hora}</div>` : ''}
+          </div>
+          <div style="border-left:2px solid ${ac2}40;padding-left:9px;">
+            <div style="font-family:'Space Mono',monospace;font-size:.39rem;color:rgba(255,255,255,.28);letter-spacing:2px;margin-bottom:3px;">VALOR</div>
+            <div style="font-family:'DM Serif Display',serif;font-size:.88rem;color:${ac2};">${valor}</div>
+          </div>
+          ${nom ? `<div style="border-left:2px solid rgba(255,255,255,.1);padding-left:9px;">
+            <div style="font-family:'Space Mono',monospace;font-size:.39rem;color:rgba(255,255,255,.28);letter-spacing:2px;margin-bottom:3px;">COMPRADOR</div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:.74rem;font-weight:600;color:${txt};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nom}</div>
+            ${ced ? `<div style="font-family:'Space Mono',monospace;font-size:.41rem;color:rgba(255,255,255,.28);">C.I.: ${ced}</div>` : ''}
+          </div>` : ''}
+          ${tel ? `<div style="border-left:2px solid rgba(255,255,255,.1);padding-left:9px;">
+            <div style="font-family:'Space Mono',monospace;font-size:.39rem;color:rgba(255,255,255,.28);letter-spacing:2px;margin-bottom:3px;">TELÉFONO</div>
+            <div style="font-family:'Space Mono',monospace;font-size:.69rem;color:${txt};">${tel}</div>
+          </div>` : ''}
+        </div>
+
+        <div style="margin-top:10px;padding-top:6px;border-top:1px solid rgba(255,255,255,.05);
+          font-family:'Space Mono',monospace;font-size:.37rem;color:rgba(255,255,255,.18);letter-spacing:1px;">${d.footerText || ''}</div>
       </div>
     </div>
+    <div style="height:3px;background:linear-gradient(90deg,${ac2},${ac},${ac2});"></div>
+  </div>
 
-    <!-- Columna derecha: info -->
-    <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:16px 20px 12px;position:relative;z-index:2;">
-
-      <!-- Header: brand + serial -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;
-        margin-bottom:12px;border-bottom:1px solid rgba(255,255,255,.07);padding-bottom:10px;">
+  <!-- TALÓN -->
+  <div style="background:${tb};border-radius:0 0 14px 14px;overflow:hidden;border:1px solid #e0ddd5;border-top:none;">
+    <div style="display:flex;align-items:center;height:18px;padding:0 14px;border-top:2px dashed #ccc;">
+      <div style="flex:1;"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:.37rem;color:#aaa;letter-spacing:3px;padding:0 8px;white-space:nowrap;">
+        ✂ &nbsp; TALÓN — QUEDA CON EL VENDEDOR &nbsp; ✂
+      </div>
+      <div style="flex:1;"></div>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 14px;gap:14px;">
+      <div style="background:${bg};border-radius:8px;padding:7px 12px;text-align:center;flex-shrink:0;min-width:76px;">
+        <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:${ac}80;letter-spacing:3px;margin-bottom:2px;">N°</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:1.9rem;color:${ac};letter-spacing:5px;">${numero || '000'}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px 14px;flex:1;">
         <div>
-          <div style="font-family:'Bebas Neue',cursive;font-size:1.3rem;color:${ac};letter-spacing:4px;line-height:1;">${brand}</div>
-          ${loteria ? `<div style="font-family:'Share Tech Mono',monospace;font-size:.44rem;color:#666;letter-spacing:2px;margin-top:2px;">🎲 ${loteria}</div>` : ''}
+          <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:#aaa;letter-spacing:2px;margin-bottom:2px;">NOMBRE</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:.73rem;font-weight:700;color:#222;border-bottom:1px solid #ccc;padding-bottom:2px;min-height:17px;">${nom}</div>
         </div>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.44rem;color:#555;text-align:right;line-height:2;">
-          <div>${serial}</div><div>${hoy}</div>
-          <div style="color:${ac};font-size:.42rem;">★ BOLETO OFICIAL</div>
-        </div>
-      </div>
-
-      ${imgInfoHTML}
-
-      <!-- Premio protagonista -->
-      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
-        border-radius:8px;padding:9px 13px;margin-bottom:11px;
-        display:flex;justify-content:space-between;align-items:center;gap:12px;">
-        <div style="min-width:0;flex:1;">
-          <div style="font-family:'Share Tech Mono',monospace;font-size:.42rem;color:#777;letter-spacing:4px;margin-bottom:3px;">🏆 PRIMER PREMIO</div>
-          <div style="font-family:'Bebas Neue',cursive;font-size:1.5rem;color:${ac};letter-spacing:3px;
-            line-height:1;text-shadow:0 0 20px ${ac}44;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${premio}</div>
-        </div>
-        <div style="text-align:right;border-left:1px solid rgba(255,255,255,.07);padding-left:13px;flex-shrink:0;">
-          <div style="font-family:'Share Tech Mono',monospace;font-size:.4rem;color:#777;letter-spacing:2px;margin-bottom:2px;">VALOR</div>
-          <div style="font-family:'Bebas Neue',cursive;font-size:1.2rem;color:#06d6a0;letter-spacing:2px;">${valor}</div>
-        </div>
-      </div>
-
-      <!-- Grid: fecha + datos -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;flex:1;">
-
-        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
-          border-radius:6px;padding:6px 9px;position:relative;">
-          <div style="position:absolute;top:-6px;left:8px;background:${d.headerBg};padding:0 4px;
-            font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#555;letter-spacing:2px;">FECHA SORTEO</div>
-          <div style="font-family:'Oswald',sans-serif;font-size:.9rem;font-weight:700;color:#f0f0f0;margin-top:2px;">${fechaSort}</div>
-          ${hora ? `<div style="font-family:'Bebas Neue',cursive;font-size:.78rem;color:${ac};letter-spacing:3px;margin-top:1px;">${hora}</div>` : ''}
-        </div>
-
         <div>
-          ${dataRow('Comprador', compNombre || '_______________')}
-          ${dataRow('Teléfono', compTel)}
-          ${dataRow('Vendedor', vendedor || '_______________')}
-          ${dataRow('Lotería', loteria)}
+          <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:#aaa;letter-spacing:2px;margin-bottom:2px;">CÉDULA</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.64rem;color:#333;border-bottom:1px solid #ccc;padding-bottom:2px;min-height:17px;">${ced}</div>
         </div>
-
-      </div>
-
-      <!-- Footer -->
-      <div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:5px;
-        display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-family:'Bebas Neue',cursive;font-size:.62rem;color:rgba(255,255,255,.18);letter-spacing:3px;">${d.brandText}</div>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:rgba(255,255,255,.18);text-align:right;">
-          ${(d.footerText||'').split('·').map(t => `<span>${t.trim()}</span>`).join(' &middot; ')}
+        <div>
+          <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:#aaa;letter-spacing:2px;margin-bottom:2px;">TELÉFONO</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.6rem;color:#333;border-bottom:1px solid #ccc;padding-bottom:2px;min-height:17px;">${tel}</div>
+        </div>
+        <div>
+          <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:#aaa;letter-spacing:2px;margin-bottom:2px;">SORTEO</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:.66rem;font-weight:600;color:#333;">${fecha}${hora ? ` · ${hora}` : ''}</div>
+        </div>
+        <div>
+          <div style="font-family:'Space Mono',monospace;font-size:.35rem;color:#aaa;letter-spacing:2px;margin-bottom:2px;">PREMIO</div>
+          <div style="font-family:'DM Sans',sans-serif;font-size:.66rem;font-weight:700;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${premio}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:'Space Mono',monospace;font-size:.33rem;color:#bbb;letter-spacing:1px;">${serial}</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:.78rem;color:#333;">${valor}</div>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- ══ TALÓN HORIZONTAL ══ -->
-  <div style="background:linear-gradient(180deg,#f7f7f7,#eeeeee);">
-
-    <!-- Separador de corte -->
-    <div style="display:flex;align-items:center;padding:0 14px;
-      border-top:2px dashed #c4c4c4;border-bottom:1px dashed #d4d4d4;
-      background:#fff;height:22px;">
-      <div style="flex:1;"></div>
-      <div style="font-family:'Share Tech Mono',monospace;font-size:.4rem;color:#b0b0b0;letter-spacing:3px;white-space:nowrap;">
-        ✂&nbsp;&nbsp;TALÓN · QUEDA CON EL VENDEDOR&nbsp;&nbsp;✂
-      </div>
-      <div style="flex:1;"></div>
-    </div>
-
-    <!-- Cuerpo talón -->
-    <div style="display:flex;align-items:stretch;height:100px;">
-
-      <!-- Número talón -->
-      <div style="width:110px;flex-shrink:0;
-        background:linear-gradient(135deg,${d.headerBg},${d.headerBg2});
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        border-right:2px dashed rgba(255,255,255,.12);">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#888;letter-spacing:4px;margin-bottom:2px;">N°</div>
-        <div style="font-family:'Bebas Neue',cursive;font-size:2.4rem;color:${ac};
-          letter-spacing:10px;line-height:1;padding-left:10px;
-          ${d.numGlow ? `text-shadow:0 0 20px ${ac}88;` : ''}">${numero}</div>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:.34rem;color:#666;letter-spacing:1px;
-          margin-top:3px;text-align:center;max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nombre}</div>
-      </div>
-
-      <!-- Datos talón en grid -->
-      <div style="flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:4px 22px;padding:8px 18px;align-items:center;">
-
-        <div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#b0b0b0;letter-spacing:3px;margin-bottom:3px;">NOMBRE CLIENTE</div>
-          <div style="border-bottom:1.5px solid #c8c8c8;padding-bottom:3px;min-height:20px;">
-            <span style="font-family:'Oswald',sans-serif;font-size:.82rem;color:#222;font-weight:700;">${compNombre}</span>
-          </div>
-        </div>
-
-        <div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#b0b0b0;letter-spacing:3px;margin-bottom:3px;">CONTACTO / TELÉFONO</div>
-          <div style="border-bottom:1.5px solid #c8c8c8;padding-bottom:3px;min-height:20px;">
-            <span style="font-family:'Share Tech Mono',monospace;font-size:.72rem;color:#444;">${compTel}</span>
-          </div>
-        </div>
-
-        <div>
-          <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#b0b0b0;letter-spacing:3px;margin-bottom:2px;">SORTEO</div>
-          <div style="font-family:'Oswald',sans-serif;font-size:.74rem;color:#333;font-weight:600;">${fechaSort}${hora ? ` · ${hora}` : ''}</div>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div style="min-width:0;flex:1;">
-            <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#b0b0b0;letter-spacing:2px;margin-bottom:2px;">PREMIO</div>
-            <div style="font-family:'Bebas Neue',cursive;font-size:.84rem;color:#333;letter-spacing:2px;
-              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${premio}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <div style="font-family:'Share Tech Mono',monospace;font-size:.34rem;color:#ccc;letter-spacing:1px;">${serial}</div>
-            <div style="font-family:'Bebas Neue',cursive;font-size:.68rem;color:${ac};letter-spacing:2px;">${valor}</div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
 </div>`;
 }
 
-/* legacy */
-export function buildTicketHTML(r, numero, comprador, vendedor, copia) {
-  return buildTicketHTMLCustom(DEFAULT_DESIGN, r, numero, comprador, vendedor, copia);
-}
-
-/* ═══════════════════════════════════════════════════════════
-   TicketPreview — React inline HORIZONTAL completo
-   FIX PUNTO 3B:
-     - fmtFecha usa parseFechaTicket (sin desfase UTC)
-     - hora dinámica con extraerHora(fecha_sorteo, d.horaSort)
-     - serial real en lugar de "JDY-000-DEMO"
-     - layout alineado: grid-template-columns consistente
-═══════════════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────
+//   TicketPreview — React inline
+// ─────────────────────────────────────────────────────────────
 export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dProp }) {
-  // Acepta tanto `r` como `rifa` para compatibilidad con ambos usos
   const rifaData = r || rifa || {};
-  const d = { ...DEFAULT_DESIGN, ...(dProp || getTicketDesign()) };
+  const d        = { ...DEFAULT_DESIGN, ...(dProp || {}) };
 
-  const nombre     = rifaData?.rifa_nombre || rifaData?.nombre || 'DEMO RIFA';
-  const premio     = rifaData?.premio || '—';
-  const loteria    = rifaData?.loteria_ref || '';
-  const valor      = fmtMoney(rifaData?.precio || 0);
-  const fechaSort  = fmtFecha(rifaData?.fecha_sorteo);
-  // FIX: hora dinámica — prioriza horaSort del diseño, sino extrae de fecha_sorteo
-  const hora       = extraerHora(rifaData?.fecha_sorteo, d.horaSort);
-  const ac         = d.accentColor;
-  const compNombre = comprador?.nombre || '';
-  const compTel    = comprador?.telefono || '';
-  // FIX: serial real en lugar de hardcoded "JDY-000-DEMO"
-  const serial     = `JDY-${numero||'000'}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+  const nombre  = rifaData?.rifa_nombre || rifaData?.nombre || 'RIFA';
+  const premio  = rifaData?.premio      || '—';
+  const loteria = rifaData?.loteria_ref || '';
+  const valor   = fmtMoney(rifaData?.precio || 0);
+  const fecha   = fmtFecha(rifaData?.fecha_sorteo);
+  const hora    = extraerHora(rifaData?.fecha_sorteo, d.horaSort);
+  const serial  = mkSerial(numero);
+  const nom     = comprador?.nombre   || '';
+  const tel     = comprador?.telefono || '';
+  const ced     = comprador?.cedula   || '';
 
-  const B = { fontFamily:"'Bebas Neue', cursive" };
-  const M = { fontFamily:"'Share Tech Mono', monospace" };
-  const O = { fontFamily:"'Oswald', sans-serif" };
-  const numGlow = d.numGlow ? { textShadow:`0 0 40px ${ac}99, 0 0 15px ${ac}55` } : {};
+  const bg  = d.bgColor      || '#0f1923';
+  const ac  = d.accentColor  || '#e8c84a';
+  const ac2 = d.accentColor2 || '#3ecfcb';
+  const txt = d.textLight    || '#f5f5f0';
+  const tb  = d.talonBg      || '#f8f7f2';
 
-  const hasHeroImg = d.premioImagen && d.premioImagenPos === 'hero';
-  const hasInfoImg = d.premioImagen && d.premioImagenPos === 'info';
+  useEffect(() => {
+    if (!document.getElementById('ticket-fonts-jd')) {
+      const l = document.createElement('link');
+      l.id   = 'ticket-fonts-jd';
+      l.rel  = 'stylesheet';
+      l.href = FONT_URL;
+      document.head.appendChild(l);
+    }
+  }, []);
 
-  const rows = [
-    { k:'Comprador', v: compNombre || '_______________' },
-    compTel  ? { k:'Teléfono', v: compTel  } : null,
-    { k:'Vendedor',  v: vendedor || '_______________' },
-    loteria  ? { k:'Lotería',  v: loteria  } : null,
-  ].filter(Boolean);
+  const SM = { fontFamily:"'Space Mono', monospace" };
+  const DS = { fontFamily:"'DM Serif Display', serif" };
+  const DM = { fontFamily:"'DM Sans', sans-serif" };
 
   return (
-    <div style={{ width:'100%', maxWidth:720, margin:'0 auto', ...O }}>
+    <div style={{ width:'100%', maxWidth:680, margin:'0 auto', ...DM }}>
 
-      {/* ════ BOLETO HORIZONTAL ════ */}
-      <div style={{
-        display:'flex', height:265,
-        background:`linear-gradient(135deg,${d.headerBg} 0%,${d.headerBg2} 50%,${d.headerBg} 100%)`,
-        borderRadius:'12px 12px 0 0', overflow:'hidden', position:'relative',
-        boxShadow:'0 20px 60px rgba(0,0,0,.65)', borderBottom:`3px solid ${ac}`,
-      }}>
+      {/* BOLETO */}
+      <div style={{ background:bg, borderRadius:'14px 14px 0 0', overflow:'hidden', position:'relative', border:'1px solid rgba(255,255,255,.07)', boxShadow:'0 16px 48px rgba(0,0,0,.4)' }}>
 
         {/* Watermark */}
-        {d.watermark && (
-          <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-20deg)', ...B, fontSize:'4.5rem', color:'rgba(0,0,0,.018)', letterSpacing:12, whiteSpace:'nowrap', pointerEvents:'none', userSelect:'none', zIndex:0 }}>
-            {d.watermarkText} {d.watermarkText}
-          </div>
-        )}
-
-        {/* Perforación vertical */}
-        {d.showPerf && (
-          <>
-            <div style={{ position:'absolute', top:0, bottom:0, left:290, borderLeft:'2px dashed rgba(255,255,255,.15)', zIndex:10, pointerEvents:'none' }}></div>
-            <div style={{ position:'absolute', top:-7, left:283, width:14, height:14, background:d.headerBg, borderRadius:'50%', zIndex:11 }}></div>
-            <div style={{ position:'absolute', bottom:-7, left:283, width:14, height:14, background:d.headerBg, borderRadius:'50%', zIndex:11 }}></div>
-          </>
-        )}
-
-        {/* ── Columna izquierda: número ── */}
-        <div style={{
-          width:290, flexShrink:0,
-          background:`linear-gradient(160deg,${d.heroBg} 0%,${d.heroBg2} 100%)`,
-          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-          position:'relative', overflow:'hidden', borderRight:'1px solid rgba(255,255,255,.06)',
-        }}>
-          {hasHeroImg && (
-            <div style={{ position:'absolute', inset:0 }}>
-              <img src={d.premioImagen} alt="Premio" style={{ width:'100%', height:'100%', objectFit:d.premioImagenFit, opacity:.35 }} />
-              <div style={{ position:'absolute', inset:0, background:'linear-gradient(to right,rgba(0,0,0,.6) 0%,rgba(0,0,0,.1) 100%)' }}></div>
-            </div>
-          )}
-          {d.heroLines && (
-            <div style={{ position:'absolute', inset:0, backgroundImage:'repeating-linear-gradient(90deg,transparent,transparent 28px,rgba(245,197,24,.018) 28px,rgba(245,197,24,.018) 29px)', pointerEvents:'none' }}></div>
-          )}
-
-          <div style={{ position:'absolute', top:10, right:12, ...M, fontSize:'.42rem', color:'rgba(255,255,255,.35)', border:'1px solid rgba(255,255,255,.15)', padding:'2px 6px', borderRadius:2, letterSpacing:3, zIndex:5 }}>ORIGINAL</div>
-          <div style={{ position:'absolute', top:10, left:12, ...B, fontSize:'.72rem', color:ac, letterSpacing:3, opacity:.75, zIndex:5 }}>{d.brandEmoji} {d.brandText}</div>
-
-          <div style={{ position:'relative', zIndex:5, textAlign:'center', marginTop:12 }}>
-            <div style={{ ...M, fontSize:'.46rem', color:'rgba(255,255,255,.4)', letterSpacing:5, marginBottom:5 }}>NÚMERO DE LA SUERTE</div>
-            <div style={{ ...B, fontSize:`min(${d.numSize}, 4.2rem)`, color:d.numColor, letterSpacing:16, lineHeight:.9, paddingLeft:16, ...numGlow }}>{numero || '000'}</div>
-            {d.showSubrifa && nombre && (
-              <div style={{ ...O, fontWeight:300, fontSize:'.56rem', color:'rgba(255,255,255,.45)', letterSpacing:3, marginTop:8 }}>{nombre}</div>
-            )}
-          </div>
-
-          <div style={{ position:'absolute', bottom:10, left:12, right:12, textAlign:'center', zIndex:5 }}>
-            <div style={{ ...M, fontSize:'.4rem', color:'rgba(255,255,255,.28)', letterSpacing:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>🏆 {premio}</div>
-          </div>
+        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%) rotate(-28deg)', ...DS, fontSize:'5.5rem', color:'rgba(255,255,255,.02)', whiteSpace:'nowrap', pointerEvents:'none', userSelect:'none', letterSpacing:22 }}>
+          {d.watermarkText || 'JORDYN'}
         </div>
 
-        {/* ── Columna derecha: info ── */}
-        <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', padding:'16px 20px 12px', position:'relative', zIndex:2 }}>
+        {/* Franja superior */}
+        <div style={{ height:4, background:`linear-gradient(90deg,${ac},${ac2},${ac})` }}></div>
 
-          {/* Header brand + serial */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, borderBottom:'1px solid rgba(255,255,255,.07)', paddingBottom:10 }}>
-            <div>
-              <div style={{ ...B, fontSize:'1.3rem', color:ac, letterSpacing:4, lineHeight:1 }}>{d.brandEmoji} {d.brandText}</div>
-              {loteria && <div style={{ ...M, fontSize:'.44rem', color:'#666', letterSpacing:2, marginTop:2 }}>🎲 {loteria}</div>}
-            </div>
-            <div style={{ ...M, fontSize:'.44rem', color:'#555', textAlign:'right', lineHeight:2 }}>
-              <div>{serial}</div>
-              <div>{new Date().toLocaleDateString('es-CO', { timeZone:'America/Caracas' })}</div>
-              <div style={{ color:ac, fontSize:'.42rem' }}>★ BOLETO OFICIAL</div>
-            </div>
+        <div style={{ display:'flex', alignItems:'stretch', minHeight:210 }}>
+
+          {/* Panel número */}
+          <div style={{ width:196, flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'18px 14px', borderRight:'1px dashed rgba(255,255,255,.1)', position:'relative' }}>
+            <div style={{ position:'absolute', width:130, height:130, borderRadius:'50%', background:`radial-gradient(circle,${ac}14 0%,transparent 70%)` }}></div>
+            <div style={{ ...SM, fontSize:'.48rem', color:`${ac}88`, letterSpacing:4, marginBottom:5 }}>N° DE LA SUERTE</div>
+            <div style={{ ...DS, fontSize:'4.6rem', color:ac, lineHeight:1, letterSpacing:8, textShadow:`0 0 28px ${ac}55`, position:'relative', zIndex:1 }}>{numero || '000'}</div>
+            <div style={{ marginTop:8, ...SM, fontSize:'.43rem', color:'rgba(255,255,255,.3)', letterSpacing:2, textAlign:'center', maxWidth:150, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nombre}</div>
+            <div style={{ position:'absolute', top:9, right:9, ...SM, fontSize:'.37rem', color:`${ac}cc`, border:`1px solid ${ac}44`, padding:'2px 6px', borderRadius:2, letterSpacing:2 }}>ORIGINAL</div>
           </div>
 
-          {hasInfoImg && (
-            <div style={{ width:'100%', height:75, overflow:'hidden', borderRadius:6, marginBottom:10 }}>
-              <img src={d.premioImagen} alt="Premio" style={{ width:'100%', height:'100%', objectFit:d.premioImagenFit }} />
-            </div>
-          )}
+          {/* Panel datos */}
+          <div style={{ flex:1, padding:'16px 20px', display:'flex', flexDirection:'column' }}>
 
-          {/* Premio protagonista */}
-          <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)', borderRadius:8, padding:'9px 13px', marginBottom:11, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
-            <div style={{ minWidth:0, flex:1 }}>
-              <div style={{ ...M, fontSize:'.42rem', color:'#777', letterSpacing:4, marginBottom:3 }}>🏆 PRIMER PREMIO</div>
-              <div style={{ ...B, fontSize:'1.5rem', color:ac, letterSpacing:3, lineHeight:1, textShadow:`0 0 20px ${ac}44`, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
-            </div>
-            <div style={{ textAlign:'right', borderLeft:'1px solid rgba(255,255,255,.07)', paddingLeft:13, flexShrink:0 }}>
-              <div style={{ ...M, fontSize:'.4rem', color:'#777', letterSpacing:2, marginBottom:2 }}>VALOR</div>
-              <div style={{ ...B, fontSize:'1.2rem', color:'#06d6a0', letterSpacing:2 }}>{valor}</div>
-            </div>
-          </div>
-
-          {/* Grid info: fecha + datos comprador */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 16px', flex:1 }}>
-
-            {/* Celda fecha/hora — con borde flotante */}
-            <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:6, padding:'6px 9px', position:'relative' }}>
-              <div style={{ position:'absolute', top:-6, left:8, background:d.headerBg, padding:'0 4px', ...M, fontSize:'.38rem', color:'#555', letterSpacing:2 }}>FECHA SORTEO</div>
-              <div style={{ ...O, fontSize:'.9rem', fontWeight:700, color:'#f0f0f0', marginTop:2 }}>{fechaSort}</div>
-              {/* FIX: hora solo si existe */}
-              {hora && <div style={{ ...B, fontSize:'.78rem', color:ac, letterSpacing:3, marginTop:1 }}>{hora}</div>}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, paddingBottom:10, borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+              <div>
+                <div style={{ ...DS, fontSize:'1.05rem', color:ac, letterSpacing:2 }}>{d.brandText || 'RIFAS JORDYN'}</div>
+                {loteria && <div style={{ ...SM, fontSize:'.41rem', color:'rgba(255,255,255,.3)', letterSpacing:1, marginTop:3 }}>🎲 {loteria}</div>}
+              </div>
+              <div style={{ textAlign:'right', ...SM, fontSize:'.39rem', color:'rgba(255,255,255,.28)', lineHeight:1.8 }}>
+                <div style={{ color:ac2, fontSize:'.45rem', fontWeight:700 }}>{serial}</div>
+                <div>{new Date().toLocaleDateString('es-CO', { timeZone:'America/Caracas' })}</div>
+              </div>
             </div>
 
-            {/* Columna datos comprador */}
-            <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-              {rows.map(({ k, v }) => (
-                <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', padding:'2px 0', borderBottom:'1px dotted rgba(255,255,255,.08)' }}>
-                  <span style={{ ...M, fontSize:'.44rem', color:'#666', letterSpacing:1, flexShrink:0, marginRight:8 }}>{k}</span>
-                  <span style={{ ...O, fontSize:'.78rem', color:'#f0f0f0', fontWeight:600, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:145 }}>{v}</span>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ ...SM, fontSize:'.41rem', color:`${ac2}88`, letterSpacing:3, marginBottom:3 }}>PRIMER PREMIO</div>
+              <div style={{ ...DS, fontSize:'1.28rem', color:txt, lineHeight:1.1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 18px', flex:1 }}>
+
+              <div style={{ borderLeft:`2px solid ${ac}40`, paddingLeft:9 }}>
+                <div style={{ ...SM, fontSize:'.39rem', color:'rgba(255,255,255,.28)', letterSpacing:2, marginBottom:3 }}>SORTEO</div>
+                <div style={{ ...DM, fontSize:'.77rem', fontWeight:600, color:txt }}>{fecha}</div>
+                {hora && <div style={{ ...SM, fontSize:'.55rem', color:ac, marginTop:1 }}>{hora}</div>}
+              </div>
+
+              <div style={{ borderLeft:`2px solid ${ac2}40`, paddingLeft:9 }}>
+                <div style={{ ...SM, fontSize:'.39rem', color:'rgba(255,255,255,.28)', letterSpacing:2, marginBottom:3 }}>VALOR</div>
+                <div style={{ ...DS, fontSize:'.88rem', color:ac2 }}>{valor}</div>
+              </div>
+
+              {nom && (
+                <div style={{ borderLeft:'2px solid rgba(255,255,255,.1)', paddingLeft:9 }}>
+                  <div style={{ ...SM, fontSize:'.39rem', color:'rgba(255,255,255,.28)', letterSpacing:2, marginBottom:3 }}>COMPRADOR</div>
+                  <div style={{ ...DM, fontSize:'.74rem', fontWeight:600, color:txt, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nom}</div>
+                  {ced && <div style={{ ...SM, fontSize:'.41rem', color:'rgba(255,255,255,.28)' }}>C.I.: {ced}</div>}
                 </div>
-              ))}
+              )}
+
+              {tel && (
+                <div style={{ borderLeft:'2px solid rgba(255,255,255,.1)', paddingLeft:9 }}>
+                  <div style={{ ...SM, fontSize:'.39rem', color:'rgba(255,255,255,.28)', letterSpacing:2, marginBottom:3 }}>TELÉFONO</div>
+                  <div style={{ ...SM, fontSize:'.69rem', color:txt }}>{tel}</div>
+                </div>
+              )}
             </div>
 
-          </div>
-
-          {/* Footer */}
-          <div style={{ borderTop:'1px solid rgba(255,255,255,.06)', marginTop:8, paddingTop:5, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div style={{ ...B, fontSize:'.62rem', color:'rgba(255,255,255,.18)', letterSpacing:3 }}>{d.brandText}</div>
-            <div style={{ ...M, fontSize:'.38rem', color:'rgba(255,255,255,.18)', textAlign:'right' }}>
-              {(d.footerText||'').split('·').map((t,i) => <span key={i}>{i > 0 && ' · '}{t.trim()}</span>)}
+            <div style={{ marginTop:10, paddingTop:6, borderTop:'1px solid rgba(255,255,255,.05)', ...SM, fontSize:'.37rem', color:'rgba(255,255,255,.18)', letterSpacing:1 }}>
+              {d.footerText || ''}
             </div>
           </div>
         </div>
+
+        {/* Franja inferior */}
+        <div style={{ height:3, background:`linear-gradient(90deg,${ac2},${ac},${ac2})` }}></div>
       </div>
 
-      {/* ════ TALÓN HORIZONTAL ════ */}
-      <div style={{ background:'linear-gradient(180deg,#f7f7f7,#eeeeee)', borderRadius:'0 0 12px 12px', overflow:'hidden' }}>
+      {/* TALÓN */}
+      <div style={{ background:tb, borderRadius:'0 0 14px 14px', overflow:'hidden', border:'1px solid #e0ddd5', borderTop:'none' }}>
 
-        <div style={{ display:'flex', alignItems:'center', padding:'0 14px', borderTop:'2px dashed #c4c4c4', borderBottom:'1px dashed #d4d4d4', background:'#fff', height:22 }}>
+        <div style={{ display:'flex', alignItems:'center', height:18, padding:'0 14px', borderTop:'2px dashed #ccc' }}>
           <div style={{ flex:1 }}></div>
-          <div style={{ ...M, fontSize:'.4rem', color:'#b0b0b0', letterSpacing:3, whiteSpace:'nowrap' }}>✂&nbsp;&nbsp;TALÓN · QUEDA CON EL VENDEDOR&nbsp;&nbsp;✂</div>
+          <div style={{ ...SM, fontSize:'.37rem', color:'#aaa', letterSpacing:3, padding:'0 8px', whiteSpace:'nowrap' }}>✂ &nbsp; TALÓN — QUEDA CON EL VENDEDOR &nbsp; ✂</div>
           <div style={{ flex:1 }}></div>
         </div>
 
-        <div style={{ display:'flex', alignItems:'stretch', height:100 }}>
+        <div style={{ display:'flex', alignItems:'center', padding:'9px 14px', gap:14 }}>
 
-          {/* Número talón */}
-          <div style={{ width:110, flexShrink:0, background:`linear-gradient(135deg,${d.headerBg},${d.headerBg2})`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderRight:'2px dashed rgba(255,255,255,.12)' }}>
-            <div style={{ ...M, fontSize:'.36rem', color:'#888', letterSpacing:4, marginBottom:2 }}>N°</div>
-            <div style={{ ...B, fontSize:'2.4rem', color:ac, letterSpacing:10, lineHeight:1, paddingLeft:10, ...(d.numGlow ? { textShadow:`0 0 20px ${ac}88` } : {}) }}>{numero || '000'}</div>
-            <div style={{ ...M, fontSize:'.34rem', color:'#666', letterSpacing:1, marginTop:3, textAlign:'center', maxWidth:95, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nombre}</div>
+          <div style={{ background:bg, borderRadius:8, padding:'7px 12px', textAlign:'center', flexShrink:0, minWidth:76 }}>
+            <div style={{ ...SM, fontSize:'.35rem', color:`${ac}80`, letterSpacing:3, marginBottom:2 }}>N°</div>
+            <div style={{ ...DS, fontSize:'1.9rem', color:ac, letterSpacing:5 }}>{numero || '000'}</div>
           </div>
 
-          {/* Datos talón en grid 2 columnas */}
-          <div style={{ flex:1, minWidth:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 22px', padding:'8px 18px', alignItems:'center' }}>
-
-            <div>
-              <div style={{ ...M, fontSize:'.38rem', color:'#b0b0b0', letterSpacing:3, marginBottom:3 }}>NOMBRE CLIENTE</div>
-              <div style={{ borderBottom:'1.5px solid #c8c8c8', paddingBottom:3, minHeight:20 }}>
-                <span style={{ ...O, fontSize:'.82rem', color:'#222', fontWeight:700 }}>{compNombre}</span>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'3px 14px', flex:1 }}>
+            {[
+              { label:'NOMBRE',   val: nom,   font: DM,  sz:'.73rem', fw:700 },
+              { label:'CÉDULA',   val: ced,   font: SM,  sz:'.64rem', fw:400 },
+              { label:'TELÉFONO', val: tel,   font: SM,  sz:'.6rem',  fw:400 },
+              { label:'SORTEO',   val: fecha + (hora ? ` · ${hora}` : ''), font: DM, sz:'.66rem', fw:600 },
+              { label:'PREMIO',   val: premio, font: DM,  sz:'.66rem', fw:700 },
+            ].map(({ label, val, font, sz, fw }) => (
+              <div key={label}>
+                <div style={{ ...SM, fontSize:'.35rem', color:'#aaa', letterSpacing:2, marginBottom:2 }}>{label}</div>
+                <div style={{ ...font, fontSize:sz, fontWeight:fw, color:'#222', borderBottom:'1px solid #ccc', paddingBottom:2, minHeight:17, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{val}</div>
               </div>
+            ))}
+            <div style={{ textAlign:'right' }}>
+              <div style={{ ...SM, fontSize:'.33rem', color:'#bbb', letterSpacing:1 }}>{serial}</div>
+              <div style={{ ...DS, fontSize:'.78rem', color:'#333' }}>{valor}</div>
             </div>
-
-            <div>
-              <div style={{ ...M, fontSize:'.38rem', color:'#b0b0b0', letterSpacing:3, marginBottom:3 }}>CONTACTO / TELÉFONO</div>
-              <div style={{ borderBottom:'1.5px solid #c8c8c8', paddingBottom:3, minHeight:20 }}>
-                <span style={{ ...M, fontSize:'.72rem', color:'#444' }}>{compTel}</span>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ ...M, fontSize:'.38rem', color:'#b0b0b0', letterSpacing:3, marginBottom:2 }}>SORTEO</div>
-              {/* FIX: hora condicional en el talón */}
-              <div style={{ ...O, fontSize:'.74rem', color:'#333', fontWeight:600 }}>{fechaSort}{hora ? ` · ${hora}` : ''}</div>
-            </div>
-
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-              <div style={{ minWidth:0, flex:1 }}>
-                <div style={{ ...M, fontSize:'.38rem', color:'#b0b0b0', letterSpacing:2, marginBottom:2 }}>PREMIO</div>
-                <div style={{ ...B, fontSize:'.84rem', color:'#333', letterSpacing:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
-              </div>
-              <div style={{ textAlign:'right', flexShrink:0 }}>
-                <div style={{ ...M, fontSize:'.34rem', color:'#ccc', letterSpacing:1 }}>{serial}</div>
-                <div style={{ ...B, fontSize:'.68rem', color:ac, letterSpacing:2 }}>{valor}</div>
-              </div>
-            </div>
-
           </div>
         </div>
       </div>
@@ -548,62 +372,59 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   printTickets — acepta design opcional (diseño de la rifa)
-═══════════════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────
+//   printTickets
+// ─────────────────────────────────────────────────────────────
 export function printTickets(rifasArr, numero, comprador, vendedor, design) {
-  const d = design
-    ? { ...DEFAULT_DESIGN, ...design }
-    : (() => {
-        try {
-          const s = localStorage.getItem(TICKET_DESIGN_KEY);
-          return s ? { ...DEFAULT_DESIGN, ...JSON.parse(s) } : { ...DEFAULT_DESIGN };
-        } catch { return { ...DEFAULT_DESIGN }; }
-      })();
+  const d = { ...DEFAULT_DESIGN, ...(design || {}) };
+  const FONTS = `@import url('${FONT_URL}');
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#1a1a1a;display:flex;flex-direction:column;align-items:center;gap:20px;padding:20px;}
+    @media print{body{background:#fff;padding:4px;gap:8px;}@page{size:landscape;margin:5mm;}}`;
 
-  const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@300;400;600;700&family=Share+Tech+Mono&display=swap');`;
-  const html  = rifasArr.flatMap(r => [1,2].map(c =>
-    buildTicketHTMLCustom(d, r, numero, comprador, vendedor, c)
+  const html = rifasArr.flatMap(r => [1, 2].map(c =>
+    buildTicketHTML(d, r, numero, comprador, vendedor, c)
   )).join('\n');
 
-  const win = window.open('', '_blank', 'width=800,height=700');
+  const win = window.open('', '_blank', 'width=780,height=650');
   win.document.write(`<!DOCTYPE html><html><head>
-  <meta charset="utf-8">
-  <title>Boleto #${numero} — ${d.brandText}</title>
-  <style>${FONTS}
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{background:#1a1a1a;display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;font-family:'Oswald',sans-serif;}
-    @media print{body{background:#fff;padding:4px;gap:10px;}@page{size:landscape;margin:6mm;}}
-  </style>
-</head><body>${html}
-  <script>window.onload=()=>{setTimeout(()=>{window.print();window.close();},400);};<\/script>
-</body></html>`);
+    <meta charset="utf-8">
+    <title>Boleto #${numero} — ${d.brandText}</title>
+    <style>${FONTS}</style>
+  </head><body>${html}
+    <script>window.onload=()=>{setTimeout(()=>{window.print();window.close();},500);};<\/script>
+  </body></html>`);
   win.document.close();
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Ticket — default export
-═══════════════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────
+//   Ticket — default export (carga diseño desde BD)
+// ─────────────────────────────────────────────────────────────
 export default function Ticket({ rifa, numero, comprador, vendedor, onClose }) {
-  const rifasArr = Array.isArray(rifa) ? rifa.filter(r => r.disponible !== false) : rifa ? [rifa] : [];
+  const rifasArr   = Array.isArray(rifa) ? rifa.filter(r => r.disponible !== false) : rifa ? [rifa] : [];
+  const { design } = useTicketDesign();
 
-  const design = (() => {
-    try {
-      if (rifasArr[0]?.ticket_design) return { ...DEFAULT_DESIGN, ...rifasArr[0].ticket_design };
-      const s = localStorage.getItem(TICKET_DESIGN_KEY);
-      return s ? { ...DEFAULT_DESIGN, ...JSON.parse(s) } : { ...DEFAULT_DESIGN };
-    } catch { return { ...DEFAULT_DESIGN }; }
-  })();
+  // ticket_design propio de la rifa tiene prioridad sobre el global
+  const efectivo = rifasArr[0]?.ticket_design
+    ? { ...DEFAULT_DESIGN, ...rifasArr[0].ticket_design }
+    : design;
 
   return (
     <div>
-      <div style={{ display:'flex', flexWrap:'wrap', gap:18, justifyContent:'center', marginBottom:20, width:'100%' }}>
+      <div style={{ display:'flex', flexWrap:'wrap', gap:18, justifyContent:'center', marginBottom:20 }}>
         {rifasArr.map(r => (
-          <TicketPreview key={r.rifa_id||r.id||Math.random()} r={r} numero={numero} comprador={comprador} vendedor={vendedor} design={design} />
+          <TicketPreview
+            key={r.rifa_id || r.id || Math.random()}
+            r={r} numero={numero}
+            comprador={comprador} vendedor={vendedor}
+            design={efectivo}
+          />
         ))}
       </div>
       <div style={{ display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
-        <button className="btn-jordyn" onClick={() => printTickets(rifasArr, numero, comprador, vendedor, design)} style={{ fontSize:'1rem', padding:'.72rem 2rem' }}>
+        <button className="btn-jordyn"
+          onClick={() => printTickets(rifasArr, numero, comprador, vendedor, efectivo)}
+          style={{ fontSize:'1rem', padding:'.72rem 2rem' }}>
           <i className="bi bi-printer-fill me-2"></i>
           IMPRIMIR {rifasArr.length > 1 ? 'BOLETOS' : 'BOLETO'} (2 COPIAS)
         </button>
