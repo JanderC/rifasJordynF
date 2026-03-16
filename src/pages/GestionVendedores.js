@@ -1,3 +1,11 @@
+// ============================================================
+//   GestionVendedores.js — RIFAS JORDYN
+//   ✅ FIX PUNTO 4A: Botón Eliminar/Archivar vendedores
+//      - Si el vendedor NO tiene ventas → se puede eliminar definitivamente
+//      - Si el vendedor SÍ tiene ventas → solo se puede desactivar (archivar)
+//      - El backend ya tiene DELETE /api/vendedores/:id con esta lógica;
+//        solo se agrega el botón en el frontend.
+// ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
@@ -34,7 +42,7 @@ function imprimirNumeros(vendedor, rifa, numeros) {
     </head>
     <body>
       <div class="header">
-        <h1>🎰  RESUELVE TU SEMANA</h1>
+        <h1>🎰  RIFAS JORDYN</h1>
         <p>Números asignados para venta</p>
       </div>
       <div class="meta">
@@ -47,7 +55,7 @@ function imprimirNumeros(vendedor, rifa, numeros) {
         ${numeros.map(n => `<div class="num">${n}</div>`).join('')}
       </div>
       <div class="footer">
-        Impreso el ${new Date().toLocaleString('es-CO')} · Sistema RESUELVE TU SEMANA
+        Impreso el ${new Date().toLocaleString('es-CO')} · Sistema RIFAS JORDYN
       </div>
     </body>
     </html>
@@ -62,14 +70,14 @@ function imprimirNumeros(vendedor, rifa, numeros) {
    MODAL ASIGNACIÓN DE NÚMEROS
 ═══════════════════════════════════════════════════ */
 function ModalNumeros({ vendedor, rifas, onClose }) {
-  const [rifaId,      setRifaId]      = useState(rifas[0]?.id || '');
-  const [asignados,   setAsignados]   = useState([]);
-  const [numInput,    setNumInput]    = useState('');
-  const [rangoIni,    setRangoIni]    = useState('');
-  const [rangoFin,    setRangoFin]    = useState('');
-  const [cantidad,    setCantidad]    = useState(10);
-  const [loadingAl,   setLoadingAl]   = useState(false);
-  const [tab,         setTab]         = useState('manual'); // manual | rango | aleatorio
+  const [rifaId,    setRifaId]    = useState(rifas[0]?.id || '');
+  const [asignados, setAsignados] = useState([]);
+  const [numInput,  setNumInput]  = useState('');
+  const [rangoIni,  setRangoIni]  = useState('');
+  const [rangoFin,  setRangoFin]  = useState('');
+  const [cantidad,  setCantidad]  = useState(10);
+  const [loadingAl, setLoadingAl] = useState(false);
+  const [tab,       setTab]       = useState('manual');
 
   const rifaActual = rifas.find(r => r.id === rifaId);
 
@@ -321,6 +329,8 @@ export default function GestionVendedores() {
   const [showForm,   setShowForm]   = useState(false);
   const [editId,     setEditId]     = useState(null);
   const [modalVend,  setModalVend]  = useState(null);
+  // FIX PUNTO 4A: estado para confirmar eliminación
+  const [confirmDelete, setConfirmDelete] = useState(null); // null | { id, nombre, tieneVentas }
 
   const load = useCallback(async () => {
     try {
@@ -362,9 +372,56 @@ export default function GestionVendedores() {
     } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
   };
 
+  /* ─────────────────────────────────────────────────────────
+     FIX PUNTO 4A — handleEliminar
+     Lógica de eliminación en dos pasos:
+       1. Click en el botón rojo → muestra modal de confirmación
+          con contexto: si tiene ventas, explica que no se puede
+          eliminar y ofrece desactivar.
+       2. Confirma → llama DELETE /api/vendedores/:id
+          Si el backend devuelve error (tiene ventas registradas),
+          muestra el mensaje y ofrece desactivar como alternativa.
+  ───────────────────────────────────────────────────────── */
+  const handleEliminar = async (v) => {
+    // Detectar si tiene ventas para mostrar el mensaje correcto en el modal
+    const tieneVentas = (v.total_ventas || 0) > 0;
+    setConfirmDelete({ id: v.id, nombre: v.nombre, tieneVentas, vendedor: v });
+  };
+
+  const confirmarEliminacion = async () => {
+    if (!confirmDelete) return;
+    try {
+      await API.delete(`/vendedores/${confirmDelete.id}`);
+      toast.success(`Vendedor "${confirmDelete.nombre}" eliminado`);
+      setConfirmDelete(null);
+      load();
+    } catch (err) {
+      // El backend devuelve 400 si tiene ventas
+      const msg = err.response?.data?.error || 'Error al eliminar';
+      toast.error(msg);
+      // Si el error es por ventas existentes, ofrecer desactivar
+      if (err.response?.status === 400) {
+        setConfirmDelete(p => ({ ...p, errorVentas: true }));
+      }
+    }
+  };
+
+  const confirmarDesactivar = async () => {
+    if (!confirmDelete) return;
+    try {
+      await API.put(`/vendedores/${confirmDelete.id}`, { activo: false });
+      toast.info(`Vendedor "${confirmDelete.nombre}" desactivado`);
+      setConfirmDelete(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al desactivar');
+    }
+  };
+
   const activos   = vendedores.filter(v => v.activo);
   const inactivos = vendedores.filter(v => !v.activo);
 
+  /* ── Fila de vendedor ── */
   const VendedorRow = ({ v }) => (
     <div className="jd-card" style={{ padding:'1rem 1.25rem', marginBottom:8 }}>
       <div className="d-flex align-items-center gap-3 flex-wrap">
@@ -453,6 +510,28 @@ export default function GestionVendedores() {
               <i className="bi bi-box-arrow-up-right"></i>
             </a>
           )}
+
+          {/*
+            FIX PUNTO 4A — Botón Eliminar
+            ────────────────────────────────────────────────────
+            Se muestra siempre. Al hacer click abre el modal de
+            confirmación, que explica qué pasará:
+              • Sin ventas → permite eliminar definitivamente
+              • Con ventas → el backend rechaza la eliminación,
+                el modal ofrece desactivar como alternativa
+          */}
+          <button
+            onClick={() => handleEliminar(v)}
+            title="Eliminar vendedor"
+            style={{
+              background:'rgba(230,57,70,0.08)',
+              border:'1.5px solid rgba(230,57,70,0.3)',
+              color:'var(--jordyn-red)',
+              borderRadius:7, padding:'5px 10px', cursor:'pointer', fontSize:'0.85rem',
+            }}
+          >
+            <i className="bi bi-trash3-fill"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -519,7 +598,7 @@ export default function GestionVendedores() {
         </div>
       )}
 
-      {/* Lista con scroll */}
+      {/* Lista */}
       {loading ? (
         <div className="d-flex justify-content-center mt-5">
           <div className="jd-spinner" style={{ width:40, height:40 }}></div>
@@ -555,7 +634,7 @@ export default function GestionVendedores() {
         </div>
       )}
 
-      {/* Modal asignación */}
+      {/* Modal asignación de números */}
       {modalVend && rifas.length > 0 && (
         <ModalNumeros
           vendedor={modalVend}
@@ -567,6 +646,100 @@ export default function GestionVendedores() {
         <div className="jd-alert jd-alert-warning mt-3">
           <i className="bi bi-exclamation-triangle-fill"></i>
           No hay rifas activas para asignar números
+        </div>
+      )}
+
+      {/*
+        FIX PUNTO 4A — Modal de confirmación de eliminación
+        ────────────────────────────────────────────────────
+        Muestra contexto claro según si el vendedor tiene ventas o no.
+        Con ventas: bloquea la eliminación, ofrece solo desactivar.
+        Sin ventas: permite eliminar definitivamente.
+      */}
+      {confirmDelete && (
+        <div
+          onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}
+          style={{ position:'fixed', inset:0, zIndex:10200, background:'rgba(10,30,30,0.65)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}
+        >
+          <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:440, boxShadow:'0 24px 64px rgba(0,0,0,.3)', overflow:'hidden' }}>
+
+            {/* Header */}
+            <div style={{ background: confirmDelete.tieneVentas ? 'linear-gradient(135deg,#b37700,#f0a500)' : 'linear-gradient(135deg,#c0303a,#e63946)', padding:'16px 20px', display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:40, height:40, borderRadius:'50%', background:'rgba(255,255,255,.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.3rem', flexShrink:0 }}>
+                {confirmDelete.tieneVentas ? '⚠️' : '🗑️'}
+              </div>
+              <div>
+                <div style={{ fontWeight:800, color:'#fff', fontSize:'1rem' }}>
+                  {confirmDelete.tieneVentas ? 'Vendedor con ventas activas' : 'Eliminar vendedor'}
+                </div>
+                <div style={{ fontSize:'0.72rem', color:'rgba(255,255,255,.8)', marginTop:2 }}>
+                  {confirmDelete.nombre}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding:'20px 24px' }}>
+              {confirmDelete.tieneVentas ? (
+                /* Caso: tiene ventas → no se puede eliminar */
+                <>
+                  <div style={{ background:'#fff8e1', border:'1.5px solid #ffd166', borderRadius:10, padding:'12px 14px', marginBottom:16, fontSize:'0.82rem', color:'#7a5c00', lineHeight:1.6 }}>
+                    <strong>No es posible eliminar</strong> este vendedor porque tiene <strong>{confirmDelete.vendedor?.total_ventas || 0} venta(s)</strong> registradas en el sistema. Eliminar un vendedor con historial de ventas rompería los registros contables.
+                  </div>
+                  <p style={{ fontSize:'0.82rem', color:'var(--jordyn-muted)', marginBottom:20, lineHeight:1.6 }}>
+                    Puedes <strong>desactivarlo</strong> para que no pueda iniciar sesión ni vender, pero su historial se conserva.
+                  </p>
+                  {confirmDelete.errorVentas && (
+                    <div style={{ background:'#fff0f0', border:'1px solid #ffaaaa', borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:'0.75rem', color:'#c0392b' }}>
+                      El servidor confirmó: no se puede eliminar con ventas asociadas.
+                    </div>
+                  )}
+                  <div className="d-flex gap-2">
+                    <button
+                      className="btn-jordyn w-100"
+                      onClick={confirmarDesactivar}
+                      style={{ background:'linear-gradient(135deg,#b37700,#f0a500)', fontSize:'0.88rem' }}
+                    >
+                      <i className="bi bi-pause-circle me-1"></i>Desactivar vendedor
+                    </button>
+                    <button
+                      className="btn-jordyn-outline"
+                      onClick={() => setConfirmDelete(null)}
+                      style={{ fontSize:'0.88rem', flexShrink:0, padding:'10px 16px' }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* Caso: sin ventas → se puede eliminar */
+                <>
+                  <p style={{ fontSize:'0.88rem', color:'var(--jordyn-text)', marginBottom:16, lineHeight:1.7 }}>
+                    ¿Estás seguro de que quieres <strong style={{ color:'var(--jordyn-red)' }}>eliminar definitivamente</strong> al vendedor <strong>"{confirmDelete.nombre}"</strong>?
+                  </p>
+                  <div style={{ background:'#fff5f5', border:'1px solid #ffcccc', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:'0.78rem', color:'#c0392b', lineHeight:1.5 }}>
+                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                    Esta acción es <strong>irreversible</strong>. Se eliminarán también todos sus números asignados. Solo es posible porque no tiene ventas registradas.
+                  </div>
+                  <div className="d-flex gap-2">
+                    <button
+                      className="btn-jordyn-danger w-100"
+                      onClick={confirmarEliminacion}
+                      style={{ fontSize:'0.88rem' }}
+                    >
+                      <i className="bi bi-trash3-fill me-1"></i>Eliminar definitivamente
+                    </button>
+                    <button
+                      className="btn-jordyn-outline"
+                      onClick={() => setConfirmDelete(null)}
+                      style={{ fontSize:'0.88rem', flexShrink:0, padding:'10px 16px' }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </Layout>

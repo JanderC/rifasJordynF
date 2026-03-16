@@ -2,6 +2,8 @@
 //   GestionRifas.js — RIFAS JORDYN
 //   ✅ NUEVO: Editor de Ofertas en el formulario de rifa
 //            Muestra las ofertas activas en la tarjeta de rifa
+//   ✅ FIX PUNTO 2A: Botón WhatsApp tras confirmar venta directa
+//   ✅ FIX PUNTO 1 (heredado): parseFecha + fmtF con zona horaria
 // ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
@@ -32,7 +34,7 @@ const LOTERIAS = [
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
-  ofertas: [],   // ← nuevo campo
+  ofertas: [],
 };
 
 const fmtCOP = v =>
@@ -44,6 +46,35 @@ const fileToBase64 = file => new Promise((res, rej) => {
   r.onerror = rej;
   r.readAsDataURL(file);
 });
+
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 1 (heredado en admin) — parseFecha + fmtF
+   Evita desfase de zona horaria al mostrar fechas en el panel.
+───────────────────────────────────────────────────────────── */
+const parseFecha = (f) => {
+  if (!f) return null;
+  const iso = String(f).replace(' ', 'T');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+const fmtF = f => {
+  const d = parseFecha(f);
+  if (!d) return 'Sin fecha';
+  return d.toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    timeZone: 'America/Caracas',
+  });
+};
+// Extrae la hora del sorteo del campo fecha_sorteo (ej: "09:00 PM")
+const fmtHora = f => {
+  const d = parseFecha(f);
+  if (!d) return null;
+  return d.toLocaleTimeString('es-CO', {
+    hour: '2-digit', minute: '2-digit',
+    hour12: true,
+    timeZone: 'America/Caracas',
+  });
+};
 
 /* ═══════════════════════════════════════════════════════════
    ESTADOS DEL GRID
@@ -63,10 +94,6 @@ const EST_RIFA_MODAL = {
 
 /* ═══════════════════════════════════════════════════════════
    EDITOR DE OFERTAS
-   Props:
-     ofertas   → array actual  [{ cantidad, precio_total, etiqueta }]
-     onChange  → fn(nuevasOfertas)
-     precioBase→ precio unitario normal de la rifa
 ═══════════════════════════════════════════════════════════ */
 function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
   const [nuevaCant,   setNuevaCant]   = useState('');
@@ -112,8 +139,6 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
 
   return (
     <div style={{ marginTop:4 }}>
-
-      {/* Lista de ofertas configuradas */}
       {ofertas.length === 0 ? (
         <div style={{ textAlign:'center', padding:'16px', background:'var(--jordyn-bg2)', borderRadius:10, border:'1px dashed var(--jordyn-border)', color:'var(--jordyn-muted)', fontSize:'.78rem', marginBottom:12 }}>
           Sin ofertas configuradas — los clientes pagarán el precio unitario siempre.
@@ -128,20 +153,15 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
                 borderRadius:10, padding:'10px 14px',
                 display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
               }}>
-                {/* Badge cantidad */}
                 <div style={{ background:'var(--jordyn-primary)', color:'#fff', borderRadius:8, padding:'4px 10px', fontWeight:900, fontSize:'.85rem', flexShrink:0 }}>
                   ×{o.cantidad}
                 </div>
-
-                {/* Etiqueta editable */}
                 <input
                   value={o.etiqueta}
                   onChange={e => editarEtiqueta(o.cantidad, e.target.value)}
                   style={{ flex:'1 1 110px', minWidth:80, border:'1px solid var(--jordyn-border)', borderRadius:7, padding:'5px 9px', fontSize:'.8rem', fontFamily:'var(--jordyn-font)', color:'var(--jordyn-text)', background:'#fff' }}
                   placeholder="Nombre de la oferta"
                 />
-
-                {/* Precio */}
                 <div style={{ flexShrink:0, textAlign:'right' }}>
                   <div style={{ fontWeight:800, color:'var(--jordyn-primary)', fontSize:'.88rem' }}>{fmtCOP(o.precio_total)}</div>
                   {desc && (
@@ -155,8 +175,6 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
                     </div>
                   )}
                 </div>
-
-                {/* Quitar */}
                 <button onClick={() => eliminarOferta(o.cantidad)}
                   style={{ background:'rgba(230,57,70,.08)', border:'1px solid rgba(230,57,70,.3)', color:'#e63946', borderRadius:7, padding:'4px 8px', cursor:'pointer', fontSize:'.75rem', flexShrink:0 }}
                   title="Eliminar oferta">
@@ -168,21 +186,18 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
         </div>
       )}
 
-      {/* Formulario de nueva oferta */}
       <div style={{ background:'var(--jordyn-bg2)', borderRadius:10, padding:'12px 14px', border:'1px solid var(--jordyn-border)' }}>
         <div style={{ fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:10 }}>
           <i className="bi bi-plus-circle-fill me-1" style={{ color:'var(--jordyn-primary)' }}></i>
           Agregar oferta
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'90px 1fr 1fr auto', gap:8, alignItems:'end' }}>
-          {/* Cantidad */}
           <div>
             <label className="jd-label" style={{ fontSize:'.6rem' }}>CANT. MÍNIMA</label>
             <input className="jd-input" type="number" min="2" max="50" value={nuevaCant}
               onChange={e => setNuevaCant(e.target.value)}
               placeholder="3" style={{ textAlign:'center', fontWeight:800, fontSize:'1rem' }} />
           </div>
-          {/* Precio total */}
           <div>
             <label className="jd-label" style={{ fontSize:'.6rem' }}>PRECIO TOTAL</label>
             <input className="jd-input" value={nuevoPrecio}
@@ -191,21 +206,18 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
               onBlur={() => nuevoPrecio && setNuevoPrecio(fmtCOP(parseCOP(nuevoPrecio)))}
               placeholder="$25.000" style={{ fontWeight:700 }} />
           </div>
-          {/* Etiqueta */}
           <div>
             <label className="jd-label" style={{ fontSize:'.6rem' }}>NOMBRE (opc.)</label>
             <input className="jd-input" value={nuevaEtiq}
               onChange={e => setNuevaEtiq(e.target.value)}
               placeholder="Pack Ahorro" />
           </div>
-          {/* Botón */}
           <button onClick={agregarOferta} className="btn-jordyn"
             style={{ padding:'10px 14px', fontSize:'.8rem', height:44, alignSelf:'end' }}>
             <i className="bi bi-plus-lg"></i>
           </button>
         </div>
 
-        {/* Preview del ahorro mientras escribe */}
         {nuevaCant && nuevoPrecio && precioBase > 0 && (() => {
           const cant  = parseInt(nuevaCant);
           const prec  = parseCOP(nuevoPrecio);
@@ -219,13 +231,13 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
                 ? `✅ El cliente ahorra ${fmtCOP(ahorras)} (${pct}% descuento) comprando ${cant} números`
                 : pct === 0
                 ? '⚠️ El precio es igual al precio normal — no hay descuento'
-                : '⚠️ El precio de oferta es mayor al precio normal'}
+                : '❌ El precio de oferta es mayor al precio normal'}
             </div>
           );
         })()}
 
         {error && (
-          <div style={{ marginTop:8, fontSize:'.72rem', color:'#e63946', fontWeight:600 }}>
+          <div style={{ marginTop:8, padding:'6px 10px', borderRadius:8, background:'rgba(230,57,70,.08)', border:'1px solid rgba(230,57,70,.25)', fontSize:'.72rem', color:'#e63946', fontWeight:600 }}>
             ⚠️ {error}
           </div>
         )}
@@ -235,13 +247,67 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MODAL DETALLE DE NÚMERO  (sin cambios respecto al original)
+   FIX PUNTO 2A — buildWhatsAppVentaDirecta
+   ─────────────────────────────────────────────────────────
+   Construye el link de WhatsApp que se muestra al admin
+   DESPUÉS de confirmar una venta directa (interna).
+
+   Incluye:
+     • Nombre del comprador
+     • Número vendido
+     • Nombre de la rifa
+     • 🎲 Nombre de la Lotería (loteria_ref)  ← NUEVO
+     • 📅 Fecha del sorteo
+     • 🕐 Hora del sorteo (extraída de fecha_sorteo) ← NUEVO
+     • Premio
+     • Precio pagado
+     • Nombre del vendedor
+
+   NOTA sobre adjunto de imagen/ticket:
+     La API pública de WhatsApp (wa.me) NO permite adjuntar
+     imágenes directamente via URL — solo admite texto plano.
+     Para enviar el ticket como imagen se requiere la
+     WhatsApp Business Cloud API (Meta), que necesita una
+     cuenta Business verificada y un token de acceso.
+     Por ahora el botón genera el mensaje de texto completo.
+     Si en el futuro integras la Business API, el endpoint
+     sería: POST https://graph.facebook.com/v18.0/{phone_id}/messages
+     con type: "image" + link al ticket generado en el servidor.
+───────────────────────────────────────────────────────── */
+function buildWhatsAppVentaDirecta({ numero, rifa, comprador, vendedor }) {
+  const hora = fmtHora(rifa?.fecha_sorteo);
+  const msg =
+    `🎰 *RIFAS JORDYN* — Confirmación de compra\n\n` +
+    `Hola *${comprador?.nombre || comprador}* 👋 tu número fue registrado exitosamente:\n\n` +
+    `🎟 Número: *${numero}*\n` +
+    `🏆 Premio: ${rifa?.premio || ''}\n` +
+    `🎪 Rifa: ${rifa?.rifa_nombre || rifa?.nombre || ''}\n` +
+    (rifa?.loteria_ref ? `🎲 Lotería: ${rifa.loteria_ref}\n` : '') +
+    `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
+    (hora ? `🕐 Hora del sorteo: ${hora}\n` : '') +
+    `💰 Precio pagado: ${fmtCOP(rifa?.precio || 0)}\n` +
+    `👤 Atendido por: ${vendedor || 'Admin'}\n\n` +
+    `✅ _Tu número está confirmado. ¡Mucha suerte!_\n` +
+    `🌐 rifasjordyn.com`;
+
+  const num = comprador?.telefono?.replace(/\D/g, '') || '';
+  return num
+    ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL DETALLE DE NÚMERO
+   FIX PUNTO 2A: pestaña 'ticket' ahora incluye botón WhatsApp
+   tras una venta directa confirmada.
 ═══════════════════════════════════════════════════════════ */
 function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
-  const [tab,     setTab]     = useState('info');
-  const [rifaSel, setRifaSel] = useState(null);
-  const [form,    setForm]    = useState({ nombre:'', telefono:'' });
-  const [selling, setSelling] = useState(false);
+  const [tab,        setTab]       = useState('info');
+  const [rifaSel,    setRifaSel]   = useState(null);
+  const [form,       setForm]      = useState({ nombre:'', telefono:'' });
+  const [selling,    setSelling]   = useState(false);
+  // FIX PUNTO 2A: rastrear si la venta actual fue hecha desde este modal
+  const [ventaExitosa, setVentaExitosa] = useState(false);
 
   const rifas       = data?.rifas || [];
   const disponibles = rifas.filter(r => r.disponible);
@@ -253,16 +319,22 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
     return () => window.removeEventListener('keydown', fn);
   }, [onClose]);
 
-  const fmt  = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
-  const fmtF = f => f ? new Date(f).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Sin fecha';
+  const fmt = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
 
   const handleVender = async () => {
     if (!rifaSel)            return toast.error('Selecciona una rifa');
     if (!form.nombre.trim()) return toast.error('El nombre del comprador es requerido');
     setSelling(true);
     try {
-      await API.post('/numeros/vender', { rifa_id: rifaSel.rifa_id, numero, nombre_comprador: form.nombre.trim(), telefono: form.telefono.trim() });
+      await API.post('/numeros/vender', {
+        rifa_id:         rifaSel.rifa_id,
+        numero,
+        nombre_comprador: form.nombre.trim(),
+        telefono:        form.telefono.trim(),
+      });
       toast.success(`✅ ¡Número ${numero} vendido en ${rifaSel.rifa_nombre}!`);
+      // FIX PUNTO 2A: marcar que esta venta viene del formulario de venta directa
+      setVentaExitosa(true);
       setTab('ticket');
       onRefresh?.();
     } catch (err) {
@@ -271,6 +343,12 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
   };
 
   const handlePrint = () => { if (!rifaSel) return; printTickets([rifaSel], numero, form, user?.nombre); };
+
+  // FIX PUNTO 2A: cuando el usuario cambia de tab manualmente, resetear la bandera
+  const handleTabChange = (t) => {
+    if (t !== 'ticket') setVentaExitosa(false);
+    setTab(t);
+  };
 
   const tabs = [
     { id:'info',   icon:'bi-info-circle-fill',       label:'DETALLE' },
@@ -308,14 +386,16 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'1px solid var(--jordyn-border)', flexShrink:0, background:'var(--jordyn-bg2)' }}>
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex:1, padding:'10px 8px', background: tab===t.id ? '#fff' : 'transparent', border:'none', borderBottom: tab===t.id ? '2px solid var(--jordyn-primary)' : '2px solid transparent', color: tab===t.id ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)', cursor:'pointer', fontFamily:"'Poppins',sans-serif", fontWeight:700, fontSize:'.76rem', letterSpacing:'0.5px', display:'flex', alignItems:'center', justifyContent:'center', gap:5, transition:'all .15s' }}>
+            <button key={t.id} onClick={() => handleTabChange(t.id)} style={{ flex:1, padding:'10px 8px', background: tab===t.id ? '#fff' : 'transparent', border:'none', borderBottom: tab===t.id ? '2px solid var(--jordyn-primary)' : '2px solid transparent', color: tab===t.id ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)', cursor:'pointer', fontFamily:"'Poppins',sans-serif", fontWeight:700, fontSize:'.76rem', letterSpacing:'0.5px', display:'flex', alignItems:'center', justifyContent:'center', gap:5, transition:'all .15s' }}>
               <i className={`bi ${t.icon}`}></i>{t.label}
             </button>
           ))}
         </div>
 
-        {/* Body — sin cambios, reutiliza el código original */}
+        {/* Body */}
         <div style={{ flex:1, overflowY:'auto', padding:'18px' }}>
+
+          {/* ── TAB INFO ── */}
           {tab === 'info' && (
             <div>
               {rifas.map((r, ri) => {
@@ -345,7 +425,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                             <div style={{ fontWeight:700, fontSize:'0.88rem', color:'var(--jordyn-text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.nombre_comprador || c.comprador}</div>
                             <div style={{ fontSize:'.58rem', color:'var(--jordyn-muted)', marginTop:1 }}>Por <span style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>{c.nombre_vendedor}</span>{c.created_at && <span style={{ marginLeft:6 }}>{new Date(c.created_at).toLocaleDateString('es-CO')}</span>}</div>
                           </div>
-                          <button onClick={() => { setRifaSel(r); setForm({ nombre:c.nombre_comprador||'', telefono:c.telefono||'' }); setTab('ticket'); }}
+                          <button onClick={() => { setRifaSel(r); setForm({ nombre:c.nombre_comprador||'', telefono:c.telefono||'' }); handleTabChange('ticket'); }}
                             style={{ background:'rgba(10,191,188,0.08)', border:'1.5px solid rgba(10,191,188,0.25)', color:'var(--jordyn-primary)', borderRadius:6, padding:'4px 9px', cursor:'pointer', fontSize:'.68rem', fontWeight:600, flexShrink:0 }}>
                             <i className="bi bi-ticket-perforated"></i>
                           </button>
@@ -356,13 +436,14 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                 );
               })}
               {disponibles.length > 0 && (
-                <button onClick={() => setTab('vender')} className="btn-jordyn w-100" style={{ marginTop:6, fontSize:'0.92rem', padding:'.68rem' }}>
+                <button onClick={() => handleTabChange('vender')} className="btn-jordyn w-100" style={{ marginTop:6, fontSize:'0.92rem', padding:'.68rem' }}>
                   <i className="bi bi-cart-plus-fill me-2"></i>VENDER ESTE NÚMERO
                 </button>
               )}
             </div>
           )}
 
+          {/* ── TAB VENDER ── */}
           {tab === 'vender' && (
             <div>
               {disponibles.length > 1 && (
@@ -386,25 +467,136 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                 <input className="jd-input" placeholder="Nombre completo" value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre:e.target.value }))} autoFocus />
               </div>
               <div style={{ marginBottom:20 }}>
-                <label className="jd-label">TELÉFONO</label>
+                <label className="jd-label">TELÉFONO (con código de país)</label>
                 <input className="jd-input" placeholder="+58..." value={form.telefono} onChange={e => setForm(p => ({ ...p, telefono:e.target.value }))} />
+                <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:4 }}>
+                  <i className="bi bi-info-circle me-1"></i>Incluye el código de país para habilitar el botón de WhatsApp (ej: +584141234567)
+                </div>
               </div>
               <button className="btn-jordyn w-100" onClick={handleVender} disabled={selling}>
-                {selling ? <><span className="jd-spinner" style={{ width:16, height:16, borderWidth:2 }}></span> Registrando...</> : <><i className="bi bi-check2-circle me-2"></i>REGISTRAR VENTA</>}
+                {selling
+                  ? <><span className="jd-spinner" style={{ width:16, height:16, borderWidth:2 }}></span> Registrando...</>
+                  : <><i className="bi bi-check2-circle me-2"></i>REGISTRAR VENTA</>
+                }
               </button>
             </div>
           )}
 
+          {/* ── TAB TICKET ── */}
           {tab === 'ticket' && rifaSel && (
             <div>
+
+              {/*
+                FIX PUNTO 2A — Banner de confirmación + botón WhatsApp
+                ─────────────────────────────────────────────────────
+                Se muestra SOLO cuando la venta acaba de ser registrada
+                desde el formulario de venta directa (ventaExitosa=true).
+                Si el admin llega al ticket desde el tab INFO (boleto de
+                una venta anterior), no se muestra el banner.
+              */}
+              {ventaExitosa && (
+                <div style={{
+                  background:'linear-gradient(135deg,#0a3320,#0d4228)',
+                  border:'1.5px solid rgba(37,211,102,.45)',
+                  borderRadius:14, padding:'16px 18px', marginBottom:18,
+                  animation:'fadeUp .3s ease',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                    <div style={{ width:38, height:38, borderRadius:'50%', background:'rgba(37,211,102,.2)', border:'1.5px solid rgba(37,211,102,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem', flexShrink:0 }}>
+                      ✅
+                    </div>
+                    <div>
+                      <div style={{ fontSize:'.6rem', color:'rgba(37,211,102,.7)', fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px' }}>Venta registrada</div>
+                      <div style={{ fontSize:'.95rem', color:'#fff', fontWeight:800 }}>¡Número {numero} vendido!</div>
+                    </div>
+                  </div>
+
+                  {/* Resumen rápido */}
+                  <div style={{ background:'rgba(255,255,255,.07)', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
+                    {[
+                      { icon:'🎟', label:'Número',   value: numero },
+                      { icon:'🎪', label:'Rifa',      value: rifaSel.rifa_nombre },
+                      ...(rifaSel.loteria_ref ? [{ icon:'🎲', label:'Lotería',   value: rifaSel.loteria_ref }] : []),
+                      { icon:'📅', label:'Sorteo',   value: fmtF(rifaSel.fecha_sorteo) },
+                      ...(fmtHora(rifaSel.fecha_sorteo) ? [{ icon:'🕐', label:'Hora',     value: fmtHora(rifaSel.fecha_sorteo) }] : []),
+                      { icon:'👤', label:'Comprador', value: form.nombre },
+                      { icon:'💰', label:'Precio',   value: fmtCOP(rifaSel.precio) },
+                    ].map(({ icon, label, value }) => (
+                      <div key={label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+                        <span style={{ fontSize:'.7rem', color:'rgba(255,255,255,.5)' }}>{icon} {label}</span>
+                        <span style={{ fontSize:'.75rem', color:'#fff', fontWeight:700 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Botón WhatsApp principal */}
+                  <a
+                    href={buildWhatsAppVentaDirecta({ numero, rifa: rifaSel, comprador: form, vendedor: user?.nombre })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                      background:'linear-gradient(135deg,#25d366,#128c7e)',
+                      color:'#fff', borderRadius:12, padding:'13px 20px',
+                      fontFamily:'var(--jordyn-font)', fontWeight:700, fontSize:'.92rem',
+                      textDecoration:'none', width:'100%',
+                      boxShadow:'0 6px 20px rgba(37,211,102,.35)',
+                      marginBottom: form.telefono ? 0 : 0,
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    {form.telefono
+                      ? `Enviar comprobante a ${form.nombre.split(' ')[0]}`
+                      : 'Compartir comprobante por WhatsApp'}
+                  </a>
+
+                  {!form.telefono && (
+                    <div style={{ marginTop:8, fontSize:'.68rem', color:'rgba(255,255,255,.4)', textAlign:'center' }}>
+                      <i className="bi bi-info-circle me-1"></i>
+                      Sin teléfono registrado — el link abrirá WhatsApp para seleccionar contacto
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Preview del ticket */}
               <TicketPreview rifa={rifaSel} numero={numero} comprador={form} vendedor={user?.nombre} />
-              <button className="btn-jordyn w-100 mt-3" onClick={handlePrint}>
-                <i className="bi bi-printer-fill me-2"></i>IMPRIMIR BOLETO
-              </button>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:12 }}>
+                <button className="btn-jordyn w-100" onClick={handlePrint}>
+                  <i className="bi bi-printer-fill me-2"></i>IMPRIMIR BOLETO
+                </button>
+
+                {/* Botón WhatsApp secundario (siempre visible en el ticket, venta previa o nueva) */}
+                {!ventaExitosa && (
+                  <a
+                    href={buildWhatsAppVentaDirecta({ numero, rifa: rifaSel, comprador: form, vendedor: user?.nombre })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                      background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.4)',
+                      color:'#25d366', borderRadius:10, padding:'10px 16px',
+                      fontFamily:'var(--jordyn-font)', fontWeight:700, fontSize:'.85rem',
+                      textDecoration:'none', width:'100%',
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    Enviar por WhatsApp
+                  </a>
+                )}
+              </div>
             </div>
           )}
+
           {tab === 'ticket' && !rifaSel && (
-            <div style={{ textAlign:'center', padding:'2rem', color:'var(--jordyn-muted)', fontSize:'.85rem' }}>Selecciona una rifa para ver el boleto</div>
+            <div style={{ textAlign:'center', padding:'2rem', color:'var(--jordyn-muted)', fontSize:'.85rem' }}>
+              Selecciona una rifa para ver el boleto
+            </div>
           )}
         </div>
       </div>
@@ -413,7 +605,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MODAL DE NÚMEROS (sin cambios estructurales)
+   MODAL DE NÚMEROS
 ═══════════════════════════════════════════════════════════ */
 function ModalNumeros({ rifa, onClose, user }) {
   const [numeros,          setNumeros]         = useState([]);
@@ -635,9 +827,9 @@ export default function GestionRifas() {
     finally { setSaving(false); }
   };
 
-  const handleToggle  = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
+  const handleToggle   = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
   const handleArchivar = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: false, estado: 'archivada' }); toast.success('Rifa archivada'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error archivando rifa'); } };
-  const handleDelete  = async (r) => {
+  const handleDelete   = async (r) => {
     if (!window.confirm(`¿Eliminar definitivamente "${r.nombre}"?`)) return;
     try { await API.delete(`/rifas/${r.id}`); toast.success('Rifa eliminada'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error eliminando rifa'); }
   };
@@ -672,7 +864,7 @@ export default function GestionRifas() {
           </div>
           <div className="col-6">
             <div style={{ color:'var(--jordyn-muted)', fontSize:'0.65rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px' }}>SORTEO</div>
-            <div style={{ fontWeight:600 }}>{r.fecha_sorteo ? new Date(r.fecha_sorteo).toLocaleDateString('es-CO') : 'Por definir'}</div>
+            <div style={{ fontWeight:600 }}>{fmtF(r.fecha_sorteo)}</div>
           </div>
           <div className="col-6">
             <div style={{ color:'var(--jordyn-muted)', fontSize:'0.65rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px' }}>VENTAS</div>

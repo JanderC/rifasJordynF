@@ -9,7 +9,31 @@ const NARANJA = '#ff6b2b';
 const VERDE   = '#22c55e';
 
 const fmt  = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
-const fmtF = f => f ? new Date(f).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Por definir';
+
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 1A — parseFecha + fmtF con zona horaria explícita
+   Problema original: new Date(f) interpretaba la fecha en UTC
+   del navegador, causando desfase de horas según el país.
+   Solución: normalizar el string ISO y usar timeZone fijo.
+───────────────────────────────────────────────────────────── */
+const parseFecha = (f) => {
+  if (!f) return null;
+  // PostgreSQL puede devolver "2025-07-15T04:00:00.000Z" o "2025-07-15 04:00:00"
+  // Normalizamos el espacio por T para que todos los navegadores parseen igual
+  const iso = String(f).replace(' ', 'T');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const fmtF = f => {
+  const d = parseFecha(f);
+  if (!d) return 'Por definir';
+  // Usa 'America/Caracas' (UTC-4). Cámbialo a 'America/Bogota' (UTC-5) si tu servidor es Colombia.
+  return d.toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    timeZone: 'America/Caracas',
+  });
+};
 
 /* ─── Códigos de país ─── */
 const PAISES = [
@@ -183,23 +207,54 @@ function siguienteOferta(cantidad, ofertas, precioUnitario) {
   return menor;
 }
 
-/* ─── Mensaje WhatsApp multi-número (con oferta) ─── */
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 2B — fmtHora: extrae la hora del campo fecha_sorteo
+   Si la fecha tiene hora distinta de 00:00, la muestra en
+   formato 12h (ej: "09:00 PM"). Si es medianoche la omite.
+───────────────────────────────────────────────────────────── */
+const fmtHora = (f) => {
+  const d = parseFecha(f);
+  if (!d) return null;
+  // Si la hora es exactamente las 00:00:00, probablemente no se cargó hora → omitir
+  const h = d.getUTCHours(), m = d.getUTCMinutes();
+  if (h === 0 && m === 0) return null;
+  return d.toLocaleTimeString('es-CO', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: 'America/Caracas',
+  });
+};
+
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 2B — buildWhatsAppLink actualizado
+   Cambios respecto a la versión anterior:
+     • Agrega 🎲 Lotería (rifa.loteria_ref) si está definida
+     • Agrega 🕐 Hora del sorteo (extraída de fecha_sorteo)
+       si el campo tiene hora registrada
+   NOTA adjunto de imagen:
+     wa.me solo permite texto plano. Para enviar el ticket
+     como imagen se necesita la WhatsApp Business Cloud API.
+───────────────────────────────────────────────────────────── */
 const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds, totalReal }) => {
-  const todos   = Array.isArray(numeros) ? numeros : [numeros];
-  const numStr  = todos.map(n => `*${n}*`).join(' · ');
-  const id      = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
-  const total   = totalReal ?? (rifa?.precio * todos.length);
+  const todos  = Array.isArray(numeros) ? numeros : [numeros];
+  const numStr = todos.map(n => `*${n}*`).join(' · ');
+  const id     = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
+  const total  = totalReal ?? (rifa?.precio * todos.length);
+  const hora   = fmtHora(rifa?.fecha_sorteo);
+
   const msg =
     `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
     `Hola *${nombre}* 👋 tu${todos.length > 1 ? 's números quedaron bloqueados' : ' número quedó bloqueado'}:\n\n` +
     `🎟 Número${todos.length > 1 ? 's' : ''}: ${numStr}\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
     `🎪 Rifa: ${rifa?.nombre || ''}\n` +
+    (rifa?.loteria_ref ? `🎲 Lotería: ${rifa.loteria_ref}\n` : '') +
     `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
+    (hora ? `🕐 Hora: ${hora}\n` : '') +
     `💰 Total pagado: ${fmt(total)}\n` +
     `🔖 ID Reserva: #${id}\n\n` +
     `⏳ _Pendiente de verificación. El admin revisará tu pago pronto._\n` +
     `🌐 rifasjordyn.com`;
+
   const num = telefono?.replace(/\D/g,'') || '';
   return num
     ? `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
@@ -452,23 +507,46 @@ const injectStyles = () => {
 };
 
 /* ═══════════════════════════════════════════════════════════
-   HOOK: Cuenta regresiva
+   FIX PUNTO 1B — HOOK: Cuenta regresiva robusta
+   Problema original:
+     - new Date(targetDate) fallaba con strings "YYYY-MM-DD HH:MM:SS"
+       (sin la T) en algunos navegadores, devolviendo NaN silenciosamente.
+     - diff con NaN no dispara diff <= 0, por lo que expired quedaba false
+       pero los valores dias/horas/minutos/segundos eran NaN.
+     - El countdown no se renderizaba (NaN rompe el display) o mostraba "NaN".
+   Solución:
+     - Normalizar el string ISO (reemplazar espacio por T).
+     - Validar explícitamente isNaN → retornar { invalid: true }.
+     - Recalcular inmediatamente cuando llega targetDate (setTime al montar).
+     - Exponer campo `invalid` para que el render lo filtre.
 ═══════════════════════════════════════════════════════════ */
 function useCountdown(targetDate) {
   const calc = () => {
-    const diff = new Date(targetDate) - new Date();
-    if (diff <= 0) return { dias:0, horas:0, minutos:0, segundos:0, expired:true };
+    if (!targetDate) return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
+    // Normalizar: PostgreSQL puede devolver "2025-07-15 04:00:00" (con espacio)
+    // new Date() en Safari/Firefox no acepta ese formato → NaN
+    const iso = String(targetDate).replace(' ', 'T');
+    const target = new Date(iso);
+    if (isNaN(target.getTime())) {
+      // Fecha inválida: no mostrar el countdown
+      return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
+    }
+    const diff = target - new Date();
+    if (diff <= 0) return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:false };
     return {
       dias:     Math.floor(diff / 86400000),
       horas:    Math.floor((diff % 86400000) / 3600000),
       minutos:  Math.floor((diff % 3600000)  / 60000),
       segundos: Math.floor((diff % 60000)    / 1000),
       expired:  false,
+      invalid:  false,
     };
   };
   const [time, setTime] = useState(calc);
   useEffect(() => {
     if (!targetDate) return;
+    // Recalcular de inmediato cuando llega la fecha (evita mostrar valores viejos)
+    setTime(calc());
     const t = setInterval(() => setTime(calc()), 1000);
     return () => clearInterval(t);
   }, [targetDate]);
@@ -530,6 +608,7 @@ function BannerOfertas({ ofertas, precioUnitario }) {
 
 /* ═══════════════════════════════════════════════════════════
    HERO DE LA RIFA PRINCIPAL
+   FIX PUNTO 1B: condición !cd.invalid agregada al render del countdown
 ═══════════════════════════════════════════════════════════ */
 function HeroRifaPrincipal({ rifa, onVerNumeros }) {
   const cd = useCountdown(rifa.fecha_sorteo);
@@ -595,7 +674,14 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
           </div>
         )}
 
-        {rifa.fecha_sorteo && !cd.expired && (
+        {/*
+          FIX PUNTO 1B: se agrega !cd.invalid a la condición.
+          Antes: {rifa.fecha_sorteo && !cd.expired && (...)}
+          Si fecha_sorteo llegaba con formato "YYYY-MM-DD HH:MM:SS", new Date()
+          devolvía NaN → cd.expired era false pero los valores eran NaN → no renderizaba.
+          Ahora: si la fecha es inválida, invalid=true y no se muestra el bloque.
+        */}
+        {rifa.fecha_sorteo && !cd.expired && !cd.invalid && (
           <div style={{ marginBottom:24, position:'relative' }}>
             <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', letterSpacing:'2.5px', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>⏳ Tiempo para el sorteo</div>
             <div style={{ display:'flex', gap:6, alignItems:'flex-start' }}>
@@ -1008,19 +1094,47 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
           )}
 
           {/* ── STEP 2: Confirmado ── */}
+          {/* FIX PUNTO 5 — Pantalla de éxito con mensaje exacto solicitado */}
           {step === 2 && (
             <div style={{ textAlign:'center', animation:'fadeUp .25s ease', padding:'8px 0' }}>
-              <div style={{ width:76, height:76, borderRadius:'50%', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, margin:'0 auto 18px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.2rem', animation:'pulse-ring 2s infinite' }}>
-                🔒
+
+              {/* Ícono de éxito */}
+              <div style={{ width:88, height:88, borderRadius:'50%', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, margin:'0 auto 22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.6rem', animation:'pulse-ring 2s infinite', boxShadow:`0 0 0 0 ${TURQ}66` }}>
+                ✅
               </div>
-              <div style={{ fontSize:'1.6rem', color:DARK, marginBottom:6, fontWeight:800 }}>
-                {numeros.length > 1 ? `¡${numeros.length} números bloqueados!` : '¡Número bloqueado!'}
+
+              {/* Título */}
+              <div style={{ fontSize:'1.5rem', color:DARK, marginBottom:18, fontWeight:900, lineHeight:1.3 }}>
+                ¡Compra realizada con éxito!
               </div>
-              <div style={{ fontSize:'.9rem', color:`${DARK}77`, marginBottom:20, lineHeight:1.7 }}>
-                {numeros.length > 1
-                  ? <>Los números <strong style={{ color:TURQ }}>{numeros.join(' · ')}</strong> están reservados.<br/>Nadie más puede tomarlos mientras verifican tu pago.</>
-                  : <>El número <strong style={{ color:TURQ, fontSize:'1.4rem' }}>{numeros[0]}</strong> está reservado.<br/>Nadie más puede tomarlo mientras verifican tu pago.</>
-                }
+
+              {/* ── MENSAJE EXACTO SOLICITADO ── */}
+              <div style={{
+                background:`linear-gradient(135deg,${TURQ}0d,${TURQ2}12)`,
+                border:`2px solid ${TURQ}33`,
+                borderRadius:18, padding:'22px 24px',
+                marginBottom:22, textAlign:'left',
+              }}>
+                <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+                  <span style={{ fontSize:'1.6rem', flexShrink:0, marginTop:2 }}>🎟</span>
+                  <p style={{
+                    fontSize:'1rem', color:DARK, lineHeight:1.75,
+                    fontWeight:500, margin:0,
+                    fontFamily:"'Poppins',sans-serif",
+                  }}>
+                    Su compra fue realizada con éxito.{' '}
+                    <strong style={{ color:TURQ_DK }}>Atento a la aprobación de su número ganador.</strong>{' '}
+                    Su ticket le llegará vía WhatsApp durante las próximas horas.{' '}
+                    <strong style={{ color:TURQ_DK }}>¡Muchas gracias!</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* Números reservados (resumen visual) */}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginBottom:20 }}>
+                {numeros.filter(n => !conflictos.map(c=>c.numero).includes(n)).map(n => (
+                  <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:12, padding:'7px 18px', fontWeight:900, fontSize:'1.2rem', letterSpacing:3, boxShadow:`0 4px 16px ${TURQ}44` }}>{n}</span>
+                ))}
               </div>
 
               {/* Bloque de ahorro en paso de confirmación */}
@@ -1048,41 +1162,15 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                 </div>
               )}
 
-              {/* Resumen */}
-              <div style={{ background:`${TURQ}08`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, textAlign:'left' }}>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
-                  {numeros.filter(n => !conflictos.map(c=>c.numero).includes(n)).map(n => (
-                    <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 14px', fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n}</span>
-                  ))}
-                </div>
-                {[
-                  { icon:'🏆', l:'Premio',  v: rifa.premio,               c: DARK       },
-                  { icon:'💰', l:'Total',   v: fmt(totalReal),             c: ofertaInfo ? VERDE : '#3a7d44' },
-                  { icon:'📅', l:'Sorteo',  v: fmtF(rifa.fecha_sorteo),   c: DARK       },
-                  { icon:'⏳', l:'Estado',  v: 'Pendiente de verificación', c: '#f5a623' },
-                  { icon:'🔖', l:'ID',      v: '#' + (reservaIds[0]?.slice(0,8).toUpperCase() || '---'), c:`${DARK}77` },
-                ].map(({ icon, l, v, c }) => (
-                  <div key={l} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'5px 0', borderBottom:`1px solid ${TURQ}12` }}>
-                    <span style={{ fontSize:'.77rem', color:`${DARK}66` }}>{icon} {l}</span>
-                    <span style={{ fontSize:'.82rem', color: c, fontWeight:700 }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ background:'#fffbf0', border:'1px solid #ffe08a', borderRadius:10, padding:'10px 14px', marginBottom:22, fontSize:'.76rem', color:'#7a6000', lineHeight:1.6 }}>
-                📲 Guarda este boleto compartiendo por WhatsApp. El admin confirmará tu pago pronto.
-              </div>
-
+              {/* Botones de acción */}
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {/* WhatsApp — opcional, por si el cliente quiere guardar su comprobante */}
                 <button className="pub-btn-wa" onClick={abrirWA} style={{ width:'100%', justifyContent:'center', padding:'15px', borderRadius:14 }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                  Compartir boleto por WhatsApp
+                  Guardar comprobante por WhatsApp
                 </button>
-                <button className="pub-btn" onClick={compartirNativo} style={{ width:'100%', justifyContent:'center', padding:'13px', borderRadius:14, background:`linear-gradient(135deg,${TURQ}cc,${TURQ2}cc)` }}>
-                  📤 Copiar / Compartir boleto
-                </button>
-                <button className="pub-btn-outline" onClick={onClose} style={{ width:'100%', justifyContent:'center', borderRadius:14 }}>
-                  Entendido 👍
+                <button className="pub-btn-outline" onClick={onClose} style={{ width:'100%', justifyContent:'center', borderRadius:14, padding:'14px' }}>
+                  ¡Entendido! 🎉
                 </button>
               </div>
             </div>

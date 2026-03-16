@@ -24,7 +24,7 @@ export const DEFAULT_DESIGN = {
   footerText:      'Conserve este boleto · Válido con número legible',
   watermark:       true,
   watermarkText:   'JORDYN',
-  horaSort:        '10:00 PM',
+  horaSort:        '',   // Vacío = usar hora de fecha_sorteo si existe
 };
 
 export function getTicketDesign() {
@@ -39,14 +39,53 @@ const fmtMoney = p => p
   ? new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', minimumFractionDigits:0 }).format(p)
   : '$0';
 
-const fmtFecha = f => f
-  ? new Date(f).toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' })
-  : 'Por definir';
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 3B — parseFecha + fmtFecha con zona horaria
+   Problema original: new Date(f) sin normalizar causaba desfase
+   en Safari/Firefox y mostraba fecha incorrecta en el ticket.
+───────────────────────────────────────────────────────────── */
+const parseFechaTicket = (f) => {
+  if (!f) return null;
+  const iso = String(f).replace(' ', 'T');
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const fmtFecha = f => {
+  const d = parseFechaTicket(f);
+  if (!d) return 'Por definir';
+  return d.toLocaleDateString('es-CO', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    timeZone: 'America/Caracas',
+  });
+};
+
+/* ─────────────────────────────────────────────────────────────
+   FIX PUNTO 3B — extraerHora
+   Extrae la hora de fecha_sorteo si existe y es distinta de
+   medianoche. Si el diseño tiene horaSort manual configurado,
+   ese tiene prioridad (para compatibilidad con el editor).
+───────────────────────────────────────────────────────────── */
+const extraerHora = (fechaSorteo, horaDesign) => {
+  // Si el admin configuró hora manual en el editor de diseño, usarla
+  if (horaDesign && horaDesign.trim()) return horaDesign.trim();
+  // Si no, extraer del campo fecha_sorteo
+  const d = parseFechaTicket(fechaSorteo);
+  if (!d) return '';
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  if (h === 0 && m === 0) return ''; // Sin hora registrada
+  return d.toLocaleTimeString('es-CO', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: 'America/Caracas',
+  });
+};
 
 /* ═══════════════════════════════════════════════════════════
    buildTicketHTMLCustom — HTML HORIZONTAL (720 × ~380px)
    Layout: columna izquierda (número) + columna derecha (info)
            + talón horizontal debajo
+   FIX PUNTO 3B: hora dinámica + fecha sin desfase
 ═══════════════════════════════════════════════════════════ */
 export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) {
   const nombre     = r.rifa_nombre || r.nombre || '';
@@ -54,9 +93,10 @@ export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) 
   const loteria    = r.loteria_ref || '';
   const valor      = fmtMoney(r.precio);
   const fechaSort  = fmtFecha(r.fecha_sorteo);
-  const hora       = d.horaSort || '10:00 PM';
+  // FIX: hora dinámica — usa fecha_sorteo si no hay hora manual en diseño
+  const hora       = extraerHora(r.fecha_sorteo, d.horaSort);
   const serial     = `JDY-${numero}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
-  const hoy        = new Date().toLocaleDateString('es-CO');
+  const hoy        = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Caracas' });
   const ac         = d.accentColor || '#f5c518';
   const brand      = `${d.brandEmoji || '🎰'} ${d.brandText || 'RESUELVE TU SEMANA'}`;
   const compNombre = comprador?.nombre || '';
@@ -181,7 +221,7 @@ export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) 
           <div style="position:absolute;top:-6px;left:8px;background:${d.headerBg};padding:0 4px;
             font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#555;letter-spacing:2px;">FECHA SORTEO</div>
           <div style="font-family:'Oswald',sans-serif;font-size:.9rem;font-weight:700;color:#f0f0f0;margin-top:2px;">${fechaSort}</div>
-          <div style="font-family:'Bebas Neue',cursive;font-size:.78rem;color:${ac};letter-spacing:3px;margin-top:1px;">${hora}</div>
+          ${hora ? `<div style="font-family:'Bebas Neue',cursive;font-size:.78rem;color:${ac};letter-spacing:3px;margin-top:1px;">${hora}</div>` : ''}
         </div>
 
         <div>
@@ -253,7 +293,7 @@ export function buildTicketHTMLCustom(d, r, numero, comprador, vendedor, copia) 
 
         <div>
           <div style="font-family:'Share Tech Mono',monospace;font-size:.38rem;color:#b0b0b0;letter-spacing:3px;margin-bottom:2px;">SORTEO</div>
-          <div style="font-family:'Oswald',sans-serif;font-size:.74rem;color:#333;font-weight:600;">${fechaSort} · ${hora}</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:.74rem;color:#333;font-weight:600;">${fechaSort}${hora ? ` · ${hora}` : ''}</div>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
@@ -282,19 +322,29 @@ export function buildTicketHTML(r, numero, comprador, vendedor, copia) {
 
 /* ═══════════════════════════════════════════════════════════
    TicketPreview — React inline HORIZONTAL completo
+   FIX PUNTO 3B:
+     - fmtFecha usa parseFechaTicket (sin desfase UTC)
+     - hora dinámica con extraerHora(fecha_sorteo, d.horaSort)
+     - serial real en lugar de "JDY-000-DEMO"
+     - layout alineado: grid-template-columns consistente
 ═══════════════════════════════════════════════════════════ */
-export function TicketPreview({ r, numero, comprador, vendedor, design: dProp }) {
+export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dProp }) {
+  // Acepta tanto `r` como `rifa` para compatibilidad con ambos usos
+  const rifaData = r || rifa || {};
   const d = { ...DEFAULT_DESIGN, ...(dProp || getTicketDesign()) };
 
-  const nombre     = r?.rifa_nombre || r?.nombre || 'DEMO RIFA';
-  const premio     = r?.premio || '—';
-  const loteria    = r?.loteria_ref || '';
-  const valor      = fmtMoney(r?.precio || 0);
-  const fechaSort  = fmtFecha(r?.fecha_sorteo);
-  const hora       = d.horaSort || '10:00 PM';
+  const nombre     = rifaData?.rifa_nombre || rifaData?.nombre || 'DEMO RIFA';
+  const premio     = rifaData?.premio || '—';
+  const loteria    = rifaData?.loteria_ref || '';
+  const valor      = fmtMoney(rifaData?.precio || 0);
+  const fechaSort  = fmtFecha(rifaData?.fecha_sorteo);
+  // FIX: hora dinámica — prioriza horaSort del diseño, sino extrae de fecha_sorteo
+  const hora       = extraerHora(rifaData?.fecha_sorteo, d.horaSort);
   const ac         = d.accentColor;
   const compNombre = comprador?.nombre || '';
   const compTel    = comprador?.telefono || '';
+  // FIX: serial real en lugar de hardcoded "JDY-000-DEMO"
+  const serial     = `JDY-${numero||'000'}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
   const B = { fontFamily:"'Bebas Neue', cursive" };
   const M = { fontFamily:"'Share Tech Mono', monospace" };
@@ -374,14 +424,15 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
         {/* ── Columna derecha: info ── */}
         <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', padding:'16px 20px 12px', position:'relative', zIndex:2 }}>
 
+          {/* Header brand + serial */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, borderBottom:'1px solid rgba(255,255,255,.07)', paddingBottom:10 }}>
             <div>
               <div style={{ ...B, fontSize:'1.3rem', color:ac, letterSpacing:4, lineHeight:1 }}>{d.brandEmoji} {d.brandText}</div>
               {loteria && <div style={{ ...M, fontSize:'.44rem', color:'#666', letterSpacing:2, marginTop:2 }}>🎲 {loteria}</div>}
             </div>
             <div style={{ ...M, fontSize:'.44rem', color:'#555', textAlign:'right', lineHeight:2 }}>
-              <div>JDY-{numero||'000'}-DEMO</div>
-              <div>{new Date().toLocaleDateString('es-CO')}</div>
+              <div>{serial}</div>
+              <div>{new Date().toLocaleDateString('es-CO', { timeZone:'America/Caracas' })}</div>
               <div style={{ color:ac, fontSize:'.42rem' }}>★ BOLETO OFICIAL</div>
             </div>
           </div>
@@ -404,15 +455,18 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
             </div>
           </div>
 
-          {/* Grid info */}
+          {/* Grid info: fecha + datos comprador */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 16px', flex:1 }}>
 
+            {/* Celda fecha/hora — con borde flotante */}
             <div style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)', borderRadius:6, padding:'6px 9px', position:'relative' }}>
               <div style={{ position:'absolute', top:-6, left:8, background:d.headerBg, padding:'0 4px', ...M, fontSize:'.38rem', color:'#555', letterSpacing:2 }}>FECHA SORTEO</div>
               <div style={{ ...O, fontSize:'.9rem', fontWeight:700, color:'#f0f0f0', marginTop:2 }}>{fechaSort}</div>
-              <div style={{ ...B, fontSize:'.78rem', color:ac, letterSpacing:3, marginTop:1 }}>{hora}</div>
+              {/* FIX: hora solo si existe */}
+              {hora && <div style={{ ...B, fontSize:'.78rem', color:ac, letterSpacing:3, marginTop:1 }}>{hora}</div>}
             </div>
 
+            {/* Columna datos comprador */}
             <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
               {rows.map(({ k, v }) => (
                 <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', padding:'2px 0', borderBottom:'1px dotted rgba(255,255,255,.08)' }}>
@@ -424,6 +478,7 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
 
           </div>
 
+          {/* Footer */}
           <div style={{ borderTop:'1px solid rgba(255,255,255,.06)', marginTop:8, paddingTop:5, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div style={{ ...B, fontSize:'.62rem', color:'rgba(255,255,255,.18)', letterSpacing:3 }}>{d.brandText}</div>
             <div style={{ ...M, fontSize:'.38rem', color:'rgba(255,255,255,.18)', textAlign:'right' }}>
@@ -444,12 +499,14 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
 
         <div style={{ display:'flex', alignItems:'stretch', height:100 }}>
 
+          {/* Número talón */}
           <div style={{ width:110, flexShrink:0, background:`linear-gradient(135deg,${d.headerBg},${d.headerBg2})`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', borderRight:'2px dashed rgba(255,255,255,.12)' }}>
             <div style={{ ...M, fontSize:'.36rem', color:'#888', letterSpacing:4, marginBottom:2 }}>N°</div>
             <div style={{ ...B, fontSize:'2.4rem', color:ac, letterSpacing:10, lineHeight:1, paddingLeft:10, ...(d.numGlow ? { textShadow:`0 0 20px ${ac}88` } : {}) }}>{numero || '000'}</div>
             <div style={{ ...M, fontSize:'.34rem', color:'#666', letterSpacing:1, marginTop:3, textAlign:'center', maxWidth:95, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{nombre}</div>
           </div>
 
+          {/* Datos talón en grid 2 columnas */}
           <div style={{ flex:1, minWidth:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 22px', padding:'8px 18px', alignItems:'center' }}>
 
             <div>
@@ -468,7 +525,8 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
 
             <div>
               <div style={{ ...M, fontSize:'.38rem', color:'#b0b0b0', letterSpacing:3, marginBottom:2 }}>SORTEO</div>
-              <div style={{ ...O, fontSize:'.74rem', color:'#333', fontWeight:600 }}>{fechaSort} · {hora}</div>
+              {/* FIX: hora condicional en el talón */}
+              <div style={{ ...O, fontSize:'.74rem', color:'#333', fontWeight:600 }}>{fechaSort}{hora ? ` · ${hora}` : ''}</div>
             </div>
 
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
@@ -477,7 +535,7 @@ export function TicketPreview({ r, numero, comprador, vendedor, design: dProp })
                 <div style={{ ...B, fontSize:'.84rem', color:'#333', letterSpacing:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
               </div>
               <div style={{ textAlign:'right', flexShrink:0 }}>
-                <div style={{ ...M, fontSize:'.34rem', color:'#ccc', letterSpacing:1 }}>JDY-{numero||'000'}-DEMO</div>
+                <div style={{ ...M, fontSize:'.34rem', color:'#ccc', letterSpacing:1 }}>{serial}</div>
                 <div style={{ ...B, fontSize:'.68rem', color:ac, letterSpacing:2 }}>{valor}</div>
               </div>
             </div>
@@ -529,7 +587,6 @@ export function printTickets(rifasArr, numero, comprador, vendedor, design) {
 export default function Ticket({ rifa, numero, comprador, vendedor, onClose }) {
   const rifasArr = Array.isArray(rifa) ? rifa.filter(r => r.disponible !== false) : rifa ? [rifa] : [];
 
-  // Diseño: primero ticket_design de la rifa (BD), luego localStorage, luego default
   const design = (() => {
     try {
       if (rifasArr[0]?.ticket_design) return { ...DEFAULT_DESIGN, ...rifasArr[0].ticket_design };
