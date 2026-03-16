@@ -981,7 +981,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
                 <div>
                   <label className="pub-label">
-                    Cédula / Documento *
+                    Cédula  *
                     <span style={{ marginLeft:5, background:'#ff6b6b', color:'#fff', fontSize:'.48rem', padding:'1px 5px', borderRadius:3, fontWeight:700, verticalAlign:'middle' }}>OBLIGATORIO</span>
                   </label>
                   <input
