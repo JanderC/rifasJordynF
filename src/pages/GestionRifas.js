@@ -304,7 +304,7 @@ function buildWhatsAppVentaDirecta({ numero, rifa, comprador, vendedor }) {
 function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
   const [tab,        setTab]       = useState('info');
   const [rifaSel,    setRifaSel]   = useState(null);
-  const [form,       setForm]      = useState({ nombre:'', telefono:'' });
+  const [form,       setForm]      = useState({ nombre:'', cedula:'', correo:'', telefono:'' });
   const [selling,    setSelling]   = useState(false);
   // FIX PUNTO 2A: rastrear si la venta actual fue hecha desde este modal
   const [ventaExitosa, setVentaExitosa] = useState(false);
@@ -324,13 +324,16 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
   const handleVender = async () => {
     if (!rifaSel)            return toast.error('Selecciona una rifa');
     if (!form.nombre.trim()) return toast.error('El nombre del comprador es requerido');
+    if (!form.cedula.trim()) return toast.error('La cédula del comprador es obligatoria');
     setSelling(true);
     try {
       await API.post('/numeros/vender', {
-        rifa_id:         rifaSel.rifa_id,
+        rifa_id:          rifaSel.rifa_id,
         numero,
         nombre_comprador: form.nombre.trim(),
-        telefono:        form.telefono.trim(),
+        cedula:           form.cedula.trim(),
+        correo:           form.correo.trim() || undefined,
+        telefono:         form.telefono.trim(),
       });
       toast.success(`✅ ¡Número ${numero} vendido en ${rifaSel.rifa_nombre}!`);
       // FIX PUNTO 2A: marcar que esta venta viene del formulario de venta directa
@@ -465,6 +468,34 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
               <div style={{ marginBottom:14 }}>
                 <label className="jd-label">NOMBRE DEL COMPRADOR *</label>
                 <input className="jd-input" placeholder="Nombre completo" value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre:e.target.value }))} autoFocus />
+              </div>
+
+              {/* NUEVO: Cédula (obligatoria) + Correo (opcional) */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+                <div>
+                  <label className="jd-label">
+                    CÉDULA *
+                    <span style={{ marginLeft:4, background:'rgba(230,57,70,0.12)', color:'var(--jordyn-red)', fontSize:'.52rem', padding:'1px 5px', borderRadius:3, fontWeight:700, border:'1px solid rgba(230,57,70,0.25)' }}>OBLIGATORIO</span>
+                  </label>
+                  <input
+                    className="jd-input"
+                    placeholder="Ej: 12345678"
+                    value={form.cedula}
+                    onChange={e => setForm(p => ({ ...p, cedula: e.target.value.replace(/\D/g,'').slice(0,15) }))}
+                    type="tel"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <label className="jd-label">CORREO <span style={{ fontSize:'.58rem', color:'var(--jordyn-muted)', fontWeight:400, textTransform:'none' }}>(opcional)</span></label>
+                  <input
+                    className="jd-input"
+                    placeholder="correo@email.com"
+                    value={form.correo}
+                    onChange={e => setForm(p => ({ ...p, correo: e.target.value.trim() }))}
+                    type="email"
+                  />
+                </div>
               </div>
               <div style={{ marginBottom:20 }}>
                 <label className="jd-label">TELÉFONO (con código de país)</label>

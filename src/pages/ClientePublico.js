@@ -816,7 +816,7 @@ function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = 
 ═══════════════════════════════════════════════════════════ */
 function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
   const [step,       setStep]     = useState(1);
-  const [form,       setForm]     = useState({ nombre:'', codPais:'+58', telefono:'', metodo_pago:'' });
+  const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'' });
   const [imagen,     setImagen]   = useState(null);
   const [imgB64,     setImgB64]   = useState('');
   const [imgNombre,  setImgN]     = useState('');
@@ -851,13 +851,20 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
 
   const handleEnviar = async () => {
     if (!form.nombre.trim()) { setError('Ingresa tu nombre completo'); return; }
+    if (!form.cedula.trim()) { setError('La cédula es obligatoria'); return; }
     if (!imgB64)             { setError('El comprobante de pago es obligatorio'); return; }
+    // Validar correo solo si fue ingresado
+    if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
+      setError('El correo electrónico no tiene un formato válido'); return;
+    }
     setError(''); setSending(true);
     try {
       const r = await API.post('/publico/reservar', {
         rifa_id:            rifa.id,
         numeros,
         nombre_cliente:     form.nombre.trim(),
+        cedula:             form.cedula.trim(),
+        correo:             form.correo.trim() || undefined,
         telefono:           telefonoFull,
         metodo_pago:        form.metodo_pago,
         comprobante_base64: imgB64,
@@ -968,6 +975,36 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
               <div style={{ marginBottom:14 }}>
                 <label className="pub-label">Nombre completo *</label>
                 <input className="pub-input" value={form.nombre} onChange={e => upd('nombre', e.target.value)} placeholder="¿Cómo te llamas?" autoFocus />
+              </div>
+
+              {/* NUEVO: Cédula (obligatoria) + Correo (opcional) en la misma fila */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+                <div>
+                  <label className="pub-label">
+                    Cédula / Documento *
+                    <span style={{ marginLeft:5, background:'#ff6b6b', color:'#fff', fontSize:'.48rem', padding:'1px 5px', borderRadius:3, fontWeight:700, verticalAlign:'middle' }}>OBLIGATORIO</span>
+                  </label>
+                  <input
+                    className="pub-input"
+                    value={form.cedula}
+                    onChange={e => upd('cedula', e.target.value.replace(/\D/g,'').slice(0,15))}
+                    placeholder="Ej: 12345678"
+                    type="tel"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <label className="pub-label">Correo electrónico <span style={{ fontSize:'.6rem', color:'#aaa', fontWeight:500, textTransform:'none' }}>(opcional)</span></label>
+                  <input
+                    className="pub-input"
+                    value={form.correo}
+                    onChange={e => upd('correo', e.target.value.trim())}
+                    placeholder="tucorreo@email.com"
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                  />
+                </div>
               </div>
               <div style={{ marginBottom:20 }}>
                 <label className="pub-label">WhatsApp / Teléfono</label>
