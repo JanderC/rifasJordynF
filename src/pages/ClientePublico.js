@@ -1704,7 +1704,7 @@ export default function ClientePublico() {
           rifa={rifaSel}
           numeros={numerosCarrito}
           onClose={() => setNumerosCarrito(null)}
-          onSuccess={() => { setNumerosCarrito(null); setRefreshKey(k => k + 1); }}
+          onSuccess={() => { setRefreshKey(k => k + 1); }}
         />
       )}
     </div>
