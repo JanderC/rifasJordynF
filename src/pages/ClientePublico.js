@@ -1226,6 +1226,8 @@ function GridNumeros({ rifa, onComprar }) {
   const [loading,     setLoading]    = useState(true);
   const [busqueda,    setBusqueda]   = useState('');
   const [seleccion,   setSeleccion]  = useState(new Set());
+  const [qpCant,      setQpCant]     = useState('');
+  const [qpAnim,      setQpAnim]     = useState(false);
 
   const ofertas = rifa.ofertas || [];
 
@@ -1256,6 +1258,23 @@ function GridNumeros({ rifa, onComprar }) {
   };
 
   const limpiar = () => setSeleccion(new Set());
+
+  /* ── Quick Pick: selección aleatoria (Fisher-Yates parcial) ── */
+  const quickPick = () => {
+    const cant = Math.min(parseInt(qpCant) || 1, disponibles.length, 50);
+    if (cant < 1) return;
+    const arr   = [...disponibles];
+    const picks = [];
+    for (let i = 0; i < cant; i++) {
+      const j = Math.floor(Math.random() * (arr.length - i)) + i;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      picks.push(arr[i].numero);
+    }
+    setSeleccion(new Set(picks));
+    setQpAnim(true);
+    setTimeout(() => setQpAnim(false), 600);
+  };
+
   const selArr  = [...seleccion].sort();
 
   // Cálculo de oferta activa y sugerencia
@@ -1297,6 +1316,56 @@ function GridNumeros({ rifa, onComprar }) {
       <div style={{ background:`${TURQ}08`, border:`1px solid ${TURQ}22`, borderRadius:10, padding:'10px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:8, fontSize:'.78rem', color:TURQ_DK, fontWeight:600 }}>
         <span style={{ fontSize:'1.1rem' }}>👆</span>
         <span>Puedes seleccionar <strong>uno o varios números</strong>. {ofertas.length > 0 && <span style={{ color:NARANJA }}>¡Activa ofertas al llegar a la cantidad exacta!</span>}</span>
+      </div>
+
+      {/* ── Quick Pick: Selección aleatoria ── */}
+      <div style={{
+        background: `linear-gradient(135deg,${TURQ}08,${TURQ2}05)`,
+        border: `1.5px solid ${TURQ}28`,
+        borderRadius: 14, padding: '14px 16px', marginBottom: 16,
+      }}>
+        <div style={{ fontSize:'.68rem', fontWeight:700, color:TURQ_DK, textTransform:'uppercase', letterSpacing:'1px', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
+          🎲 Selección aleatoria <span style={{ fontSize:'.6rem', color:`${DARK}55`, fontWeight:500, textTransform:'none', letterSpacing:0 }}>(Quick Pick)</span>
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <input
+            className="pub-input"
+            type="number"
+            min="1"
+            max={Math.min(disponibles.length, 50)}
+            value={qpCant}
+            onChange={e => setQpCant(e.target.value)}
+            placeholder="¿Cuántos números?"
+            style={{ flex:'1 1 150px', maxWidth:200 }}
+          />
+          <button
+            onClick={quickPick}
+            disabled={!qpCant || parseInt(qpCant) < 1 || disponibles.length === 0}
+            style={{
+              background: `linear-gradient(135deg,${TURQ},${TURQ2})`,
+              color:'#fff', border:'none', borderRadius:12,
+              padding:'14px 20px', cursor:'pointer',
+              fontFamily:"'Poppins',sans-serif", fontWeight:700,
+              fontSize:'.9rem', display:'flex', alignItems:'center', gap:6,
+              transition:'all .2s', flexShrink:0,
+              opacity: !qpCant || parseInt(qpCant) < 1 ? .55 : 1,
+              animation: qpAnim ? 'badgePop .5s ease' : 'none',
+            }}>
+            🎰 ¡Escógelos!
+          </button>
+          {selArr.length > 0 && (
+            <button onClick={limpiar} style={{
+              background:'none', border:`1.5px solid rgba(230,57,70,.35)`,
+              color:'#e63946', borderRadius:12, padding:'13px 16px',
+              cursor:'pointer', fontSize:'.82rem', fontWeight:600, flexShrink:0,
+            }}>
+              Limpiar
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:7 }}>
+          El sistema elegirá al azar entre los <strong>{disponibles.length}</strong> números disponibles. Máx. 50 por vez.
+        </div>
       </div>
 
       {/* Buscador */}
