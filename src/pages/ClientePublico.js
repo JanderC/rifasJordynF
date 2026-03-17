@@ -1227,7 +1227,9 @@ function GridNumeros({ rifa, onComprar }) {
   const [busqueda,    setBusqueda]   = useState('');
   const [seleccion,   setSeleccion]  = useState(new Set());
   const [qpCant,      setQpCant]     = useState('');
-  const [qpAnim,      setQpAnim]     = useState(false);
+  const [qpRolling,   setQpRolling]  = useState(false);
+  const [qpResultado, setQpResultado]= useState([]);   // números que salieron en el último pick
+  const [qpVisible,   setQpVisible]  = useState(0);    // cuántos se muestran ya (animación)
 
   const ofertas = rifa.ofertas || [];
 
@@ -1259,10 +1261,12 @@ function GridNumeros({ rifa, onComprar }) {
 
   const limpiar = () => setSeleccion(new Set());
 
-  /* ── Quick Pick: selección aleatoria (Fisher-Yates parcial) ── */
-  const quickPick = () => {
-    const cant = Math.min(parseInt(qpCant) || 1, disponibles.length, 50);
-    if (cant < 1) return;
+  /* ── Quick Pick: selección aleatoria con animación ── */
+  const quickPick = (cantOverride) => {
+    const cant = Math.min(parseInt(cantOverride ?? qpCant) || 1, disponibles.length, 50);
+    if (cant < 1 || qpRolling) return;
+
+    // Fisher-Yates parcial
     const arr   = [...disponibles];
     const picks = [];
     for (let i = 0; i < cant; i++) {
@@ -1270,9 +1274,23 @@ function GridNumeros({ rifa, onComprar }) {
       [arr[i], arr[j]] = [arr[j], arr[i]];
       picks.push(arr[i].numero);
     }
-    setSeleccion(new Set(picks));
-    setQpAnim(true);
-    setTimeout(() => setQpAnim(false), 600);
+
+    // Fase 1: animación "rolling" (300ms)
+    setQpRolling(true);
+    setQpResultado([]);
+    setQpVisible(0);
+
+    setTimeout(() => {
+      // Fase 2: mostrar números uno a uno
+      setQpRolling(false);
+      setQpResultado(picks);
+      setSeleccion(new Set(picks));
+
+      // Revelar de a uno cada 120ms
+      picks.forEach((_, i) => {
+        setTimeout(() => setQpVisible(i + 1), i * 120);
+      });
+    }, 700);
   };
 
   const selArr  = [...seleccion].sort();
@@ -1320,52 +1338,167 @@ function GridNumeros({ rifa, onComprar }) {
 
       {/* ── Quick Pick: Selección aleatoria ── */}
       <div style={{
-        background: `linear-gradient(135deg,${TURQ}08,${TURQ2}05)`,
-        border: `1.5px solid ${TURQ}28`,
-        borderRadius: 14, padding: '14px 16px', marginBottom: 16,
+        background: 'linear-gradient(135deg,#0d2e1a,#0a1f12)',
+        border: `1.5px solid ${VERDE}33`,
+        borderRadius: 18, padding: '20px 22px', marginBottom: 18,
+        boxShadow: `0 8px 32px rgba(34,197,94,.12)`,
+        position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ fontSize:'.68rem', fontWeight:700, color:TURQ_DK, textTransform:'uppercase', letterSpacing:'1px', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-          🎲 Selección aleatoria <span style={{ fontSize:'.6rem', color:`${DARK}55`, fontWeight:500, textTransform:'none', letterSpacing:0 }}>(Quick Pick)</span>
+        {/* Círculos decorativos */}
+        <div style={{ position:'absolute', top:-30, right:-30, width:100, height:100, borderRadius:'50%', background:`${VERDE}0a`, pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-20, left:-20, width:70, height:70, borderRadius:'50%', background:`${TURQ}0a`, pointerEvents:'none' }}/>
+
+        {/* Título */}
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, position:'relative' }}>
+          <div style={{
+            width:38, height:38, borderRadius:10, flexShrink:0,
+            background:`linear-gradient(135deg,${VERDE}33,${VERDE}18)`,
+            border:`1px solid ${VERDE}44`,
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem',
+          }}>🎲</div>
+          <div>
+            <div style={{ fontSize:'.78rem', color:'#fff', fontWeight:800, letterSpacing:'.5px' }}>Selección Aleatoria</div>
+            <div style={{ fontSize:'.62rem', color:`rgba(255,255,255,.45)`, marginTop:1 }}>El sistema elige tus números al azar</div>
+          </div>
         </div>
-        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          <input
-            className="pub-input"
-            type="number"
-            min="1"
-            max={Math.min(disponibles.length, 50)}
-            value={qpCant}
-            onChange={e => setQpCant(e.target.value)}
-            placeholder="¿Cuántos números?"
-            style={{ flex:'1 1 150px', maxWidth:200 }}
-          />
-          <button
-            onClick={quickPick}
-            disabled={!qpCant || parseInt(qpCant) < 1 || disponibles.length === 0}
-            style={{
-              background: `linear-gradient(135deg,${TURQ},${TURQ2})`,
-              color:'#fff', border:'none', borderRadius:12,
-              padding:'14px 20px', cursor:'pointer',
-              fontFamily:"'Poppins',sans-serif", fontWeight:700,
-              fontSize:'.9rem', display:'flex', alignItems:'center', gap:6,
-              transition:'all .2s', flexShrink:0,
-              opacity: !qpCant || parseInt(qpCant) < 1 ? .55 : 1,
-              animation: qpAnim ? 'badgePop .5s ease' : 'none',
-            }}>
-            🎰 ¡Escógelos!
-          </button>
-          {selArr.length > 0 && (
-            <button onClick={limpiar} style={{
-              background:'none', border:`1.5px solid rgba(230,57,70,.35)`,
-              color:'#e63946', borderRadius:12, padding:'13px 16px',
-              cursor:'pointer', fontSize:'.82rem', fontWeight:600, flexShrink:0,
-            }}>
-              Limpiar
-            </button>
+
+        {/* Botones de cantidad rápida */}
+        <div style={{ marginBottom:14, position:'relative' }}>
+          <div style={{ fontSize:'.6rem', color:`rgba(255,255,255,.4)`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', marginBottom:8 }}>
+            Elige cuántos números:
+          </div>
+          <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+            {[1,2,3,5,10].map(n => {
+              const activo = parseInt(qpCant) === n;
+              return (
+                <button key={n} onClick={() => setQpCant(String(n))}
+                  disabled={n > disponibles.length}
+                  style={{
+                    background: activo
+                      ? `linear-gradient(135deg,${VERDE},#16a34a)`
+                      : 'rgba(255,255,255,.07)',
+                    border: activo ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)',
+                    color: activo ? '#fff' : 'rgba(255,255,255,.7)',
+                    borderRadius:10, padding:'9px 16px',
+                    fontFamily:"'Poppins',sans-serif", fontWeight:800,
+                    fontSize:'.88rem', cursor: n > disponibles.length ? 'not-allowed' : 'pointer',
+                    opacity: n > disponibles.length ? .35 : 1,
+                    transition:'all .15s',
+                    letterSpacing: activo ? '.5px' : 0,
+                    boxShadow: activo ? `0 4px 16px ${VERDE}44` : 'none',
+                  }}>
+                  ×{n}
+                </button>
+              );
+            })}
+            {/* Input personalizado */}
+            <input
+              type="number" min="1" max={Math.min(disponibles.length,50)}
+              value={[1,2,3,5,10].includes(parseInt(qpCant)) ? '' : qpCant}
+              onChange={e => setQpCant(e.target.value)}
+              placeholder="Otro..."
+              style={{
+                width:80, padding:'9px 12px',
+                background:'rgba(255,255,255,.07)',
+                border:'1.5px solid rgba(255,255,255,.12)',
+                borderRadius:10, color:'#fff',
+                fontFamily:"'Poppins',sans-serif", fontSize:'.88rem', fontWeight:700,
+                outline:'none', textAlign:'center',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Botón principal */}
+        <button
+          onClick={() => quickPick()}
+          disabled={!qpCant || parseInt(qpCant) < 1 || disponibles.length === 0 || qpRolling}
+          style={{
+            width:'100%',
+            background: qpRolling
+              ? 'rgba(255,255,255,.08)'
+              : `linear-gradient(135deg,${VERDE},#16a34a)`,
+            border: `1.5px solid ${qpRolling ? 'rgba(255,255,255,.1)' : VERDE+'66'}`,
+            color:'#fff', borderRadius:12,
+            padding:'14px 20px', cursor: qpRolling ? 'not-allowed' : 'pointer',
+            fontFamily:"'Poppins',sans-serif", fontWeight:800,
+            fontSize:'1rem', display:'flex', alignItems:'center',
+            justifyContent:'center', gap:10,
+            transition:'all .25s', position:'relative',
+            boxShadow: qpRolling ? 'none' : `0 6px 24px ${VERDE}44`,
+            letterSpacing:'.5px',
+          }}>
+          {qpRolling ? (
+            <>
+              <span style={{ display:'inline-block', animation:'spin .6s linear infinite', fontSize:'1.2rem' }}>🎰</span>
+              <span>Eligiendo...</span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize:'1.2rem' }}>🎰</span>
+              <span>
+                {qpCant && parseInt(qpCant) > 0
+                  ? `¡Quiero ${parseInt(qpCant)} número${parseInt(qpCant)>1?'s':''} aleatorio${parseInt(qpCant)>1?'s':''}!`
+                  : '¡Elige mis números!'}
+              </span>
+            </>
           )}
-        </div>
-        <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:7 }}>
-          El sistema elegirá al azar entre los <strong>{disponibles.length}</strong> números disponibles. Máx. 50 por vez.
-        </div>
+        </button>
+
+        {/* Resultado animado */}
+        {qpResultado.length > 0 && !qpRolling && (
+          <div style={{ marginTop:16, animation:'fadeUp .3s ease', position:'relative' }}>
+            <div style={{ fontSize:'.6rem', color:`${VERDE}aa`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', marginBottom:10 }}>
+              ✨ Números seleccionados:
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
+              {qpResultado.map((n, i) => (
+                <div key={n} style={{
+                  background: i < qpVisible
+                    ? `linear-gradient(135deg,${VERDE},#16a34a)`
+                    : 'rgba(255,255,255,.06)',
+                  border: i < qpVisible
+                    ? `1.5px solid ${VERDE}88`
+                    : '1.5px solid rgba(255,255,255,.1)',
+                  borderRadius: 10,
+                  padding: '8px 14px',
+                  fontFamily: "'Poppins',sans-serif",
+                  fontWeight: 900,
+                  fontSize: '1rem',
+                  color: i < qpVisible ? '#fff' : 'rgba(255,255,255,.2)',
+                  letterSpacing: 2,
+                  transition: 'all .3s ease',
+                  transform: i < qpVisible ? 'scale(1)' : 'scale(.85)',
+                  boxShadow: i < qpVisible ? `0 4px 14px ${VERDE}44` : 'none',
+                }}>
+                  {i < qpVisible ? n : '···'}
+                </div>
+              ))}
+            </div>
+            {qpVisible >= qpResultado.length && (
+              <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', animation:'fadeUp .25s ease' }}>
+                <div style={{ fontSize:'.72rem', color:`rgba(255,255,255,.55)`, flex:1 }}>
+                  🎯 {qpResultado.length} número{qpResultado.length>1?'s':''} marcado{qpResultado.length>1?'s':''} en el grid
+                </div>
+                <button onClick={() => quickPick()}
+                  style={{ background:'rgba(255,255,255,.08)', border:'1.5px solid rgba(255,255,255,.15)', color:'rgba(255,255,255,.8)', borderRadius:9, padding:'6px 14px', cursor:'pointer', fontSize:'.72rem', fontWeight:700, fontFamily:"'Poppins',sans-serif" }}>
+                  🔄 Volver a tirar
+                </button>
+                <button onClick={() => { limpiar(); setQpResultado([]); setQpVisible(0); }}
+                  style={{ background:'rgba(230,57,70,.12)', border:'1.5px solid rgba(230,57,70,.3)', color:'#f87171', borderRadius:9, padding:'6px 14px', cursor:'pointer', fontSize:'.72rem', fontWeight:700, fontFamily:"'Poppins',sans-serif" }}>
+                  ✕ Limpiar
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Nota */}
+        {!qpResultado.length && (
+          <div style={{ fontSize:'.62rem', color:`rgba(255,255,255,.3)`, marginTop:12, textAlign:'center', position:'relative' }}>
+            {disponibles.length} números disponibles · máx. 50 por tirada
+          </div>
+        )}
       </div>
 
       {/* Buscador */}
