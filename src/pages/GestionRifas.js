@@ -426,7 +426,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontWeight:700, fontSize:'0.88rem', color:'var(--jordyn-text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.nombre_comprador || c.comprador}</div>
-                            <div style={{ fontSize:'.58rem', color:'var(--jordyn-muted)', marginTop:1 }}>Por <span style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>{c.nombre_vendedor}</span>{c.created_at && <span style={{ marginLeft:6 }}>{new Date(c.created_at).toLocaleDateString('es-CO')}</span>}</div>
+                            <div style={{ fontSize:'.58rem', color:'var(--jordyn-muted)', marginTop:1 }}>Por <span style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>{c.nombre_vendedor}</span>{c.created_at && <span style={{ marginLeft:6 }}>{parseFecha(c.created_at)?.toLocaleDateString('es-CO', { timeZone:'America/Caracas' })}</span>}</div>
                           </div>
                           <button onClick={() => { setRifaSel(r); setForm({ nombre:c.nombre_comprador||'', telefono:c.telefono||'' }); handleTabChange('ticket'); }}
                             style={{ background:'rgba(10,191,188,0.08)', border:'1.5px solid rgba(10,191,188,0.25)', color:'var(--jordyn-primary)', borderRadius:6, padding:'4px 9px', cursor:'pointer', fontSize:'.68rem', fontWeight:600, flexShrink:0 }}>
@@ -789,6 +789,10 @@ export default function GestionRifas() {
   const [showForm,       setShowForm]       = useState(false);
   const [showArchivadas, setShowArchivadas] = useState(false);
   const [modalNums,      setModalNums]      = useState(null);
+  const [tasaValor,      setTasaValor]      = useState('');       // RF03: tasa manual input
+  const [tasaBase,       setTasaBase]       = useState('');       // monto base en Bs
+  const [tasaResultado,  setTasaResultado]  = useState(null);     // resultado calculado
+  const [showTasaPanel,  setShowTasaPanel]  = useState(false);    // toggle card
   const fileRef = useRef();
 
   const load = useCallback(async () => {
@@ -874,7 +878,9 @@ export default function GestionRifas() {
       <div className={`jd-card ${r.activa ? 'jd-card-primary' : ''} fade-in`} style={{ opacity: r.activa ? 1 : 0.72, height:'100%' }}>
 
         {r.imagen_url && (
-          <img src={r.imagen_url} alt="Premio" style={{ width:'100%', maxHeight:180, objectFit:'cover', borderRadius:8, marginBottom:'0.75rem' }} />
+          <div style={{ width:'100%', aspectRatio:'16/9', background:'var(--jordyn-bg2)', borderRadius:8, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'0.75rem' }}>
+            <img src={r.imagen_url} alt="Premio" style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', display:'block' }} />
+          </div>
         )}
 
         <div className="d-flex justify-content-between align-items-start mb-2 gap-2">
@@ -965,7 +971,119 @@ export default function GestionRifas() {
         <button className="btn-jordyn" onClick={handleNueva}><i className="bi bi-plus-lg me-1"></i>NUEVA RIFA</button>
       </div>
 
-      {/* ═══ FORMULARIO ═══ */}
+      {/* ═══ RF03 — PANEL TASA DE CAMBIO MANUAL ═══ */}
+      <div className="jd-card mb-4 fade-in" style={{ borderLeft:'3px solid var(--jordyn-gold)' }}>
+        <div
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', userSelect:'none' }}
+          onClick={() => setShowTasaPanel(p => !p)}
+        >
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:'1.25rem' }}>💱</span>
+            <div>
+              <div style={{ fontWeight:800, fontSize:'.88rem', color:'var(--jordyn-gold)' }}>CALCULADORA DE TASA DE CAMBIO</div>
+              <div style={{ fontSize:'.62rem', color:'var(--jordyn-muted)', marginTop:1 }}>Convierte montos de Bolívares a Pesos Colombianos o USD</div>
+            </div>
+          </div>
+          <i className={`bi bi-chevron-${showTasaPanel ? 'up' : 'down'}`} style={{ color:'var(--jordyn-muted)', fontSize:'1rem' }}></i>
+        </div>
+
+        {showTasaPanel && (
+          <div style={{ marginTop:18, borderTop:'1px solid var(--jordyn-border)', paddingTop:18 }}>
+            <div className="row g-3 align-items-end">
+
+              {/* Tasa */}
+              <div className="col-12 col-md-4">
+                <label className="jd-label">TASA (1 USD = ? Bs.)</label>
+                <input
+                  className="jd-input"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="Ej: 45.50"
+                  value={tasaValor}
+                  onChange={e => { setTasaValor(e.target.value); setTasaResultado(null); }}
+                  style={{ fontWeight:800, fontSize:'1rem' }}
+                />
+                {tasaValor > 0 && (
+                  <div style={{ fontSize:'.65rem', color:'var(--jordyn-primary)', marginTop:4, fontWeight:600 }}>
+                    1 USD = Bs. {parseFloat(tasaValor).toFixed(2)} · 1 Bs. = ${(1 / parseFloat(tasaValor)).toFixed(6)} USD
+                  </div>
+                )}
+              </div>
+
+              {/* Monto base */}
+              <div className="col-12 col-md-4">
+                <label className="jd-label">MONTO EN BOLÍVARES (Bs.)</label>
+                <input
+                  className="jd-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Ej: 1000"
+                  value={tasaBase}
+                  onChange={e => { setTasaBase(e.target.value); setTasaResultado(null); }}
+                  style={{ fontWeight:800, fontSize:'1rem' }}
+                />
+              </div>
+
+              {/* Botón calcular */}
+              <div className="col-12 col-md-4">
+                <button
+                  className="btn-jordyn w-100"
+                  style={{ fontSize:'.88rem' }}
+                  onClick={() => {
+                    const tasa = parseFloat(tasaValor);
+                    const monto = parseFloat(tasaBase);
+                    if (!tasa || tasa <= 0) { toast.error('Ingresa una tasa válida'); return; }
+                    if (!monto || monto <= 0) { toast.error('Ingresa un monto válido'); return; }
+                    // Bs → USD → COP (asumiendo tasa COP/USD ~ 4200 aproximado, o solo USD)
+                    const usd = monto / tasa;
+                    const cop = usd * 4200; // referencia aproximada COP/USD
+                    setTasaResultado({ monto, tasa, usd, cop });
+                  }}
+                >
+                  <i className="bi bi-calculator-fill me-1"></i> Calcular
+                </button>
+              </div>
+            </div>
+
+            {/* Resultado */}
+            {tasaResultado && (
+              <div className="fade-in" style={{
+                marginTop:16, padding:'14px 18px',
+                background:'rgba(240,165,0,.07)', border:'1.5px solid rgba(240,165,0,.3)',
+                borderRadius:12, display:'flex', flexWrap:'wrap', gap:20, alignItems:'center',
+              }}>
+                <div>
+                  <div style={{ fontSize:'.55rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:3 }}>Monto ingresado</div>
+                  <div style={{ fontSize:'1rem', fontWeight:800, color:'var(--jordyn-text)' }}>
+                    Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits:2 }).format(tasaResultado.monto)}
+                  </div>
+                </div>
+                <div style={{ color:'var(--jordyn-gold)', fontSize:'1.3rem', fontWeight:900 }}>→</div>
+                <div>
+                  <div style={{ fontSize:'.55rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:3 }}>Equivale en USD</div>
+                  <div style={{ fontSize:'1rem', fontWeight:800, color:'var(--jordyn-primary)' }}>
+                    $ {tasaResultado.usd.toFixed(2)} USD
+                  </div>
+                </div>
+                <div style={{ color:'var(--jordyn-gold)', fontSize:'1.3rem', fontWeight:900 }}>→</div>
+                <div>
+                  <div style={{ fontSize:'.55rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:3 }}>Ref. en Pesos (COP)</div>
+                  <div style={{ fontSize:'1rem', fontWeight:800, color:'var(--jordyn-gold)' }}>
+                    {fmtCOP(tasaResultado.cop)}
+                  </div>
+                </div>
+                <div style={{ flexShrink:0, marginLeft:'auto', fontSize:'.62rem', color:'var(--jordyn-muted)', lineHeight:1.6, textAlign:'right' }}>
+                  <i className="bi bi-info-circle me-1"></i>
+                  Tasa: 1 USD = Bs. {tasaResultado.tasa}<br/>
+                  Ref. COP/USD: ~4,200 (actualiza en Tasas)
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       {showForm && (
         <div className="jd-card jd-card-primary mb-4 fade-in">
           <h5 style={{ fontWeight:800, fontSize:'1.1rem', color:'var(--jordyn-primary)', marginBottom:'1.5rem' }}>
@@ -978,8 +1096,11 @@ export default function GestionRifas() {
               <div className="col-12">
                 <label className="jd-label">FOTO DEL PREMIO</label>
                 {form.imagen_base64 ? (
-                  <div style={{ position:'relative', display:'inline-block', width:'100%' }}>
-                    <img src={form.imagen_base64} alt="Premio" style={{ width:'100%', maxHeight:200, objectFit:'cover', borderRadius:10, border:'2px solid var(--jordyn-border)' }} />
+                  <div style={{ position:'relative', width:'100%' }}>
+                    {/* RF01: contenedor con aspect-ratio fijo para evitar distorsión */}
+                    <div style={{ width:'100%', aspectRatio:'16/9', background:'var(--jordyn-bg2)', borderRadius:10, border:'2px solid var(--jordyn-border)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <img src={form.imagen_base64} alt="Premio" style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain', borderRadius:8, display:'block' }} />
+                    </div>
                     <button type="button" onClick={() => setForm(p => ({ ...p, imagen_base64:'' }))} style={{ position:'absolute', top:8, right:8, background:'rgba(230,57,70,0.85)', border:'none', color:'#fff', borderRadius:6, padding:'3px 9px', cursor:'pointer' }}><i className="bi bi-x-lg"></i></button>
                   </div>
                 ) : (

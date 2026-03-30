@@ -10,6 +10,7 @@ import API from '../services/api';
 import { toast } from 'react-toastify';
 import { TicketPreview, generarImagenTicket } from '../components/Ticket';
 import { fmtFecha, fmtTimestamp } from '../utils/dates';
+import { useAuth } from '../context/AuthContext';
 
 const COP = n =>
   new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n||0);
@@ -345,6 +346,7 @@ function PanelBloqueados({ reservas }) {
    PÁGINA PRINCIPAL
 ════════════════════════════════════════════════════════════ */
 export default function GestionReservas() {
+  const { user } = useAuth(); // RF04: solo usamos user.nombre, sin mostrar usuario/username
   const [reservas, setReservas] = useState([]);
   const [todas,    setTodas]    = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -430,7 +432,34 @@ export default function GestionReservas() {
   })();
 
   return (
-    <Layout title="RESERVAS DE CLIENTES">
+    <Layout title="RESERVAS DE CLIENTES" vendorName={user?.rol === 'vendedor' ? user?.nombre : null}>
+
+      {/* RF04 — Identificación del vendedor: solo nombre completo, sin usuario/username */}
+      {user?.rol === 'vendedor' && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:10, marginBottom:'1.25rem',
+          padding:'10px 16px', borderRadius:12,
+          background:'rgba(10,191,188,.07)', border:'1px solid rgba(10,191,188,.2)',
+        }}>
+          <div style={{
+            width:36, height:36, borderRadius:'50%', flexShrink:0,
+            background:'linear-gradient(135deg,var(--jordyn-primary),#089a97)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#fff', fontWeight:900, fontSize:'.9rem',
+          }}>
+            {user.nombre?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight:800, fontSize:'.9rem', color:'var(--jordyn-primary)' }}>
+              {user.nombre}
+            </div>
+            <div style={{ fontSize:'.62rem', color:'var(--jordyn-muted)', marginTop:1 }}>
+              Vendedor activo
+            </div>
+          </div>
+        </div>
+      )}
+
       <PanelBloqueados reservas={todas} />
 
       {/* Tabs */}

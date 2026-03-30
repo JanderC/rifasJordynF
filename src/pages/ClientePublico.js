@@ -115,6 +115,22 @@ function useTasaCopUsd() {
   return tasa;
 }
 
+/* ─── Tasa BSD/USD manual (fallback para Pago Móvil) ─── */
+let _bsdUsdCache = 0;
+async function fetchTasaBsdUsd() {
+  try {
+    const res  = await fetch('/api/tasas');
+    const data = await res.json();
+    if (data?.BSD_POR_USD?.valor) _bsdUsdCache = data.BSD_POR_USD.valor;
+  } catch {}
+  return _bsdUsdCache;
+}
+function useTasaBsdUsd() {
+  const [tasa, setTasa] = useState(_bsdUsdCache);
+  useEffect(() => { fetchTasaBsdUsd().then(setTasa); }, []);
+  return tasa; // 0 si no está configurada
+}
+
 const METODO_MONEDA = {
   'Pago Móvil':  'VES',
   'Nequi':       'COP',
@@ -126,6 +142,7 @@ const METODO_MONEDA = {
 let _tasaCache = null;
 let _tasaTs    = 0;
 function useTasaDolar() {
+  const tasaBsdManual = useTasaBsdUsd();                      // tasa manual desde BD
   const [tasa, setTasa] = useState(_tasaCache);
   useEffect(() => {
     if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
@@ -135,9 +152,13 @@ function useTasaDolar() {
         const paralelo = data.find(d => d.fuente === 'paralelo');
         if (paralelo?.promedio) { _tasaCache = paralelo.promedio; _tasaTs = Date.now(); setTasa(paralelo.promedio); }
       })
-      .catch(() => {});
-  }, []);
-  return tasa;
+      .catch(() => {
+        // API paralela no disponible → usar tasa manual BSD_POR_USD como respaldo
+        if (tasaBsdManual > 0) setTasa(tasaBsdManual);
+      });
+  }, [tasaBsdManual]);
+  // Si la API aún no resolvió pero hay tasa manual, devolverla como valor temporal
+  return tasa ?? (tasaBsdManual > 0 ? tasaBsdManual : null);
 }
 
 function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
