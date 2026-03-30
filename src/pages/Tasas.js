@@ -206,15 +206,6 @@ function Calculadora({ tasas }) {
             <div style={{ color:'var(--jordyn-muted)', fontSize:'1.2rem', fontWeight:700 }}>→</div>
 
             <div style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'.5rem', color:'var(--jordyn-muted)', marginBottom:2 }}>Dólares</div>
-              <div style={{ fontSize:'1.1rem', fontWeight:900, color:'var(--jordyn-text)' }}>
-                ${resultado.usd.toFixed(4)} USD
-              </div>
-            </div>
-
-            <div style={{ color:'var(--jordyn-muted)', fontSize:'1.2rem', fontWeight:700 }}>→</div>
-
-            <div style={{ textAlign:'center' }}>
               <div style={{ fontSize:'.5rem', color:'var(--jordyn-muted)', marginBottom:2 }}>Pesos colombianos</div>
               <div style={{ fontSize:'1.35rem', fontWeight:900, color:'var(--jordyn-primary)' }}>
                 {fmtCOP(resultado.cop)}
