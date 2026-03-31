@@ -114,7 +114,7 @@ function useTasasHoy() {
       setTasas(_tasasHoyCache); return;
     }
     // DESPUÉS
-      fetch('https://rifasjordynb-production.up.railway.app/api/tasas/hoy')
+      fetch('https://rifasjordynb-production.up.railway.app/api/tasas')
         .then(r => r.json())
         .then(data => {
           const t = {
