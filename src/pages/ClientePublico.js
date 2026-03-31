@@ -99,36 +99,33 @@ const METODOS_PAGO = {
   },
 };
 
-/* ─── Tasa COP/USD ─── */
-let _copUsdCache = 4200;
-async function fetchTasaCopUsd() {
-  try {
-    const res  = await fetch('/api/tasas');
-    const data = await res.json();
-    if (data?.COP_POR_USD?.valor) _copUsdCache = data.COP_POR_USD.valor;
-  } catch {}
-  return _copUsdCache;
-}
-function useTasaCopUsd() {
-  const [tasa, setTasa] = useState(_copUsdCache);
-  useEffect(() => { fetchTasaCopUsd().then(setTasa); }, []);
-  return tasa;
-}
+/* ─────────────────────────────────────────────────────────────
+   Hook único: ambas tasas desde /api/tasas/hoy
+   Fórmula Bs = precio_COP / COP_POR_USD * BSD_POR_USD
+───────────────────────────────────────────────────────────── */
+let _tasasHoyCache = null;
+let _tasasHoyTs    = 0;
 
-/* ─── Tasa BSD/USD manual (fallback para Pago Móvil) ─── */
-let _bsdUsdCache = 0;
-async function fetchTasaBsdUsd() {
-  try {
-    const res  = await fetch('/api/tasas');
-    const data = await res.json();
-    if (data?.BSD_POR_USD?.valor) _bsdUsdCache = data.BSD_POR_USD.valor;
-  } catch {}
-  return _bsdUsdCache;
-}
-function useTasaBsdUsd() {
-  const [tasa, setTasa] = useState(_bsdUsdCache);
-  useEffect(() => { fetchTasaBsdUsd().then(setTasa); }, []);
-  return tasa; // 0 si no está configurada
+function useTasasHoy() {
+  const [tasas, setTasas] = useState(_tasasHoyCache);
+  useEffect(() => {
+    if (_tasasHoyCache && Date.now() - _tasasHoyTs < 600_000) {
+      setTasas(_tasasHoyCache); return;
+    }
+    fetch('/api/tasas/hoy')
+      .then(r => r.json())
+      .then(data => {
+        const t = {
+          copUsd: data?.COP_POR_USD?.valor || 4200,
+          bsdUsd: data?.BSD_POR_USD?.valor || 0,
+        };
+        _tasasHoyCache = t;
+        _tasasHoyTs    = Date.now();
+        setTasas(t);
+      })
+      .catch(() => {});
+  }, []);
+  return tasas ?? { copUsd: 4200, bsdUsd: 0 };
 }
 
 const METODO_MONEDA = {
@@ -138,28 +135,6 @@ const METODO_MONEDA = {
   'Zelle':       'USD',
   'Efectivo':    'COP',
 };
-
-let _tasaCache = null;
-let _tasaTs    = 0;
-function useTasaDolar() {
-  const tasaBsdManual = useTasaBsdUsd();                      // tasa manual desde BD
-  const [tasa, setTasa] = useState(_tasaCache);
-  useEffect(() => {
-    if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
-    fetch('/api/tasas/hoy')
-      .then(r => r.json())
-      .then(data => {
-        const paralelo = data.find(d => d.fuente === 'COP_POR_USD');
-        if (paralelo?.COP_POR_USD.valor) { _tasaCache = paralelo.COP_POR_USD.valor; _tasaTs = Date.now(); setTasa(paralelo.COP_POR_USD.valor); }
-      })
-      .catch(() => {
-        // API paralela no disponible → usar tasa manual BSD_POR_USD como respaldo
-        if (tasaBsdManual > 0) setTasa(tasaBsdManual);
-      });
-  }, [tasaBsdManual]);
-  // Si la API aún no resolvió pero hay tasa manual, devolverla como valor temporal
-  return tasa ?? (tasaBsdManual > 0 ? tasaBsdManual : null);
-}
 
 function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
   const moneda = METODO_MONEDA[metodo];
@@ -829,8 +804,9 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
   const [reservaIds, setReservaIds] = useState([]);
   const [conflictos, setConflictos] = useState([]);
   const fileRef = useRef();
-  const tasaBs  = useTasaDolar();
-  const copUsd  = useTasaCopUsd();
+
+  /* ── Tasas desde /api/tasas/hoy ── */
+  const { copUsd, bsdUsd: tasaBs } = useTasasHoy();
 
   const upd          = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
@@ -904,7 +880,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
   };
 
   /* ── Calcular precio en moneda del método ── */
-  const convTotal = calcularPrecioMetodo(totalReal, form.metodo_pago, tasaBs, copUsd);
+  const convTotal    = calcularPrecioMetodo(totalReal,   form.metodo_pago, tasaBs, copUsd);
   const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
 
   return (
@@ -1077,7 +1053,7 @@ function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
                       <span>≈ {fmt(totalReal)} · </span>
                       <span style={{ fontWeight:600 }}>
                         {convTotal.moneda === 'VES'
-                          ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'} (tasa referencia)`
+                          ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'}`
                           : `1 USD = COP ${copUsd.toLocaleString('es-CO')}`}
                       </span>
                     </div>
@@ -1730,9 +1706,6 @@ function RifaCard({ rifa, onSeleccionar }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   PÁGINA PRINCIPAL
-═══════════════════════════════════════════════════════════ */
 export default function ClientePublico() {
   const [rifas,      setRifas]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -1740,7 +1713,9 @@ export default function ClientePublico() {
   const [numerosCarrito, setNumerosCarrito] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const gridRef = useRef();
-  const tasaBs  = useTasaDolar();
+
+  /* ── Tasa para mostrar en la tarjeta pública de Pago Móvil ── */
+  const { bsdUsd: tasaBs } = useTasasHoy();
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -1763,7 +1738,6 @@ export default function ClientePublico() {
   return (
     <div style={{ minHeight:'100vh', background:'#f0fafa' }}>
 
-      {/* NAV */}
       <nav style={{ background:'rgba(255,255,255,.95)', backdropFilter:'blur(12px)', borderBottom:'1px solid #e0f0f0', padding:'0 5vw', position:'sticky', top:0, zIndex:100, height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>🎰</div>
@@ -1776,7 +1750,6 @@ export default function ClientePublico() {
         </div>
       </nav>
 
-      {/* HERO PRINCIPAL */}
       {loading ? (
         <div style={{ padding:'5vw', maxWidth:1100, margin:'0 auto' }}>
           <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
@@ -1787,7 +1760,6 @@ export default function ClientePublico() {
         </section>
       ) : null}
 
-      {/* RIFAS SECUNDARIAS */}
       {rifasSecundarias.length > 0 && (
         <section id="rifas-sec" style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
           <div style={{ textAlign:'center', marginBottom:36 }}>
@@ -1800,7 +1772,6 @@ export default function ClientePublico() {
         </section>
       )}
 
-      {/* SECCIÓN GRID DE NÚMEROS */}
       {rifaSel && (
         <section ref={gridRef} style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
           <div style={{ background:'#fff', borderRadius:24, padding:'28px', boxShadow:'0 4px 32px rgba(10,100,100,.08)' }}>
@@ -1846,7 +1817,6 @@ export default function ClientePublico() {
         </section>
       )}
 
-      {/* CÓMO PARTICIPAR */}
       <section style={{ background:'#fff', padding:'70px 5vw 0' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -1870,7 +1840,6 @@ export default function ClientePublico() {
         </div>
       </section>
 
-      {/* MÉTODOS DE PAGO */}
       <section id="pagos-sec" style={{ background:'#fff', padding:'70px 5vw 80px' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -1893,13 +1862,13 @@ export default function ClientePublico() {
                     <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700 }}>{valor}</div>
                   </div>
                 ))}
-                {nombre === 'Pago Móvil' && tasaBs && (
+                {nombre === 'Pago Móvil' && tasaBs > 0 && (
                   <div style={{ marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`, borderRadius:10, padding:'9px 13px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div>
                       <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
                       <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}</div>
                     </div>
-                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>🔴 EN VIVO</span>
+                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>✅ MANUAL</span>
                   </div>
                 )}
                 {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
@@ -1909,7 +1878,6 @@ export default function ClientePublico() {
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer id="contacto-sec" style={{ background:DARK, padding:'60px 5vw 40px' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:40, marginBottom:40 }}>
@@ -1941,7 +1909,6 @@ export default function ClientePublico() {
         </div>
       </footer>
 
-      {/* MODAL */}
       {numerosCarrito && rifaSel && (
         <ModalReserva
           rifa={rifaSel}
