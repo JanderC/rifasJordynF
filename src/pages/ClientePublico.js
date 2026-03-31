@@ -1359,7 +1359,7 @@ function GridNumeros({ rifa, onComprar }) {
             Elige cuántos números:
           </div>
           <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
-            {[1,2,3,5,10].map(n => {
+            {[1,2,3,5,10,20].map(n => { 
               const activo = parseInt(qpCant) === n;
               return (
                 <button key={n} onClick={() => setQpCant(String(n))}
@@ -1385,9 +1385,14 @@ function GridNumeros({ rifa, onComprar }) {
             {/* Input personalizado */}
             <input
   type="number" min="1" max={disponibles.length}
-  value={[1,2,3,5,10].includes(parseInt(qpCant)) ? '' : qpCant}
-              onChange={e => setQpCant(e.target.value)}
-              placeholder="Otro..."
+  value={[1,2,3,5,10,20].includes(parseInt(qpCant)) ? '' : qpCant}
+onChange={e => {
+  const v = e.target.value;
+  if (v === '' || (parseInt(v) > 0 && parseInt(v) <= disponibles.length)) {
+    setQpCant(v);
+  }
+}}
+placeholder="Ej: 15, 30..."
               style={{
                 width:80, padding:'9px 12px',
                 background:'rgba(255,255,255,.07)',
