@@ -1253,7 +1253,8 @@ function GridNumeros({ rifa, onComprar }) {
 
   /* ── Quick Pick: selección aleatoria con animación ── */
   const quickPick = (cantOverride) => {
-    const cant = Math.min(parseInt(cantOverride ?? qpCant) || 1, disponibles.length, 50);
+    const cant = Math.min(parseInt(cantOverride ?? qpCant) || 1, disponibles.length);
+
     if (cant < 1 || qpRolling) return;
 
     // Fisher-Yates parcial
@@ -1383,8 +1384,8 @@ function GridNumeros({ rifa, onComprar }) {
             })}
             {/* Input personalizado */}
             <input
-              type="number" min="1" max={Math.min(disponibles.length,50)}
-              value={[1,2,3,5,10].includes(parseInt(qpCant)) ? '' : qpCant}
+  type="number" min="1" max={disponibles.length}
+  value={[1,2,3,5,10].includes(parseInt(qpCant)) ? '' : qpCant}
               onChange={e => setQpCant(e.target.value)}
               placeholder="Otro..."
               style={{
@@ -1486,7 +1487,7 @@ function GridNumeros({ rifa, onComprar }) {
         {/* Nota */}
         {!qpResultado.length && (
           <div style={{ fontSize:'.62rem', color:`rgba(255,255,255,.3)`, marginTop:12, textAlign:'center', position:'relative' }}>
-            {disponibles.length} números disponibles · máx. 50 por tirada
+            {disponibles.length} números disponibles
           </div>
         )}
       </div>
