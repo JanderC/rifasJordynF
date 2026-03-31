@@ -143,22 +143,8 @@ let _tasaCache = null;
 let _tasaTs    = 0;
 function useTasaDolar() {
   const tasaBsdManual = useTasaBsdUsd();                      // tasa manual desde BD
-  const [tasa, setTasa] = useState(_tasaCache);
-  useEffect(() => {
-    if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
-    fetch('https://ve.dolarapi.com/v1/dolares')
-      .then(r => r.json())
-      .then(data => {
-        const paralelo = data.find(d => d.fuente === 'paralelo');
-        if (paralelo?.promedio) { _tasaCache = paralelo.promedio; _tasaTs = Date.now(); setTasa(paralelo.promedio); }
-      })
-      .catch(() => {
-        // API paralela no disponible → usar tasa manual BSD_POR_USD como respaldo
-        if (tasaBsdManual > 0) setTasa(tasaBsdManual);
-      });
-  }, [tasaBsdManual]);
-  // Si la API aún no resolvió pero hay tasa manual, devolverla como valor temporal
-  return tasa ?? (tasaBsdManual > 0 ? tasaBsdManual : null);
+  // Usar la tasa manual en lugar de la tasa paralelo
+  return tasaBsdManual > 0 ? tasaBsdManual : null;
 }
 
 function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
@@ -1913,10 +1899,10 @@ export default function ClientePublico() {
                 {nombre === 'Pago Móvil' && tasaBs && (
                   <div style={{ marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`, borderRadius:10, padding:'9px 13px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div>
-                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
+                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa manual</div>
                       <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}</div>
                     </div>
-                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>🔴 EN VIVO</span>
+                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>📝 Manual</span>
                   </div>
                 )}
                 {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
