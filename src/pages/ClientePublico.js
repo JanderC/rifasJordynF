@@ -143,8 +143,22 @@ let _tasaCache = null;
 let _tasaTs    = 0;
 function useTasaDolar() {
   const tasaBsdManual = useTasaBsdUsd();                      // tasa manual desde BD
-  // Usar la tasa manual en lugar de la tasa paralelo
-  return tasaBsdManual > 0 ? tasaBsdManual : null;
+  const [tasa, setTasa] = useState(_tasaCache);
+  useEffect(() => {
+    if (_tasaCache && Date.now() - _tasaTs < 600_000) { setTasa(_tasaCache); return; }
+    fetch('/api/tasas/hoy')
+      .then(r => r.json())
+      .then(data => {
+        const paralelo = data.find(d => d.fuente === 'COP_POR_USD');
+        if (paralelo?.COP_POR_USD.valor) { _tasaCache = paralelo.COP_POR_USD.valor; _tasaTs = Date.now(); setTasa(paralelo.COP_POR_USD.valor); }
+      })
+      .catch(() => {
+        // API paralela no disponible → usar tasa manual BSD_POR_USD como respaldo
+        if (tasaBsdManual > 0) setTasa(tasaBsdManual);
+      });
+  }, [tasaBsdManual]);
+  // Si la API aún no resolvió pero hay tasa manual, devolverla como valor temporal
+  return tasa ?? (tasaBsdManual > 0 ? tasaBsdManual : null);
 }
 
 function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
@@ -513,29 +527,13 @@ const injectStyles = () => {
   document.head.appendChild(s);
 };
 
-/* ═══════════════════════════════════════════════════════════
-   FIX PUNTO 1B — HOOK: Cuenta regresiva robusta
-   Problema original:
-     - new Date(targetDate) fallaba con strings "YYYY-MM-DD HH:MM:SS"
-       (sin la T) en algunos navegadores, devolviendo NaN silenciosamente.
-     - diff con NaN no dispara diff <= 0, por lo que expired quedaba false
-       pero los valores dias/horas/minutos/segundos eran NaN.
-     - El countdown no se renderizaba (NaN rompe el display) o mostraba "NaN".
-   Solución:
-     - Normalizar el string ISO (reemplazar espacio por T).
-     - Validar explícitamente isNaN → retornar { invalid: true }.
-     - Recalcular inmediatamente cuando llega targetDate (setTime al montar).
-     - Exponer campo `invalid` para que el render lo filtre.
-═══════════════════════════════════════════════════════════ */
 function useCountdown(targetDate) {
   const calc = () => {
     if (!targetDate) return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
-    // Normalizar: PostgreSQL puede devolver "2025-07-15 04:00:00" (con espacio)
-    // new Date() en Safari/Firefox no acepta ese formato → NaN
+
     const iso = String(targetDate).replace(' ', 'T');
     const target = new Date(iso);
     if (isNaN(target.getTime())) {
-      // Fecha inválida: no mostrar el countdown
       return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
     }
     const diff = target - new Date();
@@ -552,7 +550,6 @@ function useCountdown(targetDate) {
   const [time, setTime] = useState(calc);
   useEffect(() => {
     if (!targetDate) return;
-    // Recalcular de inmediato cuando llega la fecha (evita mostrar valores viejos)
     setTime(calc());
     const t = setInterval(() => setTime(calc()), 1000);
     return () => clearInterval(t);
@@ -1899,10 +1896,10 @@ export default function ClientePublico() {
                 {nombre === 'Pago Móvil' && tasaBs && (
                   <div style={{ marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`, borderRadius:10, padding:'9px 13px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div>
-                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa manual</div>
+                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
                       <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}</div>
                     </div>
-                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>📝 Manual</span>
+                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>🔴 EN VIVO</span>
                   </div>
                 )}
                 {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
