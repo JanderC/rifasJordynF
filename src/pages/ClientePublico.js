@@ -1216,7 +1216,8 @@ function GridNumeros({ rifa, onComprar }) {
   const [loading,     setLoading]    = useState(true);
   const [busqueda,    setBusqueda]   = useState('');
   const [seleccion,   setSeleccion]  = useState(new Set());
-  const [qpCant,      setQpCant]     = useState('');
+  const [qpCant,    setQpCant]    = useState('');
+  const [qpInputVal, setQpInputVal] = useState('');
   const [qpRolling,   setQpRolling]  = useState(false);
   const [qpResultado, setQpResultado]= useState([]);   // números que salieron en el último pick
   const [qpVisible,   setQpVisible]  = useState(0);    // cuántos se muestran ya (animación)
@@ -1359,50 +1360,49 @@ function GridNumeros({ rifa, onComprar }) {
             Elige cuántos números:
           </div>
           <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
-            {[1,2,3,5,10,20].map(n => { 
-              const activo = parseInt(qpCant) === n;
-              return (
-                <button key={n} onClick={() => setQpCant(String(n))}
-                  disabled={n > disponibles.length}
-                  style={{
-                    background: activo
-                      ? `linear-gradient(135deg,${VERDE},#16a34a)`
-                      : 'rgba(255,255,255,.07)',
-                    border: activo ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)',
-                    color: activo ? '#fff' : 'rgba(255,255,255,.7)',
-                    borderRadius:10, padding:'9px 16px',
-                    fontFamily:"'Poppins',sans-serif", fontWeight:800,
-                    fontSize:'.88rem', cursor: n > disponibles.length ? 'not-allowed' : 'pointer',
-                    opacity: n > disponibles.length ? .35 : 1,
-                    transition:'all .15s',
-                    letterSpacing: activo ? '.5px' : 0,
-                    boxShadow: activo ? `0 4px 16px ${VERDE}44` : 'none',
-                  }}>
-                  ×{n}
-                </button>
-              );
-            })}
-            {/* Input personalizado */}
-            <input
-  type="number" min="1" max={disponibles.length}
-  value={[1,2,3,5,10,20].includes(parseInt(qpCant)) ? '' : qpCant}
-onChange={e => {
-  const v = e.target.value;
-  if (v === '' || (parseInt(v) > 0 && parseInt(v) <= disponibles.length)) {
-    setQpCant(v);
-  }
-}}
-placeholder="Ej: 15, 30..."
-              style={{
-                width:80, padding:'9px 12px',
-                background:'rgba(255,255,255,.07)',
-                border:'1.5px solid rgba(255,255,255,.12)',
-                borderRadius:10, color:'#fff',
-                fontFamily:"'Poppins',sans-serif", fontSize:'.88rem', fontWeight:700,
-                outline:'none', textAlign:'center',
-              }}
-            />
-          </div>
+  {[1,2,3,5,10,20].map(n => {
+    const activo = parseInt(qpCant) === n && qpInputVal === '';
+    return (
+      <button key={n} onClick={() => { setQpCant(String(n)); setQpInputVal(''); }}
+        disabled={n > disponibles.length}
+        style={{
+          background: activo
+            ? `linear-gradient(135deg,${VERDE},#16a34a)`
+            : 'rgba(255,255,255,.07)',
+          border: activo ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)',
+          color: activo ? '#fff' : 'rgba(255,255,255,.7)',
+          borderRadius:10, padding:'9px 16px',
+          fontFamily:"'Poppins',sans-serif", fontWeight:800,
+          fontSize:'.88rem', cursor: n > disponibles.length ? 'not-allowed' : 'pointer',
+          opacity: n > disponibles.length ? .35 : 1,
+          transition:'all .15s',
+          letterSpacing: activo ? '.5px' : 0,
+          boxShadow: activo ? `0 4px 16px ${VERDE}44` : 'none',
+        }}>
+        ×{n}
+      </button>
+    );
+  })}
+  <input
+    type="number" min="1" max={disponibles.length}
+    value={qpInputVal}
+    onChange={e => {
+      const v = e.target.value;
+      setQpInputVal(v);
+      if (v !== '' && parseInt(v) > 0) setQpCant(v);
+      else if (v === '') setQpCant('');
+    }}
+    placeholder="Otro nro..."
+    style={{
+      width:90, padding:'9px 12px',
+      background: qpInputVal !== '' ? 'rgba(34,197,94,.15)' : 'rgba(255,255,255,.07)',
+      border: qpInputVal !== '' ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)',
+      borderRadius:10, color:'#fff',
+      fontFamily:"'Poppins',sans-serif", fontSize:'.88rem', fontWeight:700,
+      outline:'none', textAlign:'center',
+    }}
+  />
+</div>
         </div>
 
         {/* Botón principal */}
