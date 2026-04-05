@@ -41,7 +41,8 @@ const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
-  vendedores_ids: [],   // ← NUEVO: ids de vendedores seleccionados
+  // [{ vendedor_id, categoria_id }] — cada entrada es vendedor + categoría elegida
+  vendedores_categorias: [],
 };
 
 const fmtCOP = v =>
@@ -188,170 +189,207 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   SELECTOR DE VENDEDORES (multiselect con checkbox)
-   ─ Se usa dentro del formulario de rifa
-   ─ Muestra cada vendedor con cuántos números tiene asignados
+   SELECTOR DE VENDEDORES + CATEGORÍA
+   ─ Muestra cada vendedor. Al seleccionarlo, expande sus
+     categorías (cargadas desde /vendedores/:id/categorias).
+   ─ El usuario elige vendedor + categoría → ambos quedan en
+     vendedores_categorias: [{ vendedor_id, categoria_id }]
 ════════════════════════════════════════════════════════════ */
 function SelectorVendedores({ vendedores, seleccionados, onChange }) {
-  const totalNumerosSeleccionados = vendedores
-    .filter(v => seleccionados.includes(v.id))
-    .reduce((acc, v) => acc + (v.numeros_asignados?.length || v.numeros_count || 0), 0);
+  // seleccionados = [{ vendedor_id, categoria_id }]
+  const [expandido,   setExpandido]   = useState(null);   // vendedor_id expandido
+  const [categorias,  setCategorias]  = useState({});     // { vendedor_id: [...cats] }
+  const [loadingCats, setLoadingCats] = useState({});     // { vendedor_id: bool }
 
-  const toggleVendedor = (id) => {
-    if (seleccionados.includes(id)) {
-      onChange(seleccionados.filter(sid => sid !== id));
+  /* ── Cargar categorías de un vendedor al expandir ── */
+  const expandirVendedor = async (vendedorId) => {
+    if (expandido === vendedorId) { setExpandido(null); return; }
+    setExpandido(vendedorId);
+    if (categorias[vendedorId]) return; // ya cargadas
+    setLoadingCats(p => ({ ...p, [vendedorId]: true }));
+    try {
+      const res = await API.get(`/vendedores/${vendedorId}/categorias`);
+      setCategorias(p => ({ ...p, [vendedorId]: res.data }));
+    } catch { toast.error('Error cargando categorías del vendedor'); }
+    finally { setLoadingCats(p => ({ ...p, [vendedorId]: false })); }
+  };
+
+  /* ── Toggle de una categoría ── */
+  const toggleCategoria = (vendedorId, categoriaId) => {
+    const yaEsta = seleccionados.some(s => s.vendedor_id === vendedorId && s.categoria_id === categoriaId);
+    if (yaEsta) {
+      // quitar
+      onChange(seleccionados.filter(s => !(s.vendedor_id === vendedorId && s.categoria_id === categoriaId)));
     } else {
-      onChange([...seleccionados, id]);
+      // agregar (un vendedor puede tener múltiples categorías seleccionadas)
+      onChange([...seleccionados, { vendedor_id: vendedorId, categoria_id: categoriaId }]);
     }
   };
 
-  const toggleTodos = () => {
-    const activos = vendedores.filter(v => v.activo && (v.numeros_asignados?.length || v.numeros_count || 0) > 0);
-    const todosSeleccionados = activos.every(v => seleccionados.includes(v.id));
-    if (todosSeleccionados) {
-      onChange([]);
-    } else {
-      onChange(activos.map(v => v.id));
-    }
-  };
+  /* ── Helpers ── */
+  const vendedorTieneAlgoSeleccionado = (vid) => seleccionados.some(s => s.vendedor_id === vid);
+  const categoriaEstaSeleccionada     = (vid, cid) => seleccionados.some(s => s.vendedor_id === vid && s.categoria_id === cid);
+  const totalNumerosSeleccionados     = seleccionados.reduce((acc, s) => {
+    const cats = categorias[s.vendedor_id] || [];
+    const cat  = cats.find(c => c.id === s.categoria_id);
+    return acc + (cat?.numeros_count || 0);
+  }, 0);
 
-  const vendedoresConNumeros  = vendedores.filter(v => v.activo && (v.numeros_asignados?.length || v.numeros_count || 0) > 0);
-  const vendedoresSinNumeros  = vendedores.filter(v => v.activo && (v.numeros_asignados?.length || v.numeros_count || 0) === 0);
-  const vendedoresInactivos   = vendedores.filter(v => !v.activo);
+  const activos   = vendedores.filter(v => v.activo);
+  const inactivos = vendedores.filter(v => !v.activo);
 
   return (
     <div>
-      {/* Cabecera del selector */}
+      {/* Resumen */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: '.72rem', color: 'var(--jordyn-muted)' }}>
-          <span style={{ fontWeight: 700, color: 'var(--jordyn-primary)' }}>{seleccionados.length}</span> vendedor(es) seleccionado(s)
+          <span style={{ fontWeight: 700, color: 'var(--jordyn-primary)' }}>{seleccionados.length}</span> categoría(s) seleccionada(s)
           {totalNumerosSeleccionados > 0 && (
-            <span style={{ marginLeft: 8, color: 'var(--jordyn-gold)', fontWeight: 700 }}>
-              · {totalNumerosSeleccionados} números reservados
-            </span>
+            <span style={{ marginLeft: 8, color: 'var(--jordyn-gold)', fontWeight: 700 }}>· {totalNumerosSeleccionados} números reservados</span>
           )}
         </div>
-        {vendedoresConNumeros.length > 0 && (
-          <button type="button" onClick={toggleTodos}
-            style={{ background: 'none', border: 'none', color: 'var(--jordyn-primary)', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', padding: '2px 6px' }}>
-            {vendedoresConNumeros.every(v => seleccionados.includes(v.id)) ? 'Deseleccionar todos' : 'Seleccionar todos'}
+        {seleccionados.length > 0 && (
+          <button type="button" onClick={() => onChange([])}
+            style={{ background: 'none', border: 'none', color: 'var(--jordyn-red)', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer' }}>
+            Quitar todos
           </button>
         )}
       </div>
 
-      {vendedores.length === 0 && (
+      {activos.length === 0 && (
         <div className="jd-alert jd-alert-warning" style={{ fontSize: '.78rem' }}>
-          <i className="bi bi-exclamation-triangle-fill me-2"></i>
-          No hay vendedores registrados. Crea vendedores primero.
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>No hay vendedores activos.
         </div>
       )}
 
-      {/* Lista de vendedores con números */}
-      {vendedoresConNumeros.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-          {vendedoresConNumeros.map(v => {
-            const numerosCount = v.numeros_asignados?.length || v.numeros_count || 0;
-            const isSelected   = seleccionados.includes(v.id);
-            return (
-              <div key={v.id}
-                onClick={() => toggleVendedor(v.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                  border: `2px solid ${isSelected ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`,
-                  background: isSelected ? 'rgba(10,191,188,0.07)' : 'var(--jordyn-bg2)',
-                  transition: 'all .15s',
-                }}
-              >
-                {/* Checkbox visual */}
-                <div style={{
-                  width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                  border: `2px solid ${isSelected ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`,
-                  background: isSelected ? 'var(--jordyn-primary)' : '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all .15s',
-                }}>
-                  {isSelected && <i className="bi bi-check2" style={{ color: '#fff', fontSize: '.75rem', fontWeight: 900 }}></i>}
-                </div>
+      {/* Lista de vendedores activos */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {activos.map(v => {
+          const isExpanded   = expandido === v.id;
+          const tieneAlgo    = vendedorTieneAlgoSeleccionado(v.id);
+          const cats         = categorias[v.id] || [];
+          const cargando     = loadingCats[v.id];
+
+          return (
+            <div key={v.id} style={{ border: `2px solid ${tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
+
+              {/* Cabecera del vendedor — click expande */}
+              <div onClick={() => expandirVendedor(v.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: tieneAlgo ? 'rgba(10,191,188,0.07)' : 'var(--jordyn-bg2)', userSelect: 'none' }}>
+
+                {/* Indicador selección */}
+                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-border)' }}></div>
 
                 {/* Avatar */}
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                  background: isSelected ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.08)',
-                  border: `2px solid ${isSelected ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 800, fontSize: '.9rem', color: 'var(--jordyn-primary)',
-                }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: tieneAlgo ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.08)', border: `2px solid ${tieneAlgo ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.88rem', color: 'var(--jordyn-primary)' }}>
                   {v.nombre.charAt(0).toUpperCase()}
                 </div>
 
                 {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '.88rem', color: isSelected ? 'var(--jordyn-primary)' : 'var(--jordyn-text)' }}>
-                    {v.nombre}
+                  <div style={{ fontWeight: 700, fontSize: '.88rem', color: tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-text)' }}>{v.nombre}</div>
+                  <div style={{ fontSize: '.62rem', color: 'var(--jordyn-muted)' }}>
+                    {tieneAlgo
+                      ? `${seleccionados.filter(s => s.vendedor_id === v.id).length} categoría(s) seleccionada(s)`
+                      : 'Click para ver categorías'}
                   </div>
-                  <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)' }}>@{v.usuario}</div>
                 </div>
 
-                {/* Badge números */}
-                <div style={{
-                  background: isSelected ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.06)',
-                  border: `1.5px solid ${isSelected ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`,
-                  borderRadius: 8, padding: '4px 10px', textAlign: 'center', flexShrink: 0,
-                }}>
-                  <div style={{ fontWeight: 800, fontSize: '.95rem', color: 'var(--jordyn-primary)' }}>{numerosCount}</div>
-                  <div style={{ fontSize: '.55rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase' }}>números</div>
-                </div>
+                {/* Chevron */}
+                <i className={`bi bi-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: 'var(--jordyn-muted)', fontSize: '0.8rem' }}></i>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Vendedores sin números — deshabilitados */}
-      {vendedoresSinNumeros.length > 0 && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
-            Sin números asignados (no pueden participar)
-          </div>
-          {vendedoresSinNumeros.map(v => (
-            <div key={v.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', borderRadius: 8, marginBottom: 4,
-              background: 'var(--jordyn-bg2)', border: '1px dashed var(--jordyn-border)',
-              opacity: 0.5,
-            }}>
-              <div style={{ width: 20, height: 20, borderRadius: 5, border: '2px solid var(--jordyn-border)', background: '#f5f5f5', flexShrink: 0 }}></div>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(10,191,188,0.05)', border: '1.5px solid var(--jordyn-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.85rem', color: 'var(--jordyn-muted)', flexShrink: 0 }}>
-                {v.nombre.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '.82rem', color: 'var(--jordyn-muted)' }}>{v.nombre}</div>
-                <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>Sin números — asigna números en el módulo de Vendedores</div>
-              </div>
+              {/* Panel de categorías expandido */}
+              {isExpanded && (
+                <div style={{ padding: '10px 14px', borderTop: '1px solid var(--jordyn-border)', background: '#fff' }}>
+                  {cargando ? (
+                    <div className="d-flex justify-content-center py-3">
+                      <div className="jd-spinner" style={{ width: 20, height: 20 }}></div>
+                    </div>
+                  ) : cats.length === 0 ? (
+                    <div style={{ fontSize: '.78rem', color: 'var(--jordyn-muted)', padding: '8px 0', textAlign: 'center' }}>
+                      <i className="bi bi-exclamation-circle me-1"></i>
+                      Este vendedor no tiene categorías. Créalas en el módulo de Vendedores.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: '.62rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 2 }}>
+                        Selecciona la(s) categoría(s) a asignar en esta rifa:
+                      </div>
+                      {cats.map(cat => {
+                        const isSel = categoriaEstaSeleccionada(v.id, cat.id);
+                        return (
+                          <div key={cat.id} onClick={() => toggleCategoria(v.id, cat.id)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', border: `2px solid ${isSel ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: isSel ? 'rgba(10,191,188,0.08)' : 'var(--jordyn-bg2)', transition: 'all .12s' }}>
+
+                            {/* Checkbox */}
+                            <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, border: `2px solid ${isSel ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: isSel ? 'var(--jordyn-primary)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s' }}>
+                              {isSel && <i className="bi bi-check2" style={{ color: '#fff', fontSize: '.65rem' }}></i>}
+                            </div>
+
+                            {/* Badge categoría */}
+                            <div style={{ background: isSel ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.06)', border: `1px solid ${isSel ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, borderRadius: 6, padding: '2px 10px', fontWeight: 800, fontSize: '.78rem', color: 'var(--jordyn-primary)', flexShrink: 0 }}>
+                              {cat.nombre}
+                            </div>
+
+                            {/* Info números */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>
+                                {cat.numeros_count} números asignados (límite: {cat.max_numeros})
+                              </div>
+                              {/* Mini barra */}
+                              <div style={{ height: 4, borderRadius: 4, background: 'var(--jordyn-border)', marginTop: 3, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${cat.max_numeros ? (cat.numeros_count / cat.max_numeros * 100) : 0}%`, background: 'var(--jordyn-primary)', borderRadius: 4 }} />
+                              </div>
+                            </div>
+
+                            {/* Badge números count */}
+                            <div style={{ background: isSel ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.06)', border: `1.5px solid ${isSel ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, borderRadius: 8, padding: '4px 9px', textAlign: 'center', flexShrink: 0 }}>
+                              <div style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--jordyn-primary)' }}>{cat.numeros_count}</div>
+                              <div style={{ fontSize: '.5rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase' }}>nums</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
 
-      {/* Resumen de números reservados */}
-      {seleccionados.length > 0 && totalNumerosSeleccionados > 0 && (
-        <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(10,191,188,0.06)', border: '1.5px solid rgba(10,191,188,0.2)', borderRadius: 10 }}>
-          <div style={{ fontSize: '.72rem', color: 'var(--jordyn-primary)', fontWeight: 700, marginBottom: 4 }}>
-            <i className="bi bi-lock-fill me-1"></i>
-            Números que quedarán reservados (no visibles al público)
+        {/* Vendedores inactivos */}
+        {inactivos.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Inactivos (no participan)</div>
+            {inactivos.map(v => (
+              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, marginBottom: 4, background: 'var(--jordyn-bg2)', border: '1px dashed var(--jordyn-border)', opacity: 0.45 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--jordyn-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.8rem', color: 'var(--jordyn-muted)' }}>{v.nombre.charAt(0)}</div>
+                <div style={{ fontSize: '.8rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>{v.nombre}</div>
+              </div>
+            ))}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {vendedores
-              .filter(v => seleccionados.includes(v.id))
-              .map(v => {
-                const nums = v.numeros_asignados?.length || v.numeros_count || 0;
-                return (
-                  <span key={v.id} style={{ background: 'rgba(10,191,188,0.12)', border: '1px solid rgba(10,191,188,0.3)', borderRadius: 6, padding: '2px 8px', fontSize: '.68rem', color: 'var(--jordyn-primary)', fontWeight: 700 }}>
-                    {v.nombre.split(' ')[0]}: {nums} nums
-                  </span>
-                );
-              })}
+        )}
+      </div>
+
+      {/* Resumen final de lo seleccionado */}
+      {seleccionados.length > 0 && (
+        <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(10,191,188,0.06)', border: '1.5px solid rgba(10,191,188,0.2)', borderRadius: 10 }}>
+          <div style={{ fontSize: '.72rem', color: 'var(--jordyn-primary)', fontWeight: 700, marginBottom: 6 }}>
+            <i className="bi bi-lock-fill me-1"></i>Números que quedarán reservados en esta rifa
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {seleccionados.map((s, i) => {
+              const vend = vendedores.find(v => v.id === s.vendedor_id);
+              const cats = categorias[s.vendedor_id] || [];
+              const cat  = cats.find(c => c.id === s.categoria_id);
+              return (
+                <span key={i} style={{ background: 'rgba(10,191,188,0.12)', border: '1px solid rgba(10,191,188,0.3)', borderRadius: 6, padding: '2px 9px', fontSize: '.68rem', color: 'var(--jordyn-primary)', fontWeight: 700 }}>
+                  {vend?.nombre?.split(' ')[0] || '?'} · {cat?.nombre || '?'}: {cat?.numeros_count || 0} nums
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -803,7 +841,7 @@ export default function GestionRifas() {
       tipo:           r.tipo         || 'sencilla',
       imagen_base64:  r.imagen_url   || '',
       ofertas:        Array.isArray(r.ofertas) ? r.ofertas : [],
-      vendedores_ids: Array.isArray(r.vendedores_ids) ? r.vendedores_ids : (r.vendedores?.map(v => v.id) || []),
+      vendedores_categorias: Array.isArray(r.vendedores_categorias) ? r.vendedores_categorias : (r.vendedores?.map(v => ({ vendedor_id: v.id, categoria_id: v.categoria_id })).filter(x => x.categoria_id) || []),
     });
     setEditId(r.id);
     setShowForm(true);
@@ -825,7 +863,7 @@ export default function GestionRifas() {
         tipo:          form.tipo,
         imagen_url:    form.imagen_base64 || null,
         ofertas:       form.ofertas || [],
-        vendedores_ids: form.vendedores_ids || [],   // ← NUEVO: enviar al backend
+        vendedores_categorias: form.vendedores_categorias || [],
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
@@ -1133,8 +1171,8 @@ export default function GestionRifas() {
                   </p>
                   <SelectorVendedores
                     vendedores={vendedores}
-                    seleccionados={form.vendedores_ids}
-                    onChange={ids => setForm(p => ({ ...p, vendedores_ids: ids }))}
+                    seleccionados={form.vendedores_categorias}
+                    onChange={sel => setForm(p => ({ ...p, vendedores_categorias: sel }))}
                   />
                 </div>
               </div>

@@ -449,6 +449,370 @@ function ModalNumeros({ vendedor, numerosOcupados, onClose, onSaved }) {
   );
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL DE CATEGORÍAS DE NÚMEROS — por vendedor
+   Cada categoría tiene: nombre, límite de números y sus números
+═══════════════════════════════════════════════════════════════ */
+function ModalCategorias({ vendedor, onClose, onSaved }) {
+  const [categorias,   setCategorias]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [catActiva,    setCatActiva]    = useState(null);   // categoría expandida
+  const [formCat,      setFormCat]      = useState({ nombre: '', max_numeros: '' });
+  const [editCat,      setEditCat]      = useState(null);   // id de la cat en edición
+  const [showFormCat,  setShowFormCat]  = useState(false);
+  const [savingCat,    setSavingCat]    = useState(false);
+  // nums
+  const [numInput,     setNumInput]     = useState('');
+  const [rangoIni,     setRangoIni]     = useState('');
+  const [rangoFin,     setRangoFin]     = useState('');
+  const [cantidad,     setCantidad]     = useState(5);
+  const [tabNum,       setTabNum]       = useState('manual');
+  const [loadingNums,  setLoadingNums]  = useState(false);
+
+  const loadCats = async () => {
+    setLoading(true);
+    try {
+      const res = await API.get(`/vendedores/${vendedor.id}/categorias`);
+      setCategorias(res.data);
+    } catch { toast.error('Error cargando categorías'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadCats(); }, [vendedor.id]);
+
+  /* ── Totales globales ── */
+  const totalNumerosAsignados = categorias.reduce((s, c) => s + (c.numeros_count || 0), 0);
+
+  /* ── CRUD categoría ── */
+  const abrirFormCat = (cat = null) => {
+    setEditCat(cat ? cat.id : null);
+    setFormCat(cat ? { nombre: cat.nombre, max_numeros: String(cat.max_numeros) } : { nombre: '', max_numeros: '' });
+    setShowFormCat(true);
+  };
+
+  const guardarCat = async () => {
+    if (!formCat.nombre.trim()) { toast.error('El nombre es requerido'); return; }
+    const max = parseInt(formCat.max_numeros);
+    if (!max || max < 1) { toast.error('El límite de números debe ser mayor a 0'); return; }
+    setSavingCat(true);
+    try {
+      if (editCat) {
+        await API.put(`/vendedores/${vendedor.id}/categorias/${editCat}`, { nombre: formCat.nombre, max_numeros: max });
+        toast.success('Categoría actualizada');
+      } else {
+        await API.post(`/vendedores/${vendedor.id}/categorias`, { nombre: formCat.nombre, max_numeros: max });
+        toast.success('Categoría creada');
+      }
+      setShowFormCat(false); setFormCat({ nombre: '', max_numeros: '' }); setEditCat(null);
+      await loadCats(); onSaved && onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error guardando categoría'); }
+    finally { setSavingCat(false); }
+  };
+
+  const eliminarCat = async (cat) => {
+    if (!window.confirm(`¿Eliminar la categoría "${cat.nombre}"? Sus números quedarán libres.`)) return;
+    try {
+      await API.delete(`/vendedores/${vendedor.id}/categorias/${cat.id}`);
+      toast.success('Categoría eliminada');
+      if (catActiva === cat.id) setCatActiva(null);
+      await loadCats(); onSaved && onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error eliminando'); }
+  };
+
+  /* ── Manejo de números de la categoría activa ── */
+  const catData = categorias.find(c => c.id === catActiva);
+  const numerosOcupados = categorias.flatMap(c =>
+    c.id !== catActiva ? (c.numeros || []) : []
+  );
+  const disponibles = (catData?.max_numeros || 0) - (catData?.numeros_count || 0);
+
+  const agregarNums = async (nums) => {
+    if (!catActiva) return;
+    const ocupados = nums.filter(n => numerosOcupados.includes(n) || (catData?.numeros || []).includes(n));
+    const validos  = nums.filter(n => /^\d{3}$/.test(n) && !numerosOcupados.includes(n) && !(catData?.numeros || []).includes(n));
+    if (ocupados.length) toast.warning(`${ocupados.length} número(s) ya usados`);
+    if (!validos.length) return;
+    if (validos.length > disponibles) {
+      toast.error(`Solo quedan ${disponibles} cupos en esta categoría`); return;
+    }
+    try {
+      await API.post(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { numeros: validos });
+      toast.success(`${validos.length} número(s) asignados`);
+      await loadCats(); onSaved && onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error asignando'); }
+  };
+
+  const quitarNum = async (num) => {
+    try {
+      await API.delete(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { data: { numeros: [num] } });
+      await loadCats(); onSaved && onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'No se puede quitar'); }
+  };
+
+  const quitarTodosNums = async () => {
+    if (!catData?.numeros?.length) return;
+    if (!window.confirm('¿Quitar todos los números de esta categoría?')) return;
+    try {
+      await API.delete(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { data: { numeros: catData.numeros } });
+      await loadCats(); onSaved && onSaved();
+      toast.info('Números removidos');
+    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
+  };
+
+  const agregarManual = () => {
+    const num = numInput.padStart(3, '0');
+    if (!/^\d{3}$/.test(num)) { toast.error('Número inválido (000–999)'); return; }
+    agregar([num]); setNumInput('');
+  };
+  // alias para llamar agregarNums
+  const agregar = agregarNums;
+
+  const agregarRango = () => {
+    const ini = parseInt(rangoIni), fin = parseInt(rangoFin);
+    if (isNaN(ini) || isNaN(fin) || ini > fin || ini < 0 || fin > 999) { toast.error('Rango inválido'); return; }
+    const nums = [];
+    for (let i = ini; i <= fin; i++) nums.push(String(i).padStart(3, '0'));
+    agregar(nums);
+  };
+
+  const agregarAleatorios = async () => {
+    setLoadingNums(true);
+    try {
+      const excluir = [...new Set([...numerosOcupados, ...(catData?.numeros || [])])];
+      const res = await API.get(`/vendedores/${vendedor.id}/categorias/numeros-disponibles`, {
+        params: { cantidad, excluir: excluir.join(',') }
+      });
+      const nums = res.data.numeros || [];
+      if (!nums.length) { toast.warning('No hay números disponibles'); return; }
+      await agregar(nums);
+    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
+    finally { setLoadingNums(false); }
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,30,30,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ width: '100%', maxWidth: 820, maxHeight: '93vh', background: '#fff', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(10,191,188,0.22)' }}>
+
+        {/* ── Header ── */}
+        <div style={{ background: 'var(--jordyn-primary)', color: '#fff', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
+              <i className="bi bi-tags-fill me-2"></i>CATEGORÍAS — {vendedor.nombre}
+            </div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
+              {categorias.length} categoría(s) · {totalNumerosAsignados} números asignados en total
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}>
+
+          {/* ── Info ── */}
+          <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem', lineHeight: 1.6 }}>
+            <i className="bi bi-info-circle-fill me-2"></i>
+            Crea categorías con un límite de números. Al asignar el vendedor a una rifa podrás elegir qué categoría usar — solo esos números quedarán reservados.
+          </div>
+
+          {/* ── Botón nueva categoría ── */}
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+              Categorías ({categorias.length})
+            </span>
+            <button className="btn-jordyn" onClick={() => abrirFormCat()} style={{ fontSize: '0.78rem', padding: '7px 14px' }}>
+              <i className="bi bi-plus-lg me-1"></i>Nueva categoría
+            </button>
+          </div>
+
+          {/* ── Formulario categoría ── */}
+          {showFormCat && (
+            <div className="jd-card jd-card-primary mb-3 fade-in" style={{ padding: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--jordyn-primary)', marginBottom: '0.75rem' }}>
+                {editCat ? '✏️ Editar categoría' : '➕ Nueva categoría'}
+              </div>
+              <div className="d-flex gap-2 flex-wrap align-items-end">
+                <div style={{ flex: '1 1 180px' }}>
+                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>NOMBRE *</label>
+                  <input className="jd-input" value={formCat.nombre}
+                    onChange={e => setFormCat(p => ({ ...p, nombre: e.target.value }))}
+                    placeholder="Ej: Premium, Básico, VIP..." autoFocus />
+                </div>
+                <div style={{ flex: '0 0 130px' }}>
+                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>LÍMITE DE NÚMEROS *</label>
+                  <input className="jd-input" type="number" min={1} max={1000}
+                    value={formCat.max_numeros}
+                    onChange={e => setFormCat(p => ({ ...p, max_numeros: e.target.value }))}
+                    placeholder="30" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem' }} />
+                </div>
+                <button className="btn-jordyn" onClick={guardarCat} disabled={savingCat} style={{ height: 44, padding: '0 16px', fontSize: '0.82rem' }}>
+                  {savingCat ? 'Guardando...' : <><i className="bi bi-floppy-fill me-1"></i>Guardar</>}
+                </button>
+                <button className="btn-jordyn-outline" onClick={() => { setShowFormCat(false); setEditCat(null); }} style={{ height: 44, padding: '0 14px', fontSize: '0.82rem' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Lista de categorías ── */}
+          {loading ? (
+            <div className="d-flex justify-content-center py-4"><div className="jd-spinner" style={{ width: 32, height: 32 }}></div></div>
+          ) : categorias.length === 0 ? (
+            <div className="jd-alert jd-alert-warning" style={{ fontSize: '0.82rem' }}>
+              <i className="bi bi-exclamation-triangle-fill me-2"></i>
+              Sin categorías. Crea una para empezar a asignar números.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {categorias.map(cat => {
+                const isOpen  = catActiva === cat.id;
+                const pct     = cat.max_numeros ? Math.round((cat.numeros_count / cat.max_numeros) * 100) : 0;
+                const llena   = cat.numeros_count >= cat.max_numeros;
+                return (
+                  <div key={cat.id} style={{ border: `2px solid ${isOpen ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, borderRadius: 12, overflow: 'hidden', transition: 'border-color .15s' }}>
+
+                    {/* ── Cabecera de la categoría ── */}
+                    <div
+                      onClick={() => setCatActiva(isOpen ? null : cat.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.85rem 1rem', cursor: 'pointer', background: isOpen ? 'rgba(10,191,188,0.06)' : 'var(--jordyn-bg2)', userSelect: 'none' }}
+                    >
+                      {/* Icono expand */}
+                      <i className={`bi bi-chevron-${isOpen ? 'down' : 'right'}`} style={{ color: 'var(--jordyn-primary)', fontSize: '0.8rem', flexShrink: 0 }}></i>
+
+                      {/* Badge nombre */}
+                      <div style={{ background: 'rgba(10,191,188,0.12)', border: '1.5px solid rgba(10,191,188,0.3)', borderRadius: 8, padding: '3px 12px', fontWeight: 800, fontSize: '0.82rem', color: 'var(--jordyn-primary)', flexShrink: 0 }}>
+                        {cat.nombre}
+                      </div>
+
+                      {/* Progreso */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--jordyn-muted)', marginBottom: 3 }}>
+                          <span>{cat.numeros_count} / {cat.max_numeros} números</span>
+                          <span style={{ fontWeight: 700, color: llena ? 'var(--jordyn-red)' : 'var(--jordyn-green)' }}>
+                            {llena ? '🔴 Llena' : `${cat.max_numeros - cat.numeros_count} libres`}
+                          </span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 6, background: 'var(--jordyn-border)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 6, width: `${pct}%`, background: llena ? 'var(--jordyn-red)' : 'linear-gradient(90deg,var(--jordyn-primary),var(--jordyn-green))', transition: 'width 0.4s' }} />
+                        </div>
+                      </div>
+
+                      {/* Acciones (no propagan el click de expand) */}
+                      <div className="d-flex gap-1" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => abrirFormCat(cat)}
+                          style={{ background: 'rgba(17,138,178,0.08)', border: '1.5px solid rgba(17,138,178,0.25)', color: 'var(--jordyn-blue)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                          <i className="bi bi-pencil-fill"></i>
+                        </button>
+                        <button onClick={() => eliminarCat(cat)}
+                          style={{ background: 'rgba(230,57,70,0.08)', border: '1.5px solid rgba(230,57,70,0.3)', color: 'var(--jordyn-red)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                          <i className="bi bi-trash3-fill"></i>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ── Panel de números de la categoría ── */}
+                    {isOpen && (
+                      <div style={{ padding: '1rem', borderTop: '1px solid var(--jordyn-border)', background: '#fff' }}>
+
+                        {/* Tabs de asignación */}
+                        <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)', marginBottom: '0.85rem' }}>
+                          {[['manual','Manual'], ['rango','Rango'], ['aleatorio','Aleatorios']].map(([k, l]) => (
+                            <button key={k} onClick={() => setTabNum(k)} style={{ flex: 1, padding: '7px 4px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, background: tabNum === k ? 'var(--jordyn-primary)' : 'transparent', color: tabNum === k ? '#fff' : 'var(--jordyn-muted)', borderRight: k !== 'aleatorio' ? '1.5px solid var(--jordyn-border)' : 'none' }}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Panel manual */}
+                        {tabNum === 'manual' && (
+                          <div className="d-flex gap-2 mb-3">
+                            <input className="jd-input" style={{ maxWidth: 90, textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.05rem' }}
+                              value={numInput} onChange={e => setNumInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                              onKeyDown={e => e.key === 'Enter' && agregarManual()} placeholder="000" maxLength={3} />
+                            <button className="btn-jordyn" onClick={agregarManual} disabled={llena} style={{ fontSize: '0.82rem' }}>
+                              <i className="bi bi-plus-lg me-1"></i>Agregar
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Panel rango */}
+                        {tabNum === 'rango' && (
+                          <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
+                            <div>
+                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>DESDE</label>
+                              <input className="jd-input" type="number" min={0} max={999} style={{ maxWidth: 80 }} value={rangoIni} onChange={e => setRangoIni(e.target.value)} placeholder="0" />
+                            </div>
+                            <div>
+                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>HASTA</label>
+                              <input className="jd-input" type="number" min={0} max={999} style={{ maxWidth: 80 }} value={rangoFin} onChange={e => setRangoFin(e.target.value)} placeholder="29" />
+                            </div>
+                            <button className="btn-jordyn" onClick={agregarRango} disabled={llena} style={{ fontSize: '0.82rem' }}>
+                              <i className="bi bi-list-ol me-1"></i>Agregar rango
+                            </button>
+                            {rangoIni !== '' && rangoFin !== '' && parseInt(rangoFin) >= parseInt(rangoIni) && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--jordyn-muted)', alignSelf: 'center' }}>= {parseInt(rangoFin) - parseInt(rangoIni) + 1} números</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Panel aleatorio */}
+                        {tabNum === 'aleatorio' && (
+                          <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
+                            <div>
+                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>CANTIDAD</label>
+                              <input className="jd-input" type="number" min={1} max={disponibles} style={{ maxWidth: 80 }}
+                                value={cantidad} onChange={e => setCantidad(Number(e.target.value))} />
+                            </div>
+                            <button className="btn-jordyn" onClick={agregarAleatorios} disabled={loadingNums || llena} style={{ fontSize: '0.82rem' }}>
+                              {loadingNums ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span> Asignando...</> : <><i className="bi bi-shuffle me-1"></i>Aleatorios</>}
+                            </button>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--jordyn-muted)', alignSelf: 'center' }}>{disponibles} cupos disponibles</span>
+                          </div>
+                        )}
+
+                        {/* Números asignados */}
+                        <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 10, padding: '0.8rem', border: '1px solid var(--jordyn-border)' }}>
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase' }}>
+                              {cat.numeros_count} números asignados
+                            </span>
+                            {cat.numeros_count > 0 && (
+                              <button onClick={quitarTodosNums} style={{ background: 'none', border: 'none', color: 'var(--jordyn-red)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>
+                                <i className="bi bi-trash3 me-1"></i>Quitar todos
+                              </button>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+                            {(cat.numeros || []).length === 0 && (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--jordyn-muted)' }}>Sin números — usa los botones de arriba para agregar.</span>
+                            )}
+                            {(cat.numeros || []).map(n => (
+                              <span key={n} onClick={() => quitarNum(n)} title="Click para quitar"
+                                style={{ background: 'rgba(10,191,188,0.10)', border: '1.5px solid rgba(10,191,188,0.30)', color: 'var(--jordyn-primary)', borderRadius: 6, padding: '2px 8px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, transition: 'all 0.12s' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(230,57,70,0.10)'; e.currentTarget.style.borderColor = 'rgba(230,57,70,0.35)'; e.currentTarget.style.color = 'var(--jordyn-red)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(10,191,188,0.10)'; e.currentTarget.style.borderColor = 'rgba(10,191,188,0.30)'; e.currentTarget.style.color = 'var(--jordyn-primary)'; }}>
+                                {n} <i className="bi bi-x" style={{ fontSize: '0.6rem' }}></i>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════
    PÁGINA PRINCIPAL — GESTIÓN DE VENDEDORES
 ═══════════════════════════════════════════════════ */
@@ -460,6 +824,7 @@ export default function GestionVendedores() {
   const [showForm,       setShowForm]       = useState(false);
   const [editId,         setEditId]         = useState(null);
   const [modalVend,      setModalVend]      = useState(null);
+  const [modalCat,       setModalCat]       = useState(null);
   const [confirmDelete,  setConfirmDelete]  = useState(null);
 
   const load = useCallback(async () => {
@@ -492,7 +857,7 @@ export default function GestionVendedores() {
   }, 0);
   const totalLibresPool = TOTAL_NUMEROS - totalAsignadosPool;
 
-  /* ── CRUD vendedor */
+  /* ── CRUD vendedor ── */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.nombre.trim()) {
@@ -619,6 +984,24 @@ export default function GestionVendedores() {
 
           {/* Acciones */}
           <div className="d-flex gap-1">
+
+            {/* Gestionar categorías de números */}
+            <button
+              onClick={() => setModalCat(v)}
+              title="Gestionar categorías de números"
+              style={{
+                background: 'rgba(124,58,237,0.09)',
+                border: '1.5px solid rgba(124,58,237,0.30)',
+                color: '#7c3aed',
+                borderRadius: 7, padding: '5px 10px', cursor: 'pointer',
+                fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 4
+              }}
+            >
+              <i className="bi bi-tags-fill"></i>
+              <span className="hide-mobile" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                Categorías
+              </span>
+            </button>
 
             {/* Gestionar números globales */}
             <button
@@ -830,6 +1213,15 @@ export default function GestionVendedores() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal de categorías de números */}
+      {modalCat && (
+        <ModalCategorias
+          vendedor={modalCat}
+          onClose={() => setModalCat(null)}
+          onSaved={load}
+        />
       )}
 
       {/* Modal asignación de números globales */}
