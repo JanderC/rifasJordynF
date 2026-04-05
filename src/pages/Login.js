@@ -63,7 +63,7 @@ export default function Login() {
             letterSpacing: '2px',
             lineHeight: 1,
             marginBottom: 2,
-          }}>RIFAS</h1>
+          }}>RESUELVE</h1>
           <h1 style={{
             fontFamily: 'var(--jordyn-font)',
             fontWeight: 900,
@@ -72,7 +72,7 @@ export default function Login() {
             letterSpacing: '2px',
             lineHeight: 1,
             marginBottom: '0.5rem',
-          }}>JORDYN</h1>
+          }}>TU SEMANA</h1>
           <p style={{
             fontFamily: 'var(--jordyn-font)',
             fontSize: '0.68rem',
