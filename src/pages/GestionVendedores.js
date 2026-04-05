@@ -15,7 +15,24 @@ import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 
-const emptyForm = { nombre: '', usuario: '', password: '', rol: 'vendedor', cedula: '' };
+const emptyForm = { nombre: '', rol: 'vendedor' };
+
+/* ─── Genera usuario y contraseña automáticos desde el nombre ─── */
+function generarCredenciales(nombre) {
+  const base = nombre
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .join('_')
+    .slice(0, 20);
+  const sufijo = Math.floor(1000 + Math.random() * 9000); // 4 dígitos aleatorios
+  return {
+    usuario: `${base}_${sufijo}`,
+    password: `${base}${sufijo}`,
+  };
+}
 
 const fmtCOP = (p) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(p || 0);
@@ -478,19 +495,20 @@ export default function GestionVendedores() {
   /* ── CRUD vendedor ── */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.nombre || !form.usuario || (!editId && !form.password)) {
-      toast.error('Nombre, usuario y contraseña son requeridos'); return;
+    if (!form.nombre.trim()) {
+      toast.error('El nombre del vendedor es requerido'); return;
     }
     setSaving(true);
     try {
       if (editId) {
-        const payload = { nombre: form.nombre, cedula: form.cedula };
+        const payload = { nombre: form.nombre };
         if (form.password) payload.password = form.password;
         await API.put(`/vendedores/${editId}`, payload);
         toast.success('Vendedor actualizado');
       } else {
-        await API.post('/auth/register', { ...form, cedula: form.cedula });
-        toast.success('Vendedor creado');
+        const { usuario, password } = generarCredenciales(form.nombre);
+        await API.post('/auth/register', { ...form, usuario, password });
+        toast.success(`Vendedor creado — usuario: ${usuario} · contraseña: ${password}`);
       }
       setShowForm(false); setForm(emptyForm); setEditId(null); load();
     } catch (err) {
@@ -625,7 +643,7 @@ export default function GestionVendedores() {
             {/* Editar */}
             <button
               onClick={() => {
-                setForm({ nombre: v.nombre, usuario: v.usuario, password: '', rol: 'vendedor', cedula: v.cedula || '' });
+                setForm({ nombre: v.nombre, password: '', rol: 'vendedor' });
                 setEditId(v.id);
                 setShowForm(true);
               }}
@@ -729,34 +747,29 @@ export default function GestionVendedores() {
           </h5>
           <form onSubmit={handleSubmit}>
             <div className="row g-3">
-              <div className="col-12 col-md-5">
+              <div className="col-12 col-md-7">
                 <label className="jd-label">NOMBRE COMPLETO *</label>
                 <input className="jd-input" value={form.nombre}
                   onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Juan Pérez" />
+                  placeholder="Juan Pérez" autoFocus />
               </div>
-              {!editId && (
-                <div className="col-12 col-md-4">
-                  <label className="jd-label">NOMBRE DE USUARIO *</label>
-                  <input className="jd-input" value={form.usuario}
-                    onChange={e => setForm(p => ({ ...p, usuario: e.target.value.toLowerCase().replace(/\s/g, '') }))}
-                    placeholder="juan_perez" />
+              {editId && (
+                <div className="col-12 col-md-5">
+                  <label className="jd-label">NUEVA CONTRASEÑA (vacío = no cambiar)</label>
+                  <input className="jd-input" type="password" value={form.password || ''}
+                    onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                    placeholder="Mín. 6 caracteres" />
                 </div>
               )}
-              <div className="col-12 col-md-3">
-                <label className="jd-label">CÉDULA (para link público)</label>
-                <input className="jd-input" value={form.cedula}
-                  onChange={e => setForm(p => ({ ...p, cedula: e.target.value.replace(/\D/g, '') }))}
-                  placeholder="123456789" type="tel" />
-              </div>
-              <div className="col-12 col-md-5">
-                <label className="jd-label">
-                  {editId ? 'NUEVA CONTRASEÑA (vacío = no cambiar)' : 'CONTRASEÑA *'}
-                </label>
-                <input className="jd-input" type="password" value={form.password}
-                  onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                  placeholder="Mín. 6 caracteres" />
-              </div>
+              {!editId && (
+                <div className="col-12">
+                  <div className="jd-alert jd-alert-info" style={{ fontSize: '0.78rem', margin: 0 }}>
+                    <i className="bi bi-info-circle-fill me-2"></i>
+                    El usuario y contraseña se generarán automáticamente a partir del nombre.
+                    Los verás en pantalla al crear el vendedor.
+                  </div>
+                </div>
+              )}
             </div>
             <div className="d-flex gap-2 mt-3">
               <button type="submit" className="btn-jordyn" disabled={saving}>
