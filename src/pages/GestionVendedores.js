@@ -492,7 +492,7 @@ export default function GestionVendedores() {
   }, 0);
   const totalLibresPool = TOTAL_NUMEROS - totalAsignadosPool;
 
-  /* ── CRUD vendedor ── */
+  /* ── CRUD vendedor */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.nombre.trim()) {
