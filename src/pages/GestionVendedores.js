@@ -1,102 +1,583 @@
 // ============================================================
-//   GestionVendedores.js — RIFAS JORDYN
+//   GestionVendedores.js — RIFAS JORDYN (NUEVA ARQUITECTURA)
 //
-//   FLUJO DE NÚMEROS:
-//   - Los números (000–999) se asignan GLOBALMENTE al vendedor
-//     (no están ligados a ninguna rifa todavía)
-//   - Al crear/editar una rifa se hace multiselect de vendedores
-//     → sus números quedan reservados automáticamente para esa rifa
-//   - Un vendedor puede participar en múltiples rifas con los mismos números
-//   - Los números asignados a vendedores NO aparecen en la pantalla pública
-//     (solo se muestran los números disponibles / sin vendedor)
+//   FLUJO DE CATEGORÍAS GLOBALES:
+//   - Las categorías son GLOBALES (no por vendedor), tipo "Premio $1000"
+//   - Tipo PARCIAL:  pool único de 000–999.
+//       Un número solo puede pertenecer a UN vendedor en esa categoría.
+//   - Tipo SIMULTÁNEA: dos series (A: 000–999, B: 000–999).
+//       El mismo número puede estar en ambas series (uno por serie).
+//       Al asignar, el sistema busca la serie libre automáticamente.
+//   - Los vendedores se asignan DENTRO de una categoría con sus números.
+//   - Validación de colisión: misma categoría + mismo número + mismo tipo de serie
 // ============================================================
 import React, { useEffect, useState, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 
-const emptyForm = { nombre: '', rol: 'vendedor' };
-
-/* ─── Genera usuario y contraseña automáticos desde el nombre ─── */
-function generarCredenciales(nombre) {
-  const base = nombre
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
-    .replace(/[^a-z0-9\s]/g, '')
-    .trim()
-    .split(/\s+/)
-    .join('_')
-    .slice(0, 20);
-  const sufijo = Math.floor(1000 + Math.random() * 9000); // 4 dígitos aleatorios
-  return {
-    usuario: `${base}_${sufijo}`,
-    password: `${base}${sufijo}`,
-  };
-}
-
+/* ─── Helpers ─── */
 const fmtCOP = (p) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(p || 0);
 
-/* ─── Pool global: 000 → 999 ─── */
-const TOTAL_NUMEROS = 1000;
+const NUM_RE = /^\d{3}$/;
+const pad3   = (n) => String(n).padStart(3, '0');
 
-/* ─── Imprimir números del vendedor ─── */
-function imprimirNumeros(vendedor, numeros) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Números — ${vendedor.nombre}</title>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700;800&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Poppins', sans-serif; background: #fff; color: #1a2e2e; padding: 20px; }
-        .header { text-align: center; border-bottom: 3px solid #0abfbc; padding-bottom: 12px; margin-bottom: 16px; }
-        .header h1 { font-size: 22px; font-weight: 800; color: #0abfbc; }
-        .header p  { font-size: 11px; color: #6b9090; margin-top: 3px; }
-        .meta { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; font-size: 11px; color: #6b9090; }
-        .meta b { color: #1a2e2e; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 5px; }
-        .num { aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-               font-weight: 700; font-size: 11px; border: 1.5px solid #0abfbc;
-               border-radius: 6px; color: #0abfbc; background: rgba(10,191,188,0.06); }
-        .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #aaa; border-top: 1px dashed #ddd; padding-top: 10px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <h1>🎰  RIFAS JORDYN</h1>
-        <p>Números asignados para venta</p>
-      </div>
-      <div class="meta">
-        <span>Vendedor: <b>${vendedor.nombre}</b></span>
-        <span>Total: <b>${numeros.length} números</b></span>
-        <span>Fecha: <b>${new Date().toLocaleDateString('es-CO')}</b></span>
-      </div>
-      <div class="grid">
-        ${numeros.map(n => `<div class="num">${n}</div>`).join('')}
-      </div>
-      <div class="footer">
-        Impreso el ${new Date().toLocaleString('es-CO')} · Sistema RIFAS JORDYN
-      </div>
-    </body>
-    </html>
-  `;
-  const win = window.open('', '_blank', 'width=700,height=600');
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => { win.print(); };
+function generarCredenciales(nombre) {
+  const base = nombre
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '').trim()
+    .split(/\s+/).join('_').slice(0, 20);
+  const sufijo = Math.floor(1000 + Math.random() * 9000);
+  return { usuario: `${base}_${sufijo}`, password: `${base}${sufijo}` };
 }
 
-/* ═══════════════════════════════════════════════════
-   MODAL ASIGNACIÓN DE NÚMEROS GLOBALES
-   ─ Los números aquí son del vendedor en general,
-     sin rifa asociada. Se usan en rifas cuando el
-     vendedor es seleccionado en la creación de rifa.
-═══════════════════════════════════════════════════ */
-function ModalNumeros({ vendedor, numerosOcupados, onClose, onSaved }) {
-  // numerosOcupados = array de números ya asignados a OTROS vendedores
+/* ══════════════════════════════════════════════════════════════
+   ESTILOS INLINE COMPARTIDOS
+══════════════════════════════════════════════════════════════ */
+const S = {
+  overlay: {
+    position: 'fixed', inset: 0, zIndex: 9999,
+    background: 'rgba(8,22,22,0.72)', backdropFilter: 'blur(6px)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+  },
+  modal: (maxW = 740) => ({
+    width: '100%', maxWidth: maxW, maxHeight: '94vh',
+    background: '#fff', borderRadius: 18, overflow: 'hidden',
+    display: 'flex', flexDirection: 'column',
+    boxShadow: '0 32px 80px rgba(10,191,188,0.25)'
+  }),
+  header: (bg = 'var(--jordyn-primary)') => ({
+    background: bg, color: '#fff',
+    padding: '1rem 1.5rem', display: 'flex',
+    justifyContent: 'space-between', alignItems: 'center', flexShrink: 0
+  }),
+  body: { flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' },
+  badge: (color = 'var(--jordyn-primary)') => ({
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    background: `${color}18`, border: `1.5px solid ${color}40`,
+    color, borderRadius: 20, padding: '2px 10px',
+    fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.4px'
+  }),
+  pill: (active) => ({
+    padding: '5px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+    fontSize: '0.75rem', fontWeight: 700, transition: 'all .15s',
+    background: active ? 'var(--jordyn-primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--jordyn-muted)',
+  }),
+  numChip: (estado) => {
+    const map = {
+      libre:        { bg: '#f0fafa', border: '#0abfbc', color: '#0abfbc' },
+      ocupado_otro: { bg: '#fff5f5', border: '#e63946', color: '#e63946' },
+      propio:       { bg: '#f0fff4', border: '#2ecc71', color: '#1a7a40' },
+      bloqueado:    { bg: '#f5f5f5', border: '#ccc',    color: '#aaa'    },
+    };
+    const s = map[estado] || map.libre;
+    return {
+      width: 48, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontWeight: 800, fontSize: '0.72rem', border: `1.5px solid ${s.border}`,
+      borderRadius: 8, color: s.color, background: s.bg,
+      cursor: estado === 'libre' ? 'pointer' : 'default',
+      userSelect: 'none', transition: 'transform .1s',
+    };
+  },
+  tipoBadge: (tipo) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    padding: '3px 10px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 800,
+    ...(tipo === 'simultanea'
+      ? { background: '#fff0f5', border: '1.5px solid #e91e8c40', color: '#e91e8c' }
+      : { background: '#f0f5ff', border: '1.5px solid #4361ee40', color: '#4361ee' })
+  }),
+};
+
+/* ══════════════════════════════════════════════════════════════
+   MODAL — CREAR / EDITAR CATEGORÍA GLOBAL
+══════════════════════════════════════════════════════════════ */
+function ModalCrearCategoria({ categoria, onClose, onSaved }) {
+  const esEditar = !!categoria;
+  const [form, setForm] = useState({
+    nombre:      categoria?.nombre      || '',
+    tipo:        categoria?.tipo        || 'parcial',
+    descripcion: categoria?.descripcion || '',
+    monto:       categoria?.monto       || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const guardar = async () => {
+    if (!form.nombre.trim()) return toast.error('El nombre es requerido');
+    setSaving(true);
+    try {
+      if (esEditar) {
+        await API.put(`/categorias-globales/${categoria.id}`, form);
+        toast.success('Categoría actualizada');
+      } else {
+        await API.post('/categorias-globales', form);
+        toast.success('Categoría creada');
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error guardando');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+      <div style={S.modal(560)}>
+        <div style={S.header(esEditar ? 'linear-gradient(135deg,#1a7a40,#2ecc71)' : 'linear-gradient(135deg,#0a3d62,#0abfbc)')}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
+              {esEditar ? '✏️ Editar Categoría' : '🏷️ Nueva Categoría Global'}
+            </div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
+              {esEditar ? categoria.nombre : 'Las categorías agrupan vendedores con sus números fijos'}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <div style={S.body}>
+          {/* Nombre */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="jd-label">NOMBRE DE LA CATEGORÍA *</label>
+            <input className="jd-input" value={form.nombre}
+              onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
+              placeholder="Ej: Premio $1000, VIP, Básico..." autoFocus />
+          </div>
+
+          {/* Monto referencial */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="jd-label">MONTO / DESCRIPCIÓN REFERENCIAL</label>
+            <input className="jd-input" value={form.monto}
+              onChange={e => setForm(p => ({ ...p, monto: e.target.value }))}
+              placeholder="Ej: $1,000 · Premio principal" />
+          </div>
+
+          {/* Tipo */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="jd-label">TIPO DE CATEGORÍA *</label>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+              {[
+                { key: 'parcial', icon: '🎯', label: 'Parcial', desc: 'Pool único 000–999. Cada número pertenece a un solo vendedor.' },
+                { key: 'simultanea', icon: '⚡', label: 'Simultánea', desc: 'Dos series A y B (000–999 cada una). El mismo número puede tenerlo un vendedor por serie.' }
+              ].map(({ key, icon, label, desc }) => (
+                <div key={key}
+                  onClick={() => !esEditar && setForm(p => ({ ...p, tipo: key }))}
+                  style={{
+                    flex: 1, padding: '1rem', borderRadius: 12, cursor: esEditar ? 'default' : 'pointer',
+                    border: `2px solid ${form.tipo === key ? (key === 'simultanea' ? '#e91e8c' : '#4361ee') : 'var(--jordyn-border)'}`,
+                    background: form.tipo === key ? (key === 'simultanea' ? '#fff0f580' : '#f0f5ff80') : 'var(--jordyn-bg2)',
+                    transition: 'all .15s', opacity: esEditar ? 0.7 : 1
+                  }}
+                >
+                  <div style={{ fontSize: '1.5rem', marginBottom: 4 }}>{icon}</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.88rem', marginBottom: 4,
+                    color: form.tipo === key ? (key === 'simultanea' ? '#e91e8c' : '#4361ee') : 'var(--jordyn-text)' }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+            {esEditar && (
+              <div className="jd-alert jd-alert-warning mt-2" style={{ fontSize: '0.75rem' }}>
+                <i className="bi bi-lock-fill me-1"></i>El tipo no se puede cambiar una vez creada la categoría.
+              </div>
+            )}
+          </div>
+
+          {/* Descripción */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label className="jd-label">NOTAS INTERNAS</label>
+            <textarea className="jd-input" rows={2} value={form.descripcion}
+              onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
+              placeholder="Notas adicionales sobre esta categoría..." style={{ resize: 'none' }} />
+          </div>
+
+          <div className="d-flex gap-2">
+            <button className="btn-jordyn w-100" onClick={guardar} disabled={saving}>
+              {saving ? <><span className="jd-spinner" style={{ width: 16, height: 16 }}></span> Guardando...</> : <><i className="bi bi-floppy-fill me-1"></i>{esEditar ? 'Actualizar' : 'Crear categoría'}</>}
+            </button>
+            <button className="btn-jordyn-outline" onClick={onClose} style={{ flexShrink: 0, padding: '0 20px' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MODAL — VER CATEGORÍA (vendedores asignados + agregar)
+══════════════════════════════════════════════════════════════ */
+function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
+  const [asignaciones, setAsignaciones] = useState([]);  // { vendedor_id, vendedor_nombre, numero, serie }
+  const [loading,      setLoading]      = useState(true);
+  const [showForm,     setShowForm]     = useState(false);
+  const [vendedorSel,  setVendedorSel]  = useState('');
+  const [numInput,     setNumInput]     = useState('');
+  const [serieSel,     setSerieSel]     = useState('A');
+  const [saving,       setSaving]       = useState(false);
+  const [busqNum,      setBusqNum]      = useState('');
+  const [busqVend,     setBusqVend]     = useState('');
+
+  const esSim = categoria.tipo === 'simultanea';
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get(`/categorias-globales/${categoria.id}/vendedores`);
+      setAsignaciones(res.data);
+    } catch { toast.error('Error cargando asignaciones'); }
+    finally  { setLoading(false); }
+  }, [categoria.id]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  /* Números ya ocupados en esta categoría */
+  const getOcupadosPorSerie = (serie) =>
+    asignaciones.filter(a => !esSim || a.serie === serie).map(a => a.numero);
+
+  /* Verifica si el vendedor ya tiene ese número en otra categoría para la misma rifa */
+  const verificarConflicto = () => {
+    const num = pad3(parseInt(numInput) || 0);
+    if (!NUM_RE.test(num)) return 'Número inválido (000–999)';
+    if (!vendedorSel) return 'Selecciona un vendedor';
+
+    const serie = esSim ? serieSel : 'A';
+    const ocupadosEnSerie = getOcupadosPorSerie(serie);
+
+    if (ocupadosEnSerie.includes(num)) {
+      const dueno = asignaciones.find(a => a.numero === num && (!esSim || a.serie === serie));
+      return `El número ${num}${esSim ? ` (Serie ${serie})` : ''} ya lo tiene ${dueno?.vendedor_nombre || 'otro vendedor'}`;
+    }
+    return null;
+  };
+
+  const agregar = async () => {
+    const num  = pad3(parseInt(numInput) || 0);
+    const error = verificarConflicto();
+    if (error) { toast.warning(error); return; }
+
+    setSaving(true);
+    try {
+      const payload = {
+        vendedor_id: vendedorSel,
+        numero:      num,
+        ...(esSim ? { serie: serieSel } : {}),
+      };
+      await API.post(`/categorias-globales/${categoria.id}/vendedores`, payload);
+      toast.success(`✅ Número ${num}${esSim ? ` (Serie ${serieSel})` : ''} asignado`);
+      setNumInput(''); setShowForm(false);
+      await cargar();
+      onSaved && onSaved();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error asignando');
+    } finally { setSaving(false); }
+  };
+
+  const quitar = async (asignacionId) => {
+    if (!window.confirm('¿Quitar esta asignación?')) return;
+    try {
+      await API.delete(`/categorias-globales/${categoria.id}/vendedores/${asignacionId}`);
+      toast.info('Asignación removida');
+      await cargar();
+      onSaved && onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
+  };
+
+  /* Filtros */
+  const asigFiltradas = asignaciones.filter(a => {
+    const okNum  = !busqNum  || a.numero.includes(busqNum.trim());
+    const okVend = !busqVend || a.vendedor_nombre.toLowerCase().includes(busqVend.toLowerCase());
+    return okNum && okVend;
+  });
+
+  /* Agrupar por vendedor para mostrar */
+  const porVendedor = {};
+  asigFiltradas.forEach(a => {
+    if (!porVendedor[a.vendedor_id]) porVendedor[a.vendedor_id] = { nombre: a.vendedor_nombre, numeros: [] };
+    porVendedor[a.vendedor_id].numeros.push({ numero: a.numero, serie: a.serie, id: a.id });
+  });
+
+  const vendedoresYaEnCat = [...new Set(asignaciones.map(a => a.vendedor_id))];
+  const vendedoresDisp    = todosVendedores.filter(v =>
+    // En parcial solo puede estar 1 vez; en simultánea puede estar en ambas series
+    esSim ? true : !vendedoresYaEnCat.includes(v.id)
+  );
+
+  const numEjemplo = numInput ? pad3(parseInt(numInput) || 0) : null;
+  const conflicto  = numEjemplo && vendedorSel ? verificarConflicto() : null;
+  const serieLibre = esSim && numEjemplo ? (
+    !getOcupadosPorSerie('A').includes(numEjemplo) ? 'A' :
+    !getOcupadosPorSerie('B').includes(numEjemplo) ? 'B' : null
+  ) : null;
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+      <div style={S.modal(860)}>
+
+        {/* Header */}
+        <div style={S.header(`linear-gradient(135deg,${esSim ? '#7b0050,#e91e8c' : '#0a3d62,#0abfbc'})`)}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={S.tipoBadge(categoria.tipo)}>{esSim ? '⚡ Simultánea' : '🎯 Parcial'}</span>
+              {categoria.nombre}
+              {categoria.monto && <span style={{ opacity: 0.8, fontSize: '0.8rem' }}>· {categoria.monto}</span>}
+            </div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 4 }}>
+              {asignaciones.length} asignación(es) · {Object.keys(porVendedor).length} vendedor(es)
+            </div>
+          </div>
+          <div className="d-flex gap-2">
+            <button onClick={() => setShowForm(p => !p)} style={{
+              background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)',
+              color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700
+            }}>
+              <i className={`bi bi-${showForm ? 'dash' : 'plus'}-lg me-1`}></i>
+              {showForm ? 'Cancelar' : 'Asignar vendedor'}
+            </button>
+            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div style={S.body}>
+
+          {/* INFO */}
+          <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem', lineHeight: 1.6 }}>
+            <i className="bi bi-info-circle-fill me-2"></i>
+            {esSim
+              ? <><strong>Simultánea:</strong> Existen dos series (A y B) de 000–999. El mismo número puede pertenecer a un vendedor en Serie A y otro en Serie B. El sistema detecta la serie disponible automáticamente.</>
+              : <><strong>Parcial:</strong> Pool único de 000–999. Cada número pertenece exclusivamente a un vendedor en esta categoría.</>
+            }
+          </div>
+
+          {/* FORM ASIGNAR */}
+          {showForm && (
+            <div style={{ background: 'var(--jordyn-bg2)', border: '2px solid var(--jordyn-primary)', borderRadius: 14, padding: '1.1rem', marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--jordyn-primary)', marginBottom: '0.75rem' }}>
+                <i className="bi bi-person-plus-fill me-2"></i>Asignar vendedor + número
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+
+                {/* Vendedor */}
+                <div style={{ flex: '1 1 200px' }}>
+                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>VENDEDOR *</label>
+                  <select className="jd-input" value={vendedorSel} onChange={e => setVendedorSel(e.target.value)}>
+                    <option value="">— Seleccionar —</option>
+                    {vendedoresDisp.map(v => (
+                      <option key={v.id} value={v.id}>{v.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Número */}
+                <div style={{ flex: '0 0 110px' }}>
+                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>NÚMERO (000–999) *</label>
+                  <input className="jd-input"
+                    value={numInput}
+                    onChange={e => setNumInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    onKeyDown={e => e.key === 'Enter' && agregar()}
+                    placeholder="000" maxLength={3}
+                    style={{ textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.1rem' }}
+                  />
+                </div>
+
+                {/* Serie (solo simultánea) */}
+                {esSim && (
+                  <div style={{ flex: '0 0 120px' }}>
+                    <label className="jd-label" style={{ fontSize: '0.62rem' }}>SERIE *</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {['A', 'B'].map(s => (
+                        <button key={s} onClick={() => setSerieSel(s)} style={{
+                          flex: 1, height: 44, borderRadius: 8, border: `2px solid ${serieSel === s ? '#e91e8c' : 'var(--jordyn-border)'}`,
+                          background: serieSel === s ? '#fff0f5' : '#fff', color: serieSel === s ? '#e91e8c' : 'var(--jordyn-muted)',
+                          fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer'
+                        }}>
+                          Serie {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botón */}
+                <button className="btn-jordyn" onClick={agregar} disabled={saving || !vendedorSel || !numInput}
+                  style={{ height: 44, padding: '0 20px', flexShrink: 0, fontSize: '0.82rem' }}>
+                  {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }}></span> : <><i className="bi bi-plus-lg me-1"></i>Agregar</>}
+                </button>
+              </div>
+
+              {/* Feedback en tiempo real */}
+              {numEjemplo && vendedorSel && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  {conflicto ? (
+                    <div style={{
+                      background: '#fff5f5', border: '1.5px solid #ffaaaa', borderRadius: 10,
+                      padding: '8px 14px', fontSize: '0.78rem', color: '#c0392b',
+                      display: 'flex', alignItems: 'center', gap: 8
+                    }}>
+                      <i className="bi bi-x-circle-fill"></i>
+                      <strong>Conflicto:</strong> {conflicto}
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: '#f0fff8', border: '1.5px solid #2ecc7140', borderRadius: 10,
+                      padding: '8px 14px', fontSize: '0.78rem', color: '#1a7a40',
+                      display: 'flex', alignItems: 'center', gap: 8
+                    }}>
+                      <i className="bi bi-check-circle-fill"></i>
+                      Número {numEjemplo}{esSim ? ` Serie ${serieSel}` : ''} disponible ✔
+                      {esSim && serieLibre && serieSel !== serieLibre && (
+                        <span style={{ marginLeft: 6, color: '#e91e8c' }}>
+                          · Serie {serieLibre} también disponible
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* FILTROS */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            <input className="jd-input" style={{ flex: '0 0 100px' }}
+              value={busqNum} onChange={e => setBusqNum(e.target.value.replace(/\D/g, ''))}
+              placeholder="🔍 Número" maxLength={3} />
+            <input className="jd-input" style={{ flex: '1 1 180px' }}
+              value={busqVend} onChange={e => setBusqVend(e.target.value)}
+              placeholder="🔍 Buscar vendedor..." />
+            {(busqNum || busqVend) && (
+              <button className="btn-jordyn-outline" onClick={() => { setBusqNum(''); setBusqVend(''); }}
+                style={{ padding: '0 14px', fontSize: '0.78rem' }}>
+                <i className="bi bi-x-lg"></i> Limpiar
+              </button>
+            )}
+          </div>
+
+          {/* LISTA */}
+          {loading ? (
+            <div className="d-flex justify-content-center py-4">
+              <div className="jd-spinner" style={{ width: 36, height: 36 }}></div>
+            </div>
+          ) : asignaciones.length === 0 ? (
+            <div className="jd-alert jd-alert-warning" style={{ textAlign: 'center' }}>
+              <i className="bi bi-people-fill" style={{ fontSize: '2rem', display: 'block', marginBottom: 8, opacity: 0.4 }}></i>
+              Sin vendedores asignados todavía. Usa el botón <strong>Asignar vendedor</strong> para comenzar.
+            </div>
+          ) : Object.keys(porVendedor).length === 0 ? (
+            <div className="jd-alert jd-alert-info" style={{ fontSize: '0.82rem' }}>Sin resultados para los filtros aplicados.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {Object.entries(porVendedor).map(([vid, vdata]) => (
+                <div key={vid} style={{ border: '2px solid var(--jordyn-border)', borderRadius: 12, overflow: 'hidden' }}>
+                  {/* Cabecera vendedor */}
+                  <div style={{
+                    background: 'var(--jordyn-bg2)', padding: '0.7rem 1rem',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    borderBottom: '1px solid var(--jordyn-border)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 34, height: 34, borderRadius: '50%',
+                        background: 'var(--jordyn-primary)', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 800, fontSize: '0.85rem', flexShrink: 0
+                      }}>
+                        {vdata.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--jordyn-text)' }}>{vdata.nombre}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)' }}>
+                          {vdata.numeros.length} número(s) asignado(s)
+                          {esSim && (() => {
+                            const serieA = vdata.numeros.filter(n => n.serie === 'A').length;
+                            const serieB = vdata.numeros.filter(n => n.serie === 'B').length;
+                            return ` · ${serieA > 0 ? `Serie A: ${serieA}` : ''} ${serieB > 0 ? `Serie B: ${serieB}` : ''}`;
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {esSim ? (
+                        ['A', 'B'].map(s => {
+                          const cnt = vdata.numeros.filter(n => n.serie === s).length;
+                          return cnt > 0 ? (
+                            <span key={s} style={S.badge('#e91e8c')}>Serie {s}: {cnt}</span>
+                          ) : null;
+                        })
+                      ) : (
+                        <span style={S.badge('var(--jordyn-primary)')}>{vdata.numeros.length} núms</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Números */}
+                  <div style={{ padding: '0.75rem 1rem' }}>
+                    {esSim ? (
+                      ['A', 'B'].map(serie => {
+                        const numsS = vdata.numeros.filter(n => n.serie === serie);
+                        if (!numsS.length) return null;
+                        return (
+                          <div key={serie} style={{ marginBottom: '0.5rem' }}>
+                            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#e91e8c', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 6 }}>
+                              ● Serie {serie}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                              {numsS.sort((a,b) => a.numero.localeCompare(b.numero)).map(n => (
+                                <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{
+                                    padding: '4px 10px', borderRadius: 8, fontWeight: 800, fontSize: '0.75rem',
+                                    background: '#fff0f5', border: '1.5px solid #e91e8c40', color: '#e91e8c'
+                                  }}>{n.numero}</span>
+                                  <button onClick={() => quitar(n.id)} title="Quitar" style={{
+                                    background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', padding: '0 2px',
+                                    fontSize: '0.65rem', lineHeight: 1
+                                  }}><i className="bi bi-x-circle"></i></button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        {vdata.numeros.sort((a,b) => a.numero.localeCompare(b.numero)).map(n => (
+                          <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{
+                              padding: '4px 10px', borderRadius: 8, fontWeight: 800, fontSize: '0.75rem',
+                              background: 'rgba(10,191,188,0.1)', border: '1.5px solid rgba(10,191,188,0.35)', color: 'var(--jordyn-primary)'
+                            }}>{n.numero}</span>
+                            <button onClick={() => quitar(n.id)} title="Quitar" style={{
+                              background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', padding: '0 2px',
+                              fontSize: '0.65rem', lineHeight: 1
+                            }}><i className="bi bi-x-circle"></i></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MODAL — NÚMEROS GLOBALES DEL VENDEDOR (existente mejorado)
+══════════════════════════════════════════════════════════════ */
+function ModalNumerosVendedor({ vendedor, numerosOcupados, onClose, onSaved }) {
   const [asignados,  setAsignados]  = useState([]);
   const [numInput,   setNumInput]   = useState('');
   const [rangoIni,   setRangoIni]   = useState('');
@@ -106,101 +587,57 @@ function ModalNumeros({ vendedor, numerosOcupados, onClose, onSaved }) {
   const [loadingIni, setLoadingIni] = useState(true);
   const [tab,        setTab]        = useState('manual');
 
-  /* Cargar números actuales del vendedor */
   useEffect(() => {
-    const cargar = async () => {
+    (async () => {
       try {
         const res = await API.get(`/vendedores/${vendedor.id}`);
-        // Números globales del vendedor (sin filtro de rifa)
         const nums = (res.data.numeros_asignados || [])
-          .map(n => typeof n === 'object' ? n.numero : n)
-          .filter(Boolean);
+          .map(n => typeof n === 'object' ? n.numero : n).filter(Boolean);
         setAsignados([...new Set(nums)].sort());
-      } catch {
-        toast.error('Error cargando números');
-      } finally {
-        setLoadingIni(false);
-      }
-    };
-    cargar();
+      } catch { toast.error('Error cargando números'); }
+      finally   { setLoadingIni(false); }
+    })();
   }, [vendedor.id]);
 
   const estaOcupado = (num) => numerosOcupados.includes(num);
 
   const agregar = async (nums) => {
-    const validos = nums.filter(n => {
-      if (!/^\d{3}$/.test(n)) return false;
-      if (asignados.includes(n)) return false;
-      if (estaOcupado(n)) return false;
-      return true;
-    });
-    const yaOcupados = nums.filter(n => estaOcupado(n) && !asignados.includes(n));
-    if (yaOcupados.length) {
-      toast.warning(`${yaOcupados.length} número(s) ya pertenecen a otro vendedor`);
-    }
+    const validos     = nums.filter(n => NUM_RE.test(n) && !asignados.includes(n) && !estaOcupado(n));
+    const yaOcupados  = nums.filter(n => estaOcupado(n) && !asignados.includes(n));
+    if (yaOcupados.length) toast.warning(`${yaOcupados.length} número(s) ya pertenecen a otro vendedor`);
     if (!validos.length) return;
     try {
-      // Sin rifa_id: asignación global
-      await API.post('/numeros/asignar', {
-        vendedor_id: vendedor.id,
-        numeros: validos
-      });
+      await API.post('/numeros/asignar', { vendedor_id: vendedor.id, numeros: validos });
       setAsignados(p => [...new Set([...p, ...validos])].sort());
       toast.success(`${validos.length} número(s) asignados`);
       onSaved && onSaved();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error asignando');
-    }
+    } catch (err) { toast.error(err.response?.data?.error || 'Error asignando'); }
   };
 
   const quitar = async (num) => {
     try {
-      await API.delete('/numeros/asignar', {
-        data: { vendedor_id: vendedor.id, numeros: [num] }
-      });
+      await API.delete('/numeros/asignar', { data: { vendedor_id: vendedor.id, numeros: [num] } });
       setAsignados(p => p.filter(n => n !== num));
       onSaved && onSaved();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'No se puede quitar: número vendido en una rifa activa');
-    }
-  };
-
-  const quitarTodos = async () => {
-    if (!window.confirm('¿Quitar todos los números asignados?')) return;
-    try {
-      await API.delete('/numeros/asignar', {
-        data: { vendedor_id: vendedor.id, numeros: asignados }
-      });
-      setAsignados([]);
-      onSaved && onSaved();
-      toast.info('Todos los números removidos');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error');
-    }
+    } catch (err) { toast.error(err.response?.data?.error || 'No se puede quitar'); }
   };
 
   const agregarManual = () => {
-    const num = numInput.padStart(3, '0');
-    if (!/^\d{3}$/.test(num)) { toast.error('Número inválido (000–999)'); return; }
-    agregar([num]);
-    setNumInput('');
+    const num = pad3(parseInt(numInput) || 0);
+    if (!NUM_RE.test(num)) { toast.error('Número inválido'); return; }
+    agregar([num]); setNumInput('');
   };
 
   const agregarRango = () => {
-    const ini = parseInt(rangoIni);
-    const fin = parseInt(rangoFin);
-    if (isNaN(ini) || isNaN(fin) || ini > fin || ini < 0 || fin > 999) {
-      toast.error('Rango inválido (0–999)'); return;
-    }
-    const nums = [];
-    for (let i = ini; i <= fin; i++) nums.push(String(i).padStart(3, '0'));
+    const ini = parseInt(rangoIni), fin = parseInt(rangoFin);
+    if (isNaN(ini) || isNaN(fin) || ini > fin || ini < 0 || fin > 999) { toast.error('Rango inválido'); return; }
+    const nums = []; for (let i = ini; i <= fin; i++) nums.push(pad3(i));
     agregar(nums);
   };
 
   const agregarAleatorios = async () => {
     setLoadingAl(true);
     try {
-      // Solicitar números aleatorios excluyendo los ya ocupados y los del vendedor
       const excluir = [...new Set([...numerosOcupados, ...asignados])];
       const res = await API.get(`/vendedores/${vendedor.id}/numeros-aleatorios`, {
         params: { cantidad, excluir: excluir.join(',') }
@@ -211,398 +648,20 @@ function ModalNumeros({ vendedor, numerosOcupados, onClose, onSaved }) {
       setAsignados(p => [...new Set([...p, ...nums])].sort());
       toast.success(`${nums.length} números aleatorios asignados`);
       onSaved && onSaved();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error');
-    } finally {
-      setLoadingAl(false);
-    }
+    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
+    finally { setLoadingAl(false); }
   };
 
-  const disponiblesGlobal = TOTAL_NUMEROS - numerosOcupados.length - asignados.length;
+  const disponiblesGlobal = 1000 - numerosOcupados.length - asignados.length;
 
   return (
-    <div
-      onClick={e => e.target === e.currentTarget && onClose()}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(10,30,30,0.55)', backdropFilter: 'blur(5px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
-      }}
-    >
-      <div style={{
-        width: '100%', maxWidth: 700, maxHeight: '92vh',
-        background: '#fff', borderRadius: 16, overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-        boxShadow: '0 24px 64px rgba(10,191,188,0.22)'
-      }}>
-
-        {/* Header */}
-        <div style={{
-          background: 'var(--jordyn-primary)', color: '#fff',
-          padding: '1rem 1.5rem', display: 'flex',
-          justifyContent: 'space-between', alignItems: 'center', flexShrink: 0
-        }}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+      <div style={S.modal(700)}>
+        <div style={S.header()}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
-              NÚMEROS GLOBALES — {vendedor.nombre}
-            </div>
+            <div style={{ fontWeight: 800, fontSize: '1rem' }}>🔢 NÚMEROS GLOBALES — {vendedor.nombre}</div>
             <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
               {asignados.length} asignados · {disponiblesGlobal} libres del pool de 1,000
-            </div>
-          </div>
-          <div className="d-flex gap-2">
-            <button
-              onClick={() => imprimirNumeros(vendedor, asignados)}
-              disabled={!asignados.length}
-              style={{
-                background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)',
-                color: '#fff', borderRadius: 8, padding: '6px 12px',
-                cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 4,
-                opacity: asignados.length ? 1 : 0.5
-              }}
-            >
-              <i className="bi bi-printer-fill"></i> Imprimir
-            </button>
-            <button onClick={onClose} style={{
-              background: 'rgba(255,255,255,0.2)', border: 'none',
-              color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer'
-            }}>
-              <i className="bi bi-x-lg"></i>
-            </button>
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}>
-
-          {/* Aviso informativo del flujo */}
-          <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem', lineHeight: 1.6 }}>
-            <i className="bi bi-info-circle-fill me-2"></i>
-            Los números aquí asignados son <strong>fijos de este vendedor</strong>.
-            Se reservarán automáticamente en cada rifa donde sea incluido.
-          </div>
-
-          {/* Barra de progreso del pool */}
-          <div style={{
-            background: 'var(--jordyn-bg2)', borderRadius: 10,
-            padding: '0.8rem 1rem', marginBottom: '1rem',
-            border: '1px solid var(--jordyn-border)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.72rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>
-              <span>POOL DE NÚMEROS (0–999)</span>
-              <span>{numerosOcupados.length + asignados.length} / {TOTAL_NUMEROS} ocupados</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 8, background: 'var(--jordyn-border)', overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 8,
-                background: 'linear-gradient(90deg, var(--jordyn-primary), var(--jordyn-green))',
-                width: `${((numerosOcupados.length + asignados.length) / TOTAL_NUMEROS) * 100}%`,
-                transition: 'width 0.4s ease'
-              }} />
-            </div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.68rem' }}>
-              <span style={{ color: 'var(--jordyn-primary)', fontWeight: 700 }}>● Este vendedor: {asignados.length}</span>
-              <span style={{ color: 'var(--jordyn-muted)' }}>● Otros vendedores: {numerosOcupados.length}</span>
-              <span style={{ color: 'var(--jordyn-green)', fontWeight: 700 }}>● Libres: {disponiblesGlobal}</span>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div style={{
-            display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden',
-            border: '1.5px solid var(--jordyn-border)', marginBottom: '1rem'
-          }}>
-            {[['manual', 'Número manual'], ['rango', 'Rango'], ['aleatorio', 'Aleatorios']].map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} style={{
-                flex: 1, padding: '8px 6px', border: 'none', cursor: 'pointer',
-                fontSize: '0.78rem', fontWeight: 600,
-                background: tab === k ? 'var(--jordyn-primary)' : 'transparent',
-                color: tab === k ? '#fff' : 'var(--jordyn-muted)',
-                borderRight: k !== 'aleatorio' ? '1.5px solid var(--jordyn-border)' : 'none',
-              }}>
-                {l}
-              </button>
-            ))}
-          </div>
-
-          {/* Panel manual */}
-          {tab === 'manual' && (
-            <div className="d-flex gap-2 mb-3">
-              <input
-                className="jd-input"
-                style={{ maxWidth: 100, textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.1rem' }}
-                value={numInput}
-                onChange={e => setNumInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                onKeyDown={e => e.key === 'Enter' && agregarManual()}
-                placeholder="000" maxLength={3}
-              />
-              <button className="btn-jordyn" onClick={agregarManual}>
-                <i className="bi bi-plus-lg me-1"></i>Agregar
-              </button>
-              {numInput.length === 3 && estaOcupado(numInput.padStart(3, '0')) && (
-                <span style={{ alignSelf: 'center', fontSize: '0.75rem', color: 'var(--jordyn-red)', fontWeight: 600 }}>
-                  <i className="bi bi-x-circle me-1"></i>Ya asignado a otro vendedor
-                </span>
-              )}
-              {numInput.length === 3 && asignados.includes(numInput.padStart(3, '0')) && (
-                <span style={{ alignSelf: 'center', fontSize: '0.75rem', color: 'var(--jordyn-gold)', fontWeight: 600 }}>
-                  <i className="bi bi-check-circle me-1"></i>Ya tienes este número
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Panel rango */}
-          {tab === 'rango' && (
-            <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
-              <div>
-                <label className="jd-label">DESDE</label>
-                <input className="jd-input" type="number" min={0} max={999}
-                  style={{ maxWidth: 90 }} placeholder="001"
-                  value={rangoIni} onChange={e => setRangoIni(e.target.value)} />
-              </div>
-              <div>
-                <label className="jd-label">HASTA</label>
-                <input className="jd-input" type="number" min={0} max={999}
-                  style={{ maxWidth: 90 }} placeholder="050"
-                  value={rangoFin} onChange={e => setRangoFin(e.target.value)} />
-              </div>
-              <button className="btn-jordyn" onClick={agregarRango}>
-                <i className="bi bi-list-ol me-1"></i>Agregar rango
-              </button>
-              {rangoIni && rangoFin && parseInt(rangoFin) >= parseInt(rangoIni) && (
-                <span style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', alignSelf: 'center' }}>
-                  = {parseInt(rangoFin) - parseInt(rangoIni) + 1} números
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Panel aleatorio */}
-          {tab === 'aleatorio' && (
-            <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
-              <div>
-                <label className="jd-label">CANTIDAD</label>
-                <input className="jd-input" type="number" min={1} max={disponiblesGlobal}
-                  style={{ maxWidth: 90 }} value={cantidad}
-                  onChange={e => setCantidad(Number(e.target.value))} />
-              </div>
-              <button className="btn-jordyn" onClick={agregarAleatorios} disabled={loadingAl || disponiblesGlobal === 0}>
-                {loadingAl
-                  ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span> Asignando...</>
-                  : <><i className="bi bi-shuffle me-1"></i>Asignar aleatorios</>
-                }
-              </button>
-              <span style={{ alignSelf: 'center', fontSize: '0.72rem', color: 'var(--jordyn-muted)' }}>
-                {disponiblesGlobal} disponibles en el pool
-              </span>
-            </div>
-          )}
-
-          {/* Lista de números asignados */}
-          <div style={{
-            background: 'var(--jordyn-bg2)', borderRadius: 10,
-            padding: '0.9rem', border: '1px solid var(--jordyn-border)'
-          }}>
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {asignados.length} números asignados a {vendedor.nombre}
-              </span>
-              {asignados.length > 0 && (
-                <button onClick={quitarTodos} style={{ background: 'none', border: 'none', color: 'var(--jordyn-red)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
-                  <i className="bi bi-trash3 me-1"></i>Quitar todos
-                </button>
-              )}
-            </div>
-
-            {loadingIni ? (
-              <div className="d-flex justify-content-center py-3">
-                <div className="jd-spinner" style={{ width: 24, height: 24 }}></div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, maxHeight: 220, overflowY: 'auto' }}>
-                {asignados.length === 0 && (
-                  <span style={{ fontSize: '0.82rem', color: 'var(--jordyn-muted)' }}>Sin números asignados</span>
-                )}
-                {asignados.map(n => (
-                  <span key={n}
-                    onClick={() => quitar(n)}
-                    title="Click para quitar"
-                    style={{
-                      background: 'rgba(10,191,188,0.10)', border: '1.5px solid rgba(10,191,188,0.30)',
-                      color: 'var(--jordyn-primary)', borderRadius: 6, padding: '3px 9px',
-                      fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 3, transition: 'all 0.12s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(230,57,70,0.10)'; e.currentTarget.style.borderColor = 'rgba(230,57,70,0.35)'; e.currentTarget.style.color = 'var(--jordyn-red)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(10,191,188,0.10)'; e.currentTarget.style.borderColor = 'rgba(10,191,188,0.30)'; e.currentTarget.style.color = 'var(--jordyn-primary)'; }}
-                  >
-                    {n} <i className="bi bi-x" style={{ fontSize: '0.65rem' }}></i>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   MODAL DE CATEGORÍAS DE NÚMEROS — por vendedor
-   Cada categoría tiene: nombre, límite de números y sus números
-═══════════════════════════════════════════════════════════════ */
-function ModalCategorias({ vendedor, onClose, onSaved }) {
-  const [categorias,   setCategorias]   = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [catActiva,    setCatActiva]    = useState(null);   // categoría expandida
-  const [formCat,      setFormCat]      = useState({ nombre: '', max_numeros: '' });
-  const [editCat,      setEditCat]      = useState(null);   // id de la cat en edición
-  const [showFormCat,  setShowFormCat]  = useState(false);
-  const [savingCat,    setSavingCat]    = useState(false);
-  // nums
-  const [numInput,     setNumInput]     = useState('');
-  const [rangoIni,     setRangoIni]     = useState('');
-  const [rangoFin,     setRangoFin]     = useState('');
-  const [cantidad,     setCantidad]     = useState(5);
-  const [tabNum,       setTabNum]       = useState('manual');
-  const [loadingNums,  setLoadingNums]  = useState(false);
-
-  const loadCats = async () => {
-    setLoading(true);
-    try {
-      const res = await API.get(`/vendedores/${vendedor.id}/categorias`);
-      setCategorias(res.data);
-    } catch { toast.error('Error cargando categorías'); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { loadCats(); }, [vendedor.id]);
-
-  /* ── Totales globales ── */
-  const totalNumerosAsignados = categorias.reduce((s, c) => s + (c.numeros_count || 0), 0);
-
-  /* ── CRUD categoría ── */
-  const abrirFormCat = (cat = null) => {
-    setEditCat(cat ? cat.id : null);
-    setFormCat(cat ? { nombre: cat.nombre, max_numeros: String(cat.max_numeros) } : { nombre: '', max_numeros: '' });
-    setShowFormCat(true);
-  };
-
-  const guardarCat = async () => {
-    if (!formCat.nombre.trim()) { toast.error('El nombre es requerido'); return; }
-    const max = parseInt(formCat.max_numeros);
-    if (!max || max < 1) { toast.error('El límite de números debe ser mayor a 0'); return; }
-    setSavingCat(true);
-    try {
-      if (editCat) {
-        await API.put(`/vendedores/${vendedor.id}/categorias/${editCat}`, { nombre: formCat.nombre, max_numeros: max });
-        toast.success('Categoría actualizada');
-      } else {
-        await API.post(`/vendedores/${vendedor.id}/categorias`, { nombre: formCat.nombre, max_numeros: max });
-        toast.success('Categoría creada');
-      }
-      setShowFormCat(false); setFormCat({ nombre: '', max_numeros: '' }); setEditCat(null);
-      await loadCats(); onSaved && onSaved();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error guardando categoría'); }
-    finally { setSavingCat(false); }
-  };
-
-  const eliminarCat = async (cat) => {
-    if (!window.confirm(`¿Eliminar la categoría "${cat.nombre}"? Sus números quedarán libres.`)) return;
-    try {
-      await API.delete(`/vendedores/${vendedor.id}/categorias/${cat.id}`);
-      toast.success('Categoría eliminada');
-      if (catActiva === cat.id) setCatActiva(null);
-      await loadCats(); onSaved && onSaved();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error eliminando'); }
-  };
-
-  /* ── Manejo de números de la categoría activa ── */
-  const catData = categorias.find(c => c.id === catActiva);
-  const numerosOcupados = categorias.flatMap(c =>
-    c.id !== catActiva ? (c.numeros || []) : []
-  );
-  const disponibles = (catData?.max_numeros || 0) - (catData?.numeros_count || 0);
-
-  const agregarNums = async (nums) => {
-    if (!catActiva) return;
-    const ocupados = nums.filter(n => numerosOcupados.includes(n) || (catData?.numeros || []).includes(n));
-    const validos  = nums.filter(n => /^\d{3}$/.test(n) && !numerosOcupados.includes(n) && !(catData?.numeros || []).includes(n));
-    if (ocupados.length) toast.warning(`${ocupados.length} número(s) ya usados`);
-    if (!validos.length) return;
-    if (validos.length > disponibles) {
-      toast.error(`Solo quedan ${disponibles} cupos en esta categoría`); return;
-    }
-    try {
-      await API.post(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { numeros: validos });
-      toast.success(`${validos.length} número(s) asignados`);
-      await loadCats(); onSaved && onSaved();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error asignando'); }
-  };
-
-  const quitarNum = async (num) => {
-    try {
-      await API.delete(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { data: { numeros: [num] } });
-      await loadCats(); onSaved && onSaved();
-    } catch (err) { toast.error(err.response?.data?.error || 'No se puede quitar'); }
-  };
-
-  const quitarTodosNums = async () => {
-    if (!catData?.numeros?.length) return;
-    if (!window.confirm('¿Quitar todos los números de esta categoría?')) return;
-    try {
-      await API.delete(`/vendedores/${vendedor.id}/categorias/${catActiva}/numeros`, { data: { numeros: catData.numeros } });
-      await loadCats(); onSaved && onSaved();
-      toast.info('Números removidos');
-    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-  };
-
-  const agregarManual = () => {
-    const num = numInput.padStart(3, '0');
-    if (!/^\d{3}$/.test(num)) { toast.error('Número inválido (000–999)'); return; }
-    agregar([num]); setNumInput('');
-  };
-  // alias para llamar agregarNums
-  const agregar = agregarNums;
-
-  const agregarRango = () => {
-    const ini = parseInt(rangoIni), fin = parseInt(rangoFin);
-    if (isNaN(ini) || isNaN(fin) || ini > fin || ini < 0 || fin > 999) { toast.error('Rango inválido'); return; }
-    const nums = [];
-    for (let i = ini; i <= fin; i++) nums.push(String(i).padStart(3, '0'));
-    agregar(nums);
-  };
-
-  const agregarAleatorios = async () => {
-    setLoadingNums(true);
-    try {
-      const excluir = [...new Set([...numerosOcupados, ...(catData?.numeros || [])])];
-      const res = await API.get(`/vendedores/${vendedor.id}/categorias/numeros-disponibles`, {
-        params: { cantidad, excluir: excluir.join(',') }
-      });
-      const nums = res.data.numeros || [];
-      if (!nums.length) { toast.warning('No hay números disponibles'); return; }
-      await agregar(nums);
-    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-    finally { setLoadingNums(false); }
-  };
-
-  return (
-    <div onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(10,30,30,0.55)', backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div style={{ width: '100%', maxWidth: 820, maxHeight: '93vh', background: '#fff', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(10,191,188,0.22)' }}>
-
-        {/* ── Header ── */}
-        <div style={{ background: 'var(--jordyn-primary)', color: '#fff', padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
-              <i className="bi bi-tags-fill me-2"></i>CATEGORÍAS — {vendedor.nombre}
-            </div>
-            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
-              {categorias.length} categoría(s) · {totalNumerosAsignados} números asignados en total
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
@@ -610,201 +669,109 @@ function ModalCategorias({ vendedor, onClose, onSaved }) {
           </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}>
-
-          {/* ── Info ── */}
-          <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem', lineHeight: 1.6 }}>
+        <div style={S.body}>
+          <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem' }}>
             <i className="bi bi-info-circle-fill me-2"></i>
-            Crea categorías con un límite de números. Al asignar el vendedor a una rifa podrás elegir qué categoría usar — solo esos números quedarán reservados.
+            Números fijos de este vendedor. Se usarán al asignarlo en categorías de rifas.
           </div>
 
-          {/* ── Botón nueva categoría ── */}
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              Categorías ({categorias.length})
-            </span>
-            <button className="btn-jordyn" onClick={() => abrirFormCat()} style={{ fontSize: '0.78rem', padding: '7px 14px' }}>
-              <i className="bi bi-plus-lg me-1"></i>Nueva categoría
-            </button>
+          {/* Barra progreso */}
+          <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 10, padding: '0.8rem 1rem', marginBottom: '1rem', border: '1px solid var(--jordyn-border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.72rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>
+              <span>POOL GLOBAL (0–999)</span>
+              <span>{numerosOcupados.length + asignados.length} / 1000 ocupados</span>
+            </div>
+            <div style={{ height: 8, borderRadius: 8, background: 'var(--jordyn-border)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 8,
+                background: 'linear-gradient(90deg, var(--jordyn-primary), var(--jordyn-green))',
+                width: `${((numerosOcupados.length + asignados.length) / 1000) * 100}%`,
+                transition: 'width 0.4s ease'
+              }} />
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.68rem' }}>
+              <span style={{ color: 'var(--jordyn-primary)', fontWeight: 700 }}>● Este vendedor: {asignados.length}</span>
+              <span style={{ color: 'var(--jordyn-muted)' }}>● Otros: {numerosOcupados.length}</span>
+              <span style={{ color: 'var(--jordyn-green)', fontWeight: 700 }}>● Libres: {disponiblesGlobal}</span>
+            </div>
           </div>
 
-          {/* ── Formulario categoría ── */}
-          {showFormCat && (
-            <div className="jd-card jd-card-primary mb-3 fade-in" style={{ padding: '1rem' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--jordyn-primary)', marginBottom: '0.75rem' }}>
-                {editCat ? '✏️ Editar categoría' : '➕ Nueva categoría'}
-              </div>
-              <div className="d-flex gap-2 flex-wrap align-items-end">
-                <div style={{ flex: '1 1 180px' }}>
-                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>NOMBRE *</label>
-                  <input className="jd-input" value={formCat.nombre}
-                    onChange={e => setFormCat(p => ({ ...p, nombre: e.target.value }))}
-                    placeholder="Ej: Premium, Básico, VIP..." autoFocus />
-                </div>
-                <div style={{ flex: '0 0 130px' }}>
-                  <label className="jd-label" style={{ fontSize: '0.62rem' }}>LÍMITE DE NÚMEROS *</label>
-                  <input className="jd-input" type="number" min={1} max={1000}
-                    value={formCat.max_numeros}
-                    onChange={e => setFormCat(p => ({ ...p, max_numeros: e.target.value }))}
-                    placeholder="30" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem' }} />
-                </div>
-                <button className="btn-jordyn" onClick={guardarCat} disabled={savingCat} style={{ height: 44, padding: '0 16px', fontSize: '0.82rem' }}>
-                  {savingCat ? 'Guardando...' : <><i className="bi bi-floppy-fill me-1"></i>Guardar</>}
-                </button>
-                <button className="btn-jordyn-outline" onClick={() => { setShowFormCat(false); setEditCat(null); }} style={{ height: 44, padding: '0 14px', fontSize: '0.82rem' }}>
-                  Cancelar
-                </button>
-              </div>
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)', marginBottom: '1rem' }}>
+            {[['manual','Manual'],['rango','Rango'],['aleatorio','Aleatorios']].map(([k,l]) => (
+              <button key={k} onClick={() => setTab(k)} style={{
+                flex: 1, padding: '8px 6px', border: 'none', cursor: 'pointer',
+                fontSize: '0.78rem', fontWeight: 600,
+                background: tab === k ? 'var(--jordyn-primary)' : 'transparent',
+                color: tab === k ? '#fff' : 'var(--jordyn-muted)',
+                borderRight: k !== 'aleatorio' ? '1.5px solid var(--jordyn-border)' : 'none',
+              }}>{l}</button>
+            ))}
+          </div>
+
+          {tab === 'manual' && (
+            <div className="d-flex gap-2 mb-3">
+              <input className="jd-input" value={numInput}
+                onChange={e => setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
+                onKeyDown={e => e.key === 'Enter' && agregarManual()}
+                placeholder="000" maxLength={3}
+                style={{ maxWidth: 100, textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.1rem' }} />
+              <button className="btn-jordyn" onClick={agregarManual}>
+                <i className="bi bi-plus-lg me-1"></i>Agregar
+              </button>
             </div>
           )}
 
-          {/* ── Lista de categorías ── */}
-          {loading ? (
-            <div className="d-flex justify-content-center py-4"><div className="jd-spinner" style={{ width: 32, height: 32 }}></div></div>
-          ) : categorias.length === 0 ? (
-            <div className="jd-alert jd-alert-warning" style={{ fontSize: '0.82rem' }}>
-              <i className="bi bi-exclamation-triangle-fill me-2"></i>
-              Sin categorías. Crea una para empezar a asignar números.
+          {tab === 'rango' && (
+            <div className="d-flex gap-2 mb-3 flex-wrap">
+              <input className="jd-input" value={rangoIni} onChange={e => setRangoIni(e.target.value.replace(/\D/g,''))}
+                placeholder="Desde" style={{ maxWidth: 90, textAlign:'center' }} maxLength={3} />
+              <span style={{ alignSelf:'center', color:'var(--jordyn-muted)' }}>→</span>
+              <input className="jd-input" value={rangoFin} onChange={e => setRangoFin(e.target.value.replace(/\D/g,''))}
+                placeholder="Hasta" style={{ maxWidth: 90, textAlign:'center' }} maxLength={3} />
+              <button className="btn-jordyn" onClick={agregarRango}>
+                <i className="bi bi-plus-lg me-1"></i>Agregar rango
+              </button>
             </div>
+          )}
+
+          {tab === 'aleatorio' && (
+            <div className="d-flex gap-2 mb-3 align-items-center">
+              <input type="number" className="jd-input" value={cantidad} min={1} max={200}
+                onChange={e => setCantidad(Math.min(200, Math.max(1, parseInt(e.target.value)||1)))}
+                style={{ maxWidth: 80, textAlign:'center' }} />
+              <span style={{ fontSize:'0.82rem', color:'var(--jordyn-muted)' }}>números aleatorios</span>
+              <button className="btn-jordyn" onClick={agregarAleatorios} disabled={loadingAl}>
+                {loadingAl ? <span className="jd-spinner" style={{width:16,height:16}}></span> : <><i className="bi bi-shuffle me-1"></i>Generar</>}
+              </button>
+            </div>
+          )}
+
+          {/* Números asignados */}
+          {loadingIni ? (
+            <div className="d-flex justify-content-center py-3"><div className="jd-spinner" style={{width:32,height:32}}></div></div>
+          ) : asignados.length === 0 ? (
+            <div className="jd-alert jd-alert-warning" style={{fontSize:'0.82rem'}}>Sin números asignados.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {categorias.map(cat => {
-                const isOpen  = catActiva === cat.id;
-                const pct     = cat.max_numeros ? Math.round((cat.numeros_count / cat.max_numeros) * 100) : 0;
-                const llena   = cat.numeros_count >= cat.max_numeros;
-                return (
-                  <div key={cat.id} style={{ border: `2px solid ${isOpen ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, borderRadius: 12, overflow: 'hidden', transition: 'border-color .15s' }}>
-
-                    {/* ── Cabecera de la categoría ── */}
-                    <div
-                      onClick={() => setCatActiva(isOpen ? null : cat.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.85rem 1rem', cursor: 'pointer', background: isOpen ? 'rgba(10,191,188,0.06)' : 'var(--jordyn-bg2)', userSelect: 'none' }}
-                    >
-                      {/* Icono expand */}
-                      <i className={`bi bi-chevron-${isOpen ? 'down' : 'right'}`} style={{ color: 'var(--jordyn-primary)', fontSize: '0.8rem', flexShrink: 0 }}></i>
-
-                      {/* Badge nombre */}
-                      <div style={{ background: 'rgba(10,191,188,0.12)', border: '1.5px solid rgba(10,191,188,0.3)', borderRadius: 8, padding: '3px 12px', fontWeight: 800, fontSize: '0.82rem', color: 'var(--jordyn-primary)', flexShrink: 0 }}>
-                        {cat.nombre}
-                      </div>
-
-                      {/* Progreso */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--jordyn-muted)', marginBottom: 3 }}>
-                          <span>{cat.numeros_count} / {cat.max_numeros} números</span>
-                          <span style={{ fontWeight: 700, color: llena ? 'var(--jordyn-red)' : 'var(--jordyn-green)' }}>
-                            {llena ? '🔴 Llena' : `${cat.max_numeros - cat.numeros_count} libres`}
-                          </span>
-                        </div>
-                        <div style={{ height: 6, borderRadius: 6, background: 'var(--jordyn-border)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', borderRadius: 6, width: `${pct}%`, background: llena ? 'var(--jordyn-red)' : 'linear-gradient(90deg,var(--jordyn-primary),var(--jordyn-green))', transition: 'width 0.4s' }} />
-                        </div>
-                      </div>
-
-                      {/* Acciones (no propagan el click de expand) */}
-                      <div className="d-flex gap-1" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => abrirFormCat(cat)}
-                          style={{ background: 'rgba(17,138,178,0.08)', border: '1.5px solid rgba(17,138,178,0.25)', color: 'var(--jordyn-blue)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                          <i className="bi bi-pencil-fill"></i>
-                        </button>
-                        <button onClick={() => eliminarCat(cat)}
-                          style={{ background: 'rgba(230,57,70,0.08)', border: '1.5px solid rgba(230,57,70,0.3)', color: 'var(--jordyn-red)', borderRadius: 7, padding: '4px 9px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                          <i className="bi bi-trash3-fill"></i>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* ── Panel de números de la categoría ── */}
-                    {isOpen && (
-                      <div style={{ padding: '1rem', borderTop: '1px solid var(--jordyn-border)', background: '#fff' }}>
-
-                        {/* Tabs de asignación */}
-                        <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)', marginBottom: '0.85rem' }}>
-                          {[['manual','Manual'], ['rango','Rango'], ['aleatorio','Aleatorios']].map(([k, l]) => (
-                            <button key={k} onClick={() => setTabNum(k)} style={{ flex: 1, padding: '7px 4px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, background: tabNum === k ? 'var(--jordyn-primary)' : 'transparent', color: tabNum === k ? '#fff' : 'var(--jordyn-muted)', borderRight: k !== 'aleatorio' ? '1.5px solid var(--jordyn-border)' : 'none' }}>
-                              {l}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Panel manual */}
-                        {tabNum === 'manual' && (
-                          <div className="d-flex gap-2 mb-3">
-                            <input className="jd-input" style={{ maxWidth: 90, textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.05rem' }}
-                              value={numInput} onChange={e => setNumInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                              onKeyDown={e => e.key === 'Enter' && agregarManual()} placeholder="000" maxLength={3} />
-                            <button className="btn-jordyn" onClick={agregarManual} disabled={llena} style={{ fontSize: '0.82rem' }}>
-                              <i className="bi bi-plus-lg me-1"></i>Agregar
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Panel rango */}
-                        {tabNum === 'rango' && (
-                          <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
-                            <div>
-                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>DESDE</label>
-                              <input className="jd-input" type="number" min={0} max={999} style={{ maxWidth: 80 }} value={rangoIni} onChange={e => setRangoIni(e.target.value)} placeholder="0" />
-                            </div>
-                            <div>
-                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>HASTA</label>
-                              <input className="jd-input" type="number" min={0} max={999} style={{ maxWidth: 80 }} value={rangoFin} onChange={e => setRangoFin(e.target.value)} placeholder="29" />
-                            </div>
-                            <button className="btn-jordyn" onClick={agregarRango} disabled={llena} style={{ fontSize: '0.82rem' }}>
-                              <i className="bi bi-list-ol me-1"></i>Agregar rango
-                            </button>
-                            {rangoIni !== '' && rangoFin !== '' && parseInt(rangoFin) >= parseInt(rangoIni) && (
-                              <span style={{ fontSize: '0.7rem', color: 'var(--jordyn-muted)', alignSelf: 'center' }}>= {parseInt(rangoFin) - parseInt(rangoIni) + 1} números</span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Panel aleatorio */}
-                        {tabNum === 'aleatorio' && (
-                          <div className="d-flex gap-2 mb-3 align-items-end flex-wrap">
-                            <div>
-                              <label className="jd-label" style={{ fontSize: '0.62rem' }}>CANTIDAD</label>
-                              <input className="jd-input" type="number" min={1} max={disponibles} style={{ maxWidth: 80 }}
-                                value={cantidad} onChange={e => setCantidad(Number(e.target.value))} />
-                            </div>
-                            <button className="btn-jordyn" onClick={agregarAleatorios} disabled={loadingNums || llena} style={{ fontSize: '0.82rem' }}>
-                              {loadingNums ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span> Asignando...</> : <><i className="bi bi-shuffle me-1"></i>Aleatorios</>}
-                            </button>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--jordyn-muted)', alignSelf: 'center' }}>{disponibles} cupos disponibles</span>
-                          </div>
-                        )}
-
-                        {/* Números asignados */}
-                        <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 10, padding: '0.8rem', border: '1px solid var(--jordyn-border)' }}>
-                          <div className="d-flex justify-content-between align-items-center mb-2">
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase' }}>
-                              {cat.numeros_count} números asignados
-                            </span>
-                            {cat.numeros_count > 0 && (
-                              <button onClick={quitarTodosNums} style={{ background: 'none', border: 'none', color: 'var(--jordyn-red)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>
-                                <i className="bi bi-trash3 me-1"></i>Quitar todos
-                              </button>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
-                            {(cat.numeros || []).length === 0 && (
-                              <span style={{ fontSize: '0.8rem', color: 'var(--jordyn-muted)' }}>Sin números — usa los botones de arriba para agregar.</span>
-                            )}
-                            {(cat.numeros || []).map(n => (
-                              <span key={n} onClick={() => quitarNum(n)} title="Click para quitar"
-                                style={{ background: 'rgba(10,191,188,0.10)', border: '1.5px solid rgba(10,191,188,0.30)', color: 'var(--jordyn-primary)', borderRadius: 6, padding: '2px 8px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, transition: 'all 0.12s' }}
-                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(230,57,70,0.10)'; e.currentTarget.style.borderColor = 'rgba(230,57,70,0.35)'; e.currentTarget.style.color = 'var(--jordyn-red)'; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(10,191,188,0.10)'; e.currentTarget.style.borderColor = 'rgba(10,191,188,0.30)'; e.currentTarget.style.color = 'var(--jordyn-primary)'; }}>
-                                {n} <i className="bi bi-x" style={{ fontSize: '0.6rem' }}></i>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div>
+              <div style={{fontSize:'0.68rem',fontWeight:700,color:'var(--jordyn-muted)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:8}}>
+                NÚMEROS ASIGNADOS ({asignados.length})
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {asignados.map(n => (
+                  <div key={n} onClick={() => quitar(n)} title="Click para quitar" style={{
+                    padding:'4px 10px', borderRadius:8, fontWeight:800, fontSize:'0.75rem',
+                    background:'rgba(10,191,188,0.1)', border:'1.5px solid rgba(10,191,188,0.4)',
+                    color:'var(--jordyn-primary)', cursor:'pointer', transition:'all .15s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background='#fff5f5'; e.currentTarget.style.borderColor='#e63946'; e.currentTarget.style.color='#e63946'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background='rgba(10,191,188,0.1)'; e.currentTarget.style.borderColor='rgba(10,191,188,0.4)'; e.currentTarget.style.color='var(--jordyn-primary)'; }}
+                  >{n}</div>
+                ))}
+              </div>
+              <div style={{fontSize:'0.68rem',color:'var(--jordyn-muted)',marginTop:8}}>
+                💡 Click en un número para quitarlo
+              </div>
             </div>
           )}
         </div>
@@ -813,356 +780,479 @@ function ModalCategorias({ vendedor, onClose, onSaved }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   PÁGINA PRINCIPAL — GESTIÓN DE VENDEDORES
-═══════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   PANEL — CATEGORÍAS GLOBALES
+══════════════════════════════════════════════════════════════ */
+function PanelCategorias({ todosVendedores, onClose }) {
+  const [categorias,    setCategorias]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [modalCrear,    setModalCrear]    = useState(false);
+  const [editCat,       setEditCat]       = useState(null);
+  const [verCat,        setVerCat]        = useState(null);
+  const [confirmDel,    setConfirmDel]    = useState(null);
+  const [filtroTipo,    setFiltroTipo]    = useState('todos');
+  const [busqCat,       setBusqCat]       = useState('');
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await API.get('/categorias-globales');
+      setCategorias(res.data);
+    } catch { toast.error('Error cargando categorías'); }
+    finally   { setLoading(false); }
+  }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const eliminar = async (cat) => {
+    try {
+      await API.delete(`/categorias-globales/${cat.id}`);
+      toast.success('Categoría eliminada');
+      setConfirmDel(null);
+      cargar();
+    } catch (err) { toast.error(err.response?.data?.error || 'No se puede eliminar'); setConfirmDel(null); }
+  };
+
+  const filtradas = categorias.filter(c => {
+    const okTipo = filtroTipo === 'todos' || c.tipo === filtroTipo;
+    const okBusq = !busqCat || c.nombre.toLowerCase().includes(busqCat.toLowerCase());
+    return okTipo && okBusq;
+  });
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+      <div style={S.modal(900)}>
+
+        {/* Header */}
+        <div style={S.header('linear-gradient(135deg,#0a1628,#1a3a5c)')}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
+              <i className="bi bi-tags-fill me-2" style={{ color: '#0abfbc' }}></i>
+              CATEGORÍAS GLOBALES DE RIFAS
+            </div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
+              {categorias.length} categoría(s) · Gestiona premios con vendedores y números asignados
+            </div>
+          </div>
+          <div className="d-flex gap-2">
+            <button
+              onClick={() => setModalCrear(true)}
+              style={{ background: '#0abfbc', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}
+            >
+              <i className="bi bi-plus-lg me-1"></i>Nueva categoría
+            </button>
+            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div style={S.body}>
+
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
+              {[['todos','Todas'],['parcial','Parcial'],['simultanea','Simultánea']].map(([k,l]) => (
+                <button key={k} onClick={() => setFiltroTipo(k)} style={S.pill(filtroTipo===k)}>{l}</button>
+              ))}
+            </div>
+            <input className="jd-input" style={{ flex: '1 1 200px', minWidth: 140 }}
+              value={busqCat} onChange={e => setBusqCat(e.target.value)}
+              placeholder="🔍 Buscar categoría..." />
+          </div>
+
+          {/* Lista */}
+          {loading ? (
+            <div className="d-flex justify-content-center py-5"><div className="jd-spinner" style={{ width: 40, height: 40 }}></div></div>
+          ) : filtradas.length === 0 ? (
+            <div className="jd-alert jd-alert-warning" style={{ textAlign: 'center' }}>
+              {categorias.length === 0
+                ? <><i className="bi bi-tags" style={{ fontSize: '2rem', display: 'block', marginBottom: 8, opacity: 0.4 }}></i>Sin categorías. Crea la primera.</>
+                : 'Sin categorías para los filtros aplicados.'
+              }
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '0.85rem' }}>
+              {filtradas.map(cat => {
+                const esSim = cat.tipo === 'simultanea';
+                const accentColor = esSim ? '#e91e8c' : '#4361ee';
+                return (
+                  <div key={cat.id} style={{
+                    border: `2px solid ${accentColor}30`,
+                    borderRadius: 14, overflow: 'hidden',
+                    background: '#fff',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                    transition: 'box-shadow .2s',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = `0 6px 24px ${accentColor}25`}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'}
+                  >
+                    {/* Banda de color */}
+                    <div style={{ height: 4, background: `linear-gradient(90deg,${accentColor},${accentColor}80)` }} />
+
+                    <div style={{ padding: '0.9rem 1rem' }}>
+                      {/* Cabecera */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--jordyn-text)', marginBottom: 3 }}>
+                            {cat.nombre}
+                          </div>
+                          {cat.monto && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
+                              💰 {cat.monto}
+                            </div>
+                          )}
+                          <span style={S.tipoBadge(cat.tipo)}>
+                            {esSim ? '⚡ Simultánea' : '🎯 Parcial'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button onClick={() => setEditCat(cat)} title="Editar" style={{
+                            background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)',
+                            borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)'
+                          }}><i className="bi bi-pencil-fill"></i></button>
+                          <button onClick={() => setConfirmDel(cat)} title="Eliminar" style={{
+                            background: '#fff5f5', border: '1px solid #ffcccc',
+                            borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946'
+                          }}><i className="bi bi-trash3-fill"></i></button>
+                        </div>
+                      </div>
+
+                      {/* Estadísticas */}
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                        <span style={S.badge('var(--jordyn-primary)')}>
+                          <i className="bi bi-people-fill"></i> {cat.total_vendedores || 0} vendedores
+                        </span>
+                        <span style={S.badge('#2ecc71')}>
+                          <i className="bi bi-hash"></i> {cat.total_numeros || 0} números
+                        </span>
+                        {esSim && (
+                          <>
+                            <span style={S.badge('#e91e8c')}>Serie A: {cat.numeros_serie_a || 0}</span>
+                            <span style={S.badge('#9b59b6')}>Serie B: {cat.numeros_serie_b || 0}</span>
+                          </>
+                        )}
+                      </div>
+
+                      {cat.descripcion && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: '0.75rem', fontStyle: 'italic' }}>
+                          {cat.descripcion}
+                        </div>
+                      )}
+
+                      {/* Botón ver */}
+                      <button
+                        className="btn-jordyn w-100"
+                        onClick={() => setVerCat(cat)}
+                        style={{ fontSize: '0.8rem', background: `linear-gradient(135deg,${accentColor},${accentColor}cc)` }}
+                      >
+                        <i className="bi bi-eye-fill me-1"></i>
+                        Ver vendedores asignados
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modales */}
+      {modalCrear && (
+        <ModalCrearCategoria onClose={() => setModalCrear(false)} onSaved={cargar} />
+      )}
+      {editCat && (
+        <ModalCrearCategoria categoria={editCat} onClose={() => setEditCat(null)} onSaved={cargar} />
+      )}
+      {verCat && (
+        <ModalVerCategoria
+          categoria={verCat}
+          todosVendedores={todosVendedores}
+          onClose={() => setVerCat(null)}
+          onSaved={cargar}
+        />
+      )}
+      {confirmDel && (
+        <div onClick={e => e.target === e.currentTarget && setConfirmDel(null)} style={{ ...S.overlay, zIndex: 10100 }}>
+          <div style={S.modal(420)}>
+            <div style={S.header('linear-gradient(135deg,#c0303a,#e63946)')}>
+              <div style={{ fontWeight: 800 }}>🗑️ Eliminar categoría</div>
+              <button onClick={() => setConfirmDel(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div style={S.body}>
+              <p style={{ fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.7 }}>
+                ¿Eliminar la categoría <strong>"{confirmDel.nombre}"</strong>?
+                Esto removerá todas las asignaciones de vendedores y números de esta categoría.
+              </p>
+              <div className="d-flex gap-2">
+                <button className="btn-jordyn-danger w-100" onClick={() => eliminar(confirmDel)}>
+                  <i className="bi bi-trash3-fill me-1"></i>Eliminar
+                </button>
+                <button className="btn-jordyn-outline" onClick={() => setConfirmDel(null)} style={{ flexShrink: 0, padding: '0 18px' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMPONENTE PRINCIPAL — GestionVendedores
+══════════════════════════════════════════════════════════════ */
+const emptyForm = { nombre: '', rol: 'vendedor' };
+
 export default function GestionVendedores() {
-  const [vendedores,     setVendedores]     = useState([]);
-  const [loading,        setLoading]        = useState(true);
-  const [form,           setForm]           = useState(emptyForm);
-  const [saving,         setSaving]         = useState(false);
-  const [showForm,       setShowForm]       = useState(false);
-  const [editId,         setEditId]         = useState(null);
-  const [modalVend,      setModalVend]      = useState(null);
-  const [modalCat,       setModalCat]       = useState(null);
-  const [confirmDelete,  setConfirmDelete]  = useState(null);
+  const [vendedores,    setVendedores]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [showForm,      setShowForm]      = useState(false);
+  const [form,          setForm]          = useState(emptyForm);
+  const [editando,      setEditando]      = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [creds,         setCreds]         = useState(null);
+  const [modalNums,     setModalNums]     = useState(null);   // { vendedor }
+  const [modalCats,     setModalCats]     = useState(false);  // panel categorías globales
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [busq,          setBusq]          = useState('');
+  const [filtroActivo,  setFiltroActivo]  = useState('todos');
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await API.get('/vendedores');
       setVendedores(res.data);
-    } catch {
-      toast.error('Error cargando vendedores');
-    } finally {
-      setLoading(false);
-    }
+    } catch { toast.error('Error cargando vendedores'); }
+    finally   { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  /* ── Números ocupados por OTROS vendedores (para el modal) ── */
-  const getNumerosOcupadosPorOtros = (vendedorId) => {
-    return vendedores
-      .filter(v => v.id !== vendedorId)
-      .flatMap(v => {
-        const nums = v.numeros_asignados || [];
-        return nums.map(n => typeof n === 'object' ? n.numero : n).filter(Boolean);
-      });
+  /* Números ocupados por otros vendedores (para validar asignación global) */
+  const getNumerosOcupadosPorOtros = (excluirId) => {
+    const ocupados = new Set();
+    vendedores.forEach(v => {
+      if (v.id === excluirId) return;
+      (v.numeros_asignados || []).forEach(n => ocupados.add(typeof n === 'object' ? n.numero : n));
+    });
+    return [...ocupados];
   };
 
-  /* ── Resumen global del pool ── */
-  const totalAsignadosPool = vendedores.reduce((acc, v) => {
-    const nums = v.numeros_asignados || [];
-    return acc + nums.length;
-  }, 0);
-  const totalLibresPool = TOTAL_NUMEROS - totalAsignadosPool;
-
-  /* ── CRUD vendedor ── */
-  const handleSubmit = async (e) => {
+  /* Guardar vendedor */
+  const guardar = async (e) => {
     e.preventDefault();
-    if (!form.nombre.trim()) {
-      toast.error('El nombre del vendedor es requerido'); return;
-    }
+    if (!form.nombre?.trim()) return toast.error('El nombre es requerido');
     setSaving(true);
     try {
-      if (editId) {
-        const payload = { nombre: form.nombre };
-        if (form.password) payload.password = form.password;
-        await API.put(`/vendedores/${editId}`, payload);
+      if (editando) {
+        await API.put(`/vendedores/${editando}`, form);
         toast.success('Vendedor actualizado');
+        setEditando(null); setShowForm(false); setForm(emptyForm);
       } else {
-        const { usuario, password } = generarCredenciales(form.nombre);
-        await API.post('/auth/register', { ...form, usuario, password });
-        toast.success(`Vendedor creado — usuario: ${usuario} · contraseña: ${password}`);
+        const cred = generarCredenciales(form.nombre);
+        const res  = await API.post('/auth/register', { ...form, ...cred });
+        setCreds({ ...cred, nombre: form.nombre, id: res.data?.id });
+        toast.success('Vendedor creado');
+        setShowForm(false); setForm(emptyForm);
       }
-      setShowForm(false); setForm(emptyForm); setEditId(null); load();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error guardando vendedor');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleToggle = async (v) => {
-    try {
-      await API.put(`/vendedores/${v.id}`, { activo: !v.activo });
-      toast.info(`Vendedor ${!v.activo ? 'activado' : 'desactivado'}`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Error');
-    }
+      toast.error(err.response?.data?.error || 'Error guardando');
+    } finally { setSaving(false); }
   };
 
-  const handleEliminar = (v) => {
-    const tieneVentas = (v.total_ventas || 0) > 0;
-    setConfirmDelete({ id: v.id, nombre: v.nombre, tieneVentas, vendedor: v });
+  const abrirEditar = (v) => {
+    setEditando(v.id);
+    setForm({ nombre: v.nombre, rol: 'vendedor', cedula: v.cedula || '', activo: v.activo });
+    setShowForm(true);
   };
 
   const confirmarEliminacion = async () => {
-    if (!confirmDelete) return;
     try {
       await API.delete(`/vendedores/${confirmDelete.id}`);
-      toast.success(`Vendedor "${confirmDelete.nombre}" eliminado`);
-      setConfirmDelete(null);
-      load();
+      toast.success('Vendedor eliminado');
+      setConfirmDelete(null); load();
     } catch (err) {
-      const msg = err.response?.data?.error || 'Error al eliminar';
-      toast.error(msg);
-      if (err.response?.status === 400) {
-        setConfirmDelete(p => ({ ...p, errorVentas: true }));
+      const msg = err.response?.data?.error || '';
+      if (msg.includes('ventas')) {
+        setConfirmDelete(p => ({ ...p, tieneVentas: true, errorVentas: true }));
+      } else {
+        toast.error(msg || 'Error eliminando');
       }
     }
   };
 
   const confirmarDesactivar = async () => {
-    if (!confirmDelete) return;
     try {
       await API.put(`/vendedores/${confirmDelete.id}`, { activo: false });
-      toast.info(`Vendedor "${confirmDelete.nombre}" desactivado`);
-      setConfirmDelete(null);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error al desactivar');
-    }
+      toast.info('Vendedor desactivado');
+      setConfirmDelete(null); load();
+    } catch { toast.error('Error desactivando'); }
   };
 
-  const activos   = vendedores.filter(v => v.activo);
-  const inactivos = vendedores.filter(v => !v.activo);
+  /* Filtros */
+  const filtrados = vendedores.filter(v => {
+    const okBusq  = !busq || v.nombre.toLowerCase().includes(busq.toLowerCase()) || v.usuario?.toLowerCase().includes(busq.toLowerCase());
+    const okActivo = filtroActivo === 'todos' || (filtroActivo === 'activos' ? v.activo : !v.activo);
+    return okBusq && okActivo;
+  });
 
-  /* ──────────────────────────────────────────────
-     FILA DE VENDEDOR
-  ────────────────────────────────────────────── */
-  const VendedorRow = ({ v }) => {
-    const numerosCount = (v.numeros_asignados || []).length;
-    return (
-      <div className="jd-card" style={{ padding: '1rem 1.25rem', marginBottom: 8 }}>
-        <div className="d-flex align-items-center gap-3 flex-wrap">
+  const activos   = filtrados.filter(v =>  v.activo);
+  const inactivos = filtrados.filter(v => !v.activo);
 
-          {/* Avatar */}
-          <div style={{
-            width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-            background: 'rgba(10,191,188,0.12)', border: '2px solid rgba(10,191,188,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.1rem', fontWeight: 800, color: 'var(--jordyn-primary)',
-          }}>
-            {v.nombre.charAt(0).toUpperCase()}
+  /* ── VendedorRow ── */
+  const VendedorRow = ({ v }) => (
+    <div style={{
+      border: '1.5px solid var(--jordyn-border)', borderRadius: 12,
+      marginBottom: '0.6rem', overflow: 'hidden',
+      background: v.activo ? '#fff' : 'var(--jordyn-bg2)',
+      opacity: v.activo ? 1 : 0.75,
+      boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
+      transition: 'box-shadow .2s'
+    }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(10,191,188,0.13)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.04)'}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem 1rem', flexWrap: 'wrap' }}>
+
+        {/* Avatar */}
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+          background: v.activo ? 'var(--jordyn-primary)' : '#ccc',
+          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 800, fontSize: '0.95rem'
+        }}>
+          {v.nombre.charAt(0).toUpperCase()}
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--jordyn-text)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {v.nombre}
+            {!v.activo && <span style={{ background: '#eee', color: '#999', fontSize: '0.62rem', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>INACTIVO</span>}
           </div>
-
-          {/* Info */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--jordyn-text)' }}>{v.nombre}</div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)' }}>
-              @{v.usuario}
-              {v.cedula && <span style={{ marginLeft: 8, color: 'var(--jordyn-primary)' }}>· Céd: {v.cedula}</span>}
-            </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
+            @{v.usuario} {v.cedula && `· CC ${v.cedula}`}
           </div>
-
-          {/* Stats */}
-          <div className="d-flex gap-3 hide-mobile" style={{ fontSize: '0.78rem' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 800, color: 'var(--jordyn-primary)', fontSize: '1.1rem' }}>
-                {v.total_ventas || 0}
-              </div>
-              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 600 }}>
-                Ventas
-              </div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 800, color: 'var(--jordyn-gold)', fontSize: '1.1rem' }}>
-                {numerosCount}
-              </div>
-              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.62rem', textTransform: 'uppercase', fontWeight: 600 }}>
-                Núms. fijos
-              </div>
-            </div>
-          </div>
-
-          {/* Badge estado */}
-          <span className={v.activo ? 'badge-disponible' : 'badge-agotado'} style={{ fontSize: '0.65rem' }}>
-            {v.activo ? 'ACTIVO' : 'INACTIVO'}
-          </span>
-
-          {/* Acciones */}
-          <div className="d-flex gap-1">
-
-            {/* Gestionar categorías de números */}
-            <button
-              onClick={() => setModalCat(v)}
-              title="Gestionar categorías de números"
-              style={{
-                background: 'rgba(124,58,237,0.09)',
-                border: '1.5px solid rgba(124,58,237,0.30)',
-                color: '#7c3aed',
-                borderRadius: 7, padding: '5px 10px', cursor: 'pointer',
-                fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 4
-              }}
-            >
-              <i className="bi bi-tags-fill"></i>
-              <span className="hide-mobile" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
-                Categorías
+          <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+            <span style={S.badge('var(--jordyn-primary)')}>
+              <i className="bi bi-hash"></i>{v.numeros_count || 0} números
+            </span>
+            <span style={S.badge('#2ecc71')}>
+              <i className="bi bi-receipt"></i>{v.total_ventas || 0} ventas
+            </span>
+            {v.total_ingresos > 0 && (
+              <span style={S.badge('#f0a500')}>
+                {fmtCOP(v.total_ingresos)}
               </span>
-            </button>
-
-            {/* Gestionar números globales */}
-            <button
-              onClick={() => setModalVend(v)}
-              title="Gestionar números del vendedor"
-              style={{
-                background: numerosCount > 0
-                  ? 'rgba(10,191,188,0.12)' : 'rgba(240,165,0,0.10)',
-                border: `1.5px solid ${numerosCount > 0
-                  ? 'rgba(10,191,188,0.35)' : 'rgba(240,165,0,0.35)'}`,
-                color: numerosCount > 0 ? 'var(--jordyn-primary)' : 'var(--jordyn-gold)',
-                borderRadius: 7, padding: '5px 10px', cursor: 'pointer',
-                fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 4
-              }}
-            >
-              <i className="bi bi-grid-3x3-gap"></i>
-              <span className="hide-mobile" style={{ fontSize: '0.72rem', fontWeight: 600 }}>
-                {numerosCount > 0 ? `${numerosCount} números` : 'Asignar números'}
-              </span>
-            </button>
-
-            {/* Editar */}
-            <button
-              onClick={() => {
-                setForm({ nombre: v.nombre, password: '', rol: 'vendedor' });
-                setEditId(v.id);
-                setShowForm(true);
-              }}
-              title="Editar"
-              style={{
-                background: 'rgba(17,138,178,0.08)', border: '1.5px solid rgba(17,138,178,0.25)',
-                color: 'var(--jordyn-blue)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem'
-              }}
-            >
-              <i className="bi bi-pencil-fill"></i>
-            </button>
-
-            {/* Activar/Desactivar */}
-            <button
-              onClick={() => handleToggle(v)}
-              title={v.activo ? 'Desactivar' : 'Activar'}
-              style={{
-                background: v.activo ? 'rgba(230,57,70,0.08)' : 'rgba(6,214,160,0.08)',
-                border: `1.5px solid ${v.activo ? 'rgba(230,57,70,0.25)' : 'rgba(6,214,160,0.25)'}`,
-                color: v.activo ? 'var(--jordyn-red)' : 'var(--jordyn-green)',
-                borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: '0.85rem',
-              }}
-            >
-              <i className={`bi bi-${v.activo ? 'pause-circle' : 'play-circle'}`}></i>
-            </button>
-
-            {/* Link público */}
-            {v.cedula && (
-              <a
-                href={`/vendedor/${v.cedula}`} target="_blank" rel="noreferrer"
-                title="Ver pantalla pública del vendedor"
-                style={{
-                  background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.25)',
-                  color: 'var(--jordyn-gold)', borderRadius: 7, padding: '5px 10px',
-                  cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center'
-                }}
-              >
-                <i className="bi bi-box-arrow-up-right"></i>
-              </a>
             )}
-
-            {/* Eliminar */}
-            <button
-              onClick={() => handleEliminar(v)}
-              title="Eliminar vendedor"
-              style={{
-                background: 'rgba(230,57,70,0.08)', border: '1.5px solid rgba(230,57,70,0.3)',
-                color: 'var(--jordyn-red)', borderRadius: 7, padding: '5px 10px',
-                cursor: 'pointer', fontSize: '0.85rem',
-              }}
-            >
-              <i className="bi bi-trash3-fill"></i>
-            </button>
           </div>
         </div>
-      </div>
-    );
-  };
 
-  /* ══════════════════════════════════════════════════
-     RENDER PRINCIPAL
-  ══════════════════════════════════════════════════ */
-  return (
-    <Layout title="VENDEDORES">
-
-      {/* Header con resumen del pool */}
-      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-
-        {/* Stats pool global */}
-        <div className="d-flex gap-3 flex-wrap" style={{ fontSize: '0.78rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <i className="bi bi-people-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
-            <span style={{ color: 'var(--jordyn-muted)' }}>
-              {activos.length} activos · {inactivos.length} inactivos
-            </span>
-          </div>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'rgba(10,191,188,0.08)', borderRadius: 8,
-            padding: '4px 10px', border: '1px solid rgba(10,191,188,0.2)'
+        {/* Acciones */}
+        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+          <button onClick={() => setModalNums({ vendedor: v })} title="Números globales" style={{
+            background: 'rgba(10,191,188,0.1)', border: '1px solid rgba(10,191,188,0.3)',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-primary)'
           }}>
-            <i className="bi bi-grid-3x3-gap-fill" style={{ color: 'var(--jordyn-primary)', fontSize: '0.8rem' }}></i>
-            <span style={{ fontWeight: 700, color: 'var(--jordyn-primary)' }}>{totalAsignadosPool}</span>
-            <span style={{ color: 'var(--jordyn-muted)' }}>/ 1,000 números asignados</span>
-            <span style={{ color: 'var(--jordyn-green)', fontWeight: 700, marginLeft: 4 }}>
-              · {totalLibresPool} libres
-            </span>
-          </div>
+            <i className="bi bi-hash"></i>
+          </button>
+          <button onClick={() => abrirEditar(v)} title="Editar" style={{
+            background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)'
+          }}>
+            <i className="bi bi-pencil-fill"></i>
+          </button>
+          <button onClick={() => setConfirmDelete({ ...v, tieneVentas: (v.total_ventas || 0) > 0 })} title="Eliminar" style={{
+            background: '#fff5f5', border: '1px solid #ffcccc',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946'
+          }}>
+            <i className="bi bi-trash3-fill"></i>
+          </button>
         </div>
+      </div>
+    </div>
+  );
 
-        <button className="btn-jordyn" onClick={() => { setForm(emptyForm); setEditId(null); setShowForm(true); }}>
-          <i className="bi bi-person-plus-fill me-1"></i>NUEVO VENDEDOR
-        </button>
+  return (
+    <Layout>
+      {/* ── Header de página ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--jordyn-text)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="bi bi-people-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
+            Gestión de Vendedores
+          </h1>
+          <p style={{ fontSize: '0.75rem', color: 'var(--jordyn-muted)', margin: 0, marginTop: 2 }}>
+            {vendedores.length} vendedor(es) registrados
+          </p>
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          {/* NUEVO: botón categorías globales */}
+          <button
+            className="btn-jordyn-outline"
+            onClick={() => setModalCats(true)}
+            style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <i className="bi bi-tags-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
+            Categorías de rifas
+          </button>
+          <button
+            className="btn-jordyn"
+            onClick={() => { setShowForm(p => !p); setEditando(null); setForm(emptyForm); }}
+            style={{ fontSize: '0.82rem' }}
+          >
+            <i className={`bi bi-${showForm && !editando ? 'dash' : 'plus'}-lg me-1`}></i>
+            {showForm && !editando ? 'Cancelar' : 'Nuevo vendedor'}
+          </button>
+        </div>
       </div>
 
-      {/* Formulario crear/editar */}
+      {/* ── Formulario nuevo/editar ── */}
       {showForm && (
-        <div className="jd-card jd-card-primary mb-4 fade-in">
-          <h5 style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--jordyn-primary)', marginBottom: '1.25rem' }}>
-            {editId ? '✏️ Editar vendedor' : '➕ Nuevo vendedor'}
-          </h5>
-          <form onSubmit={handleSubmit}>
-            <div className="row g-3">
-              <div className="col-12 col-md-7">
+        <div className="jd-card jd-card-primary mb-3 fade-in" style={{ padding: '1.1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--jordyn-primary)', marginBottom: '0.8rem' }}>
+            {editando ? '✏️ Editar vendedor' : '➕ Nuevo vendedor'}
+          </div>
+          <form onSubmit={guardar}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label className="jd-label">NOMBRE COMPLETO *</label>
                 <input className="jd-input" value={form.nombre}
                   onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Juan Pérez" autoFocus />
+                  placeholder="Ej: Juan Pérez" autoFocus required />
               </div>
-              {editId && (
-                <div className="col-12 col-md-5">
-                  <label className="jd-label">NUEVA CONTRASEÑA (vacío = no cambiar)</label>
+              <div style={{ flex: '1 1 140px' }}>
+                <label className="jd-label">CÉDULA</label>
+                <input className="jd-input" value={form.cedula || ''}
+                  onChange={e => setForm(p => ({ ...p, cedula: e.target.value }))}
+                  placeholder="123456789" />
+              </div>
+              {editando && (
+                <div style={{ flex: '1 1 120px' }}>
+                  <label className="jd-label">NUEVA CONTRASEÑA</label>
                   <input className="jd-input" type="password" value={form.password || ''}
                     onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                    placeholder="Mín. 6 caracteres" />
-                </div>
-              )}
-              {!editId && (
-                <div className="col-12">
-                  <div className="jd-alert jd-alert-info" style={{ fontSize: '0.78rem', margin: 0 }}>
-                    <i className="bi bi-info-circle-fill me-2"></i>
-                    El usuario y contraseña se generarán automáticamente a partir del nombre.
-                    Los verás en pantalla al crear el vendedor.
-                  </div>
+                    placeholder="Dejar vacío = sin cambios" />
                 </div>
               )}
             </div>
-            <div className="d-flex gap-2 mt-3">
+            {!editando && (
+              <div className="jd-alert jd-alert-info" style={{ fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                <i className="bi bi-info-circle-fill me-1"></i>
+                Las credenciales de acceso se generarán automáticamente desde el nombre.
+              </div>
+            )}
+            <div className="d-flex gap-2">
               <button type="submit" className="btn-jordyn" disabled={saving}>
-                {saving
-                  ? 'Guardando...'
-                  : <><i className="bi bi-floppy-fill me-1"></i>{editId ? 'Actualizar' : 'Crear'}</>
-                }
+                {saving ? 'Guardando...' : <><i className="bi bi-floppy-fill me-1"></i>{editando ? 'Actualizar' : 'Crear vendedor'}</>}
               </button>
-              <button type="button" className="btn-jordyn-outline"
-                onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); }}>
+              <button type="button" className="btn-jordyn-outline" onClick={() => { setShowForm(false); setEditando(null); setForm(emptyForm); }}>
                 Cancelar
               </button>
             </div>
@@ -1170,42 +1260,63 @@ export default function GestionVendedores() {
         </div>
       )}
 
-      {/* Lista de vendedores */}
+      {/* ── Credenciales generadas ── */}
+      {creds && (
+        <div style={{
+          background: 'linear-gradient(135deg,#0a3d62,#0abfbc)', borderRadius: 12,
+          padding: '1rem 1.2rem', marginBottom: '1rem', color: '#fff'
+        }}>
+          <div style={{ fontWeight: 800, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+            <span>✅ Vendedor creado: {creds.nombre}</span>
+            <button onClick={() => setCreds(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', opacity: 0.7 }}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+            <span>👤 Usuario: <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.usuario}</strong></span>
+            <span>🔑 Contraseña: <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.password}</strong></span>
+          </div>
+          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: 6 }}>⚠️ Copia estas credenciales antes de cerrar. No se volverán a mostrar.</div>
+        </div>
+      )}
+
+      {/* ── Búsqueda y filtros ── */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input className="jd-input" style={{ flex: '1 1 200px' }}
+          value={busq} onChange={e => setBusq(e.target.value)}
+          placeholder="🔍 Buscar por nombre o usuario..." />
+        <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
+          {[['todos','Todos'],['activos','Activos'],['inactivos','Inactivos']].map(([k,l]) => (
+            <button key={k} onClick={() => setFiltroActivo(k)} style={S.pill(filtroActivo===k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Lista ── */}
       {loading ? (
         <div className="d-flex justify-content-center mt-5">
           <div className="jd-spinner" style={{ width: 40, height: 40 }}></div>
         </div>
       ) : (
-        <div style={{ maxHeight: 'calc(100vh - 260px)', overflowY: 'auto', paddingRight: 4 }}>
-
-          {vendedores.length === 0 && (
+        <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', paddingRight: 4 }}>
+          {filtrados.length === 0 && (
             <div className="jd-alert jd-alert-warning">
-              <i className="bi bi-exclamation-triangle-fill"></i>
-              Sin vendedores registrados
+              <i className="bi bi-exclamation-triangle-fill"></i>{' '}
+              {vendedores.length === 0 ? 'Sin vendedores registrados' : 'Sin resultados para la búsqueda'}
             </div>
           )}
-
           {activos.length > 0 && (
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{
-                fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.8px',
-                marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6
-              }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--jordyn-green)', display: 'inline-block' }}></span>
                 Activos ({activos.length})
               </div>
               {activos.map(v => <VendedorRow key={v.id} v={v} />)}
             </div>
           )}
-
           {inactivos.length > 0 && (
             <div>
-              <div style={{
-                fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.8px',
-                marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6
-              }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ccc', display: 'inline-block' }}></span>
                 Inactivos ({inactivos.length})
               </div>
@@ -1215,137 +1326,68 @@ export default function GestionVendedores() {
         </div>
       )}
 
-      {/* Modal de categorías de números */}
-      {modalCat && (
-        <ModalCategorias
-          vendedor={modalCat}
-          onClose={() => setModalCat(null)}
+      {/* ── Panel Categorías Globales ── */}
+      {modalCats && (
+        <PanelCategorias
+          todosVendedores={vendedores.filter(v => v.activo)}
+          onClose={() => setModalCats(false)}
+        />
+      )}
+
+      {/* ── Modal números globales del vendedor ── */}
+      {modalNums && (
+        <ModalNumerosVendedor
+          vendedor={modalNums.vendedor}
+          numerosOcupados={getNumerosOcupadosPorOtros(modalNums.vendedor.id)}
+          onClose={() => setModalNums(null)}
           onSaved={load}
         />
       )}
 
-      {/* Modal asignación de números globales */}
-      {modalVend && (
-        <ModalNumeros
-          vendedor={modalVend}
-          numerosOcupados={getNumerosOcupadosPorOtros(modalVend.id)}
-          onClose={() => setModalVend(null)}
-          onSaved={load}
-        />
-      )}
-
-      {/* Modal confirmación de eliminación */}
+      {/* ── Modal confirm delete ── */}
       {confirmDelete && (
-        <div
-          onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 10200,
-            background: 'rgba(10,30,30,0.65)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
-          }}
-        >
-          <div style={{
-            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440,
-            boxShadow: '0 24px 64px rgba(0,0,0,.3)', overflow: 'hidden'
-          }}>
-
-            {/* Header del modal */}
-            <div style={{
-              background: confirmDelete.tieneVentas
-                ? 'linear-gradient(135deg,#b37700,#f0a500)'
-                : 'linear-gradient(135deg,#c0303a,#e63946)',
-              padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12
-            }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: 'rgba(255,255,255,.2)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0
-              }}>
-                {confirmDelete.tieneVentas ? '⚠️' : '🗑️'}
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>
-                  {confirmDelete.tieneVentas ? 'Vendedor con ventas activas' : 'Eliminar vendedor'}
+        <div onClick={e => e.target === e.currentTarget && setConfirmDelete(null)} style={{ ...S.overlay, zIndex: 10200 }}>
+          <div style={S.modal(440)}>
+            <div style={S.header(confirmDelete.tieneVentas ? 'linear-gradient(135deg,#b37700,#f0a500)' : 'linear-gradient(135deg,#c0303a,#e63946)')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                  {confirmDelete.tieneVentas ? '⚠️' : '🗑️'}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,.8)', marginTop: 2 }}>
-                  {confirmDelete.nombre}
+                <div>
+                  <div style={{ fontWeight: 800 }}>{confirmDelete.tieneVentas ? 'Vendedor con ventas' : 'Eliminar vendedor'}</div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>{confirmDelete.nombre}</div>
                 </div>
               </div>
+              <button onClick={() => setConfirmDelete(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+                <i className="bi bi-x-lg"></i>
+              </button>
             </div>
-
-            <div style={{ padding: '20px 24px' }}>
+            <div style={S.body}>
               {confirmDelete.tieneVentas ? (
                 <>
-                  <div style={{
-                    background: '#fff8e1', border: '1.5px solid #ffd166',
-                    borderRadius: 10, padding: '12px 14px', marginBottom: 16,
-                    fontSize: '0.82rem', color: '#7a5c00', lineHeight: 1.6
-                  }}>
-                    <strong>No es posible eliminar</strong> este vendedor porque tiene{' '}
-                    <strong>{confirmDelete.vendedor?.total_ventas || 0} venta(s)</strong> registradas.
-                    Eliminar un vendedor con historial rompería los registros contables.
+                  <div style={{ background: '#fff8e1', border: '1.5px solid #ffd166', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: '0.82rem', color: '#7a5c00', lineHeight: 1.6 }}>
+                    <strong>No es posible eliminar</strong> este vendedor porque tiene <strong>{confirmDelete.total_ventas || 0} venta(s)</strong> registradas.
                   </div>
                   <p style={{ fontSize: '0.82rem', color: 'var(--jordyn-muted)', marginBottom: 20, lineHeight: 1.6 }}>
-                    Puedes <strong>desactivarlo</strong> para que no pueda iniciar sesión ni vender,
-                    pero su historial se conserva.
+                    Puedes <strong>desactivarlo</strong> para que no pueda iniciar sesión ni vender, pero su historial se conserva.
                   </p>
-                  {confirmDelete.errorVentas && (
-                    <div style={{
-                      background: '#fff0f0', border: '1px solid #ffaaaa',
-                      borderRadius: 8, padding: '8px 12px', marginBottom: 14,
-                      fontSize: '0.75rem', color: '#c0392b'
-                    }}>
-                      El servidor confirmó: no se puede eliminar con ventas asociadas.
-                    </div>
-                  )}
                   <div className="d-flex gap-2">
-                    <button
-                      className="btn-jordyn w-100"
-                      onClick={confirmarDesactivar}
-                      style={{ background: 'linear-gradient(135deg,#b37700,#f0a500)', fontSize: '0.88rem' }}
-                    >
+                    <button className="btn-jordyn w-100" onClick={confirmarDesactivar} style={{ background: 'linear-gradient(135deg,#b37700,#f0a500)', fontSize: '0.88rem' }}>
                       <i className="bi bi-pause-circle me-1"></i>Desactivar vendedor
                     </button>
-                    <button
-                      className="btn-jordyn-outline"
-                      onClick={() => setConfirmDelete(null)}
-                      style={{ fontSize: '0.88rem', flexShrink: 0, padding: '10px 16px' }}
-                    >
-                      Cancelar
-                    </button>
+                    <button className="btn-jordyn-outline" onClick={() => setConfirmDelete(null)} style={{ fontSize: '0.88rem', flexShrink: 0, padding: '10px 16px' }}>Cancelar</button>
                   </div>
                 </>
               ) : (
                 <>
                   <p style={{ fontSize: '0.88rem', color: 'var(--jordyn-text)', marginBottom: 16, lineHeight: 1.7 }}>
-                    ¿Estás seguro de que quieres{' '}
-                    <strong style={{ color: 'var(--jordyn-red)' }}>eliminar definitivamente</strong>{' '}
-                    al vendedor <strong>"{confirmDelete.nombre}"</strong>?
+                    ¿Eliminar definitivamente a <strong>"{confirmDelete.nombre}"</strong>? Sus números quedarán libres en el pool.
                   </p>
-                  <div style={{
-                    background: '#fff5f5', border: '1px solid #ffcccc',
-                    borderRadius: 8, padding: '10px 14px', marginBottom: 20,
-                    fontSize: '0.78rem', color: '#c0392b', lineHeight: 1.5
-                  }}>
-                    <i className="bi bi-exclamation-triangle-fill me-1"></i>
-                    Esta acción es <strong>irreversible</strong>. Se eliminarán también sus números
-                    asignados y quedarán libres en el pool.
-                  </div>
                   <div className="d-flex gap-2">
-                    <button
-                      className="btn-jordyn-danger w-100"
-                      onClick={confirmarEliminacion}
-                      style={{ fontSize: '0.88rem' }}
-                    >
+                    <button className="btn-jordyn-danger w-100" onClick={confirmarEliminacion} style={{ fontSize: '0.88rem' }}>
                       <i className="bi bi-trash3-fill me-1"></i>Eliminar definitivamente
                     </button>
-                    <button
-                      className="btn-jordyn-outline"
-                      onClick={() => setConfirmDelete(null)}
-                      style={{ fontSize: '0.88rem', flexShrink: 0, padding: '10px 16px' }}
-                    >
-                      Cancelar
-                    </button>
+                    <button className="btn-jordyn-outline" onClick={() => setConfirmDelete(null)} style={{ fontSize: '0.88rem', flexShrink: 0, padding: '10px 16px' }}>Cancelar</button>
                   </div>
                 </>
               )}
@@ -1355,4 +1397,4 @@ export default function GestionVendedores() {
       )}
     </Layout>
   );
-}
+} 
