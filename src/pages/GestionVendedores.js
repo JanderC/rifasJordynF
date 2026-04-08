@@ -1,14 +1,13 @@
 // ============================================================
 //   GestionVendedores.js — RIFAS JORDYN
 //
-//   FLUJO CORREGIDO:
-//   - Números globales: cualquier vendedor puede tener cualquier número.
-//     Solo se bloquea si ESE MISMO VENDEDOR ya lo tiene.
-//   - Categorías globales: al agregar un vendedor, se importan
-//     automáticamente TODOS sus números. No se pide número.
-//   - PARCIAL: si un número ya está en la categoría → colisión.
-//   - SIMULTÁNEA: 1er vendedor → Serie A, 2do → Serie B. 3ro → colisión.
-//   - El preview muestra qué números entran y cuáles colisionan ANTES de confirmar.
+//   NUEVA ESTRUCTURA:
+//   - La pantalla principal muestra las CATEGORÍAS como cards.
+//   - Dentro de cada card se listan los vendedores asignados.
+//   - Botón "Gestionar vendedores" abre el modal de detalle de categoría.
+//   - Botón "Nuevo vendedor" en el header abre el panel lateral de vendedores.
+//   - PARCIAL: cada número solo puede estar en 1 vendedor.
+//   - SIMULTÁNEA: Serie A (1er vendedor) → Serie B (2do) → conflicto (3ro+).
 // ============================================================
 import React, { useEffect, useState, useCallback } from 'react';
 import Layout from '../components/Layout';
@@ -67,6 +66,10 @@ const S = {
       ? { background: '#fff0f5', border: '1.5px solid #e91e8c40', color: '#e91e8c' }
       : { background: '#f0f5ff', border: '1.5px solid #4361ee40', color: '#4361ee' })
   }),
+  closeBtn: {
+    background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
+    borderRadius: 8, padding: '6px 12px', cursor: 'pointer'
+  },
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -100,20 +103,20 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
   };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ ...S.overlay, zIndex: 10200 }}>
       <div style={S.modal(560)}>
-        <div style={S.header(esEditar ? 'linear-gradient(135deg,#1a7a40,#2ecc71)' : 'linear-gradient(135deg,#0a3d62,#0abfbc)')}>
+        <div style={S.header(esEditar
+          ? 'linear-gradient(135deg,#1a7a40,#2ecc71)'
+          : 'linear-gradient(135deg,#0a3d62,#0abfbc)')}>
           <div>
             <div style={{ fontWeight: 800, fontSize: '1rem' }}>
-              {esEditar ? '✏️ Editar Categoría' : '🏷️ Nueva Categoría Global'}
+              {esEditar ? '✏️ Editar Categoría' : '🏷️ Nueva Categoría'}
             </div>
             <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
-              {esEditar ? categoria.nombre : 'Las categorías agrupan vendedores con sus números fijos'}
+              {esEditar ? categoria.nombre : 'Parcial o Simultánea con Series A y B'}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+          <button onClick={onClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
         </div>
 
         <div style={S.body}>
@@ -125,35 +128,38 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label className="jd-label">MONTO / DESCRIPCIÓN REFERENCIAL</label>
+            <label className="jd-label">MONTO / REFERENCIA</label>
             <input className="jd-input" value={form.monto}
               onChange={e => setForm(p => ({ ...p, monto: e.target.value }))}
               placeholder="Ej: $1,000 · Premio principal" />
           </div>
 
-          {/* Tipo */}
           <div style={{ marginBottom: '1rem' }}>
             <label className="jd-label">TIPO DE CATEGORÍA *</label>
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
               {[
-                { key: 'parcial', icon: '🎯', label: 'Parcial',
-                  desc: 'Pool único 000–999. Cada número pertenece a un solo vendedor en esta categoría.' },
-                { key: 'simultanea', icon: '⚡', label: 'Simultánea',
-                  desc: 'Dos series A y B (000–999 cada una). El mismo número puede tenerlo un vendedor por serie (máx. 2 vendedores por número).' }
-              ].map(({ key, icon, label, desc }) => (
+                {
+                  key: 'parcial', icon: '🎯', label: 'Parcial',
+                  desc: 'Pool único 000–999. Cada número pertenece a un solo vendedor en esta categoría.',
+                  accent: '#4361ee',
+                },
+                {
+                  key: 'simultanea', icon: '⚡', label: 'Simultánea',
+                  desc: 'Dos series A y B (000–999 cada una). Un número puede tenerlo máx. 2 vendedores.',
+                  accent: '#e91e8c',
+                },
+              ].map(({ key, icon, label, desc, accent }) => (
                 <div key={key}
                   onClick={() => !esEditar && setForm(p => ({ ...p, tipo: key }))}
                   style={{
                     flex: 1, padding: '1rem', borderRadius: 12,
                     cursor: esEditar ? 'default' : 'pointer',
-                    border: `2px solid ${form.tipo === key ? (key === 'simultanea' ? '#e91e8c' : '#4361ee') : 'var(--jordyn-border)'}`,
-                    background: form.tipo === key ? (key === 'simultanea' ? '#fff0f580' : '#f0f5ff80') : 'var(--jordyn-bg2)',
-                    transition: 'all .15s', opacity: esEditar ? 0.7 : 1
-                  }}
-                >
-                  <div style={{ fontSize: '1.5rem', marginBottom: 4 }}>{icon}</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.88rem', marginBottom: 4,
-                    color: form.tipo === key ? (key === 'simultanea' ? '#e91e8c' : '#4361ee') : 'var(--jordyn-text)' }}>
+                    border: `2px solid ${form.tipo === key ? accent : 'var(--jordyn-border)'}`,
+                    background: form.tipo === key ? `${accent}10` : 'var(--jordyn-bg2)',
+                    transition: 'all .15s', opacity: esEditar ? 0.7 : 1,
+                  }}>
+                  <div style={{ fontSize: '1.4rem', marginBottom: 4 }}>{icon}</div>
+                  <div style={{ fontWeight: 800, fontSize: '0.88rem', marginBottom: 4, color: form.tipo === key ? accent : 'var(--jordyn-text)' }}>
                     {label}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', lineHeight: 1.5 }}>{desc}</div>
@@ -192,19 +198,19 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   MODAL — VER CATEGORÍA (vendedores asignados + agregar)
+   MODAL — GESTIONAR VENDEDORES DE UNA CATEGORÍA
 ══════════════════════════════════════════════════════════════ */
-function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
-  const [asignaciones,  setAsignaciones]  = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [vendedorSel,   setVendedorSel]   = useState('');
-  const [preview,       setPreview]       = useState(null);   // { libres, colisiones, ... }
+function ModalGestionarCategoria({ categoria, todosVendedores, onClose, onSaved }) {
+  const [asignaciones,   setAsignaciones]   = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [vendedorSel,    setVendedorSel]    = useState('');
+  const [preview,        setPreview]        = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [saving,        setSaving]        = useState(false);
-  const [busqVend,      setBusqVend]      = useState('');
-  const [confirmQuitar, setConfirmQuitar] = useState(null);   // { vendedor_id, nombre }
+  const [saving,         setSaving]         = useState(false);
+  const [busqVend,       setBusqVend]       = useState('');
+  const [confirmQuitar,  setConfirmQuitar]  = useState(null);
 
-  const esSim = categoria.tipo === 'simultanea';
+  const esSim      = categoria.tipo === 'simultanea';
   const accentColor = esSim ? '#e91e8c' : '#4361ee';
 
   const cargar = useCallback(async () => {
@@ -241,14 +247,10 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
     setSaving(true);
     try {
       const res = await API.post(`/categorias-globales/${categoria.id}/vendedores`, {
-        vendedor_id: vendedorSel
+        vendedor_id: vendedorSel,
       });
-      const { message, colisiones, insertados } = res.data;
-      if (colisiones?.length > 0) {
-        toast.warning(message);
-      } else {
-        toast.success(message);
-      }
+      const { message, colisiones } = res.data;
+      colisiones?.length > 0 ? toast.warning(message) : toast.success(message);
       setVendedorSel(''); setPreview(null);
       await cargar();
       onSaved && onSaved();
@@ -278,32 +280,29 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
     } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
   };
 
-  /* Agrupar por vendedor */
+  /* Agrupar asignaciones por vendedor */
   const porVendedor = {};
   const asigFiltradas = asignaciones.filter(a =>
     !busqVend || a.vendedor_nombre.toLowerCase().includes(busqVend.toLowerCase())
   );
   asigFiltradas.forEach(a => {
-    if (!porVendedor[a.vendedor_id]) porVendedor[a.vendedor_id] = { nombre: a.vendedor_nombre, numeros: [] };
+    if (!porVendedor[a.vendedor_id])
+      porVendedor[a.vendedor_id] = { nombre: a.vendedor_nombre, numeros: [] };
     porVendedor[a.vendedor_id].numeros.push({ numero: a.numero, serie: a.serie, id: a.id });
   });
 
-  /* Vendedores que ya están en la categoría (para excluir del selector según tipo) */
+  /* Vendedores disponibles para agregar */
   const vendedoresEnCat = [...new Set(asignaciones.map(a => a.vendedor_id))];
   const vendedoresDisp  = todosVendedores.filter(v => {
     if (esSim) {
-      // En simultánea: un vendedor puede estar si aún no ocupa ambas series
-      const seriesDelVend = asignaciones.filter(a => a.vendedor_id === v.id).map(a => a.serie);
-      const yaEnAmbas = seriesDelVend.includes('A') && seriesDelVend.includes('B');
-      return !yaEnAmbas;
-    } else {
-      // En parcial: un vendedor solo puede estar una vez
-      return !vendedoresEnCat.includes(v.id);
+      const series = asignaciones.filter(a => a.vendedor_id === v.id).map(a => a.serie);
+      return !(series.includes('A') && series.includes('B'));
     }
+    return !vendedoresEnCat.includes(v.id);
   });
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ ...S.overlay, zIndex: 10100 }}>
       <div style={S.modal(900)}>
 
         {/* Header */}
@@ -318,26 +317,24 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
               {Object.keys(porVendedor).length} vendedor(es) · {asignaciones.length} asignación(es)
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+          <button onClick={onClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
         </div>
 
         <div style={S.body}>
 
-          {/* INFO */}
+          {/* Info */}
           <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem', lineHeight: 1.6 }}>
             <i className="bi bi-info-circle-fill me-2"></i>
             {esSim
-              ? <><strong>Simultánea:</strong> Al agregar un vendedor, sus números se asignan automáticamente a Serie A o Serie B según disponibilidad. Máximo 2 vendedores por número (uno por serie).</>
+              ? <><strong>Simultánea:</strong> Al agregar un vendedor, sus números se asignan automáticamente a Serie A primero, luego a Serie B. Máximo 2 vendedores por número (uno por serie).</>
               : <><strong>Parcial:</strong> Al agregar un vendedor, sus números se importan automáticamente. Si un número ya lo tiene otro vendedor en esta categoría, se reporta como conflicto.</>
             }
           </div>
 
-          {/* FORMULARIO AGREGAR VENDEDOR */}
+          {/* Formulario agregar vendedor */}
           <div style={{
             background: 'var(--jordyn-bg2)', border: `2px solid ${accentColor}30`,
-            borderRadius: 14, padding: '1.1rem', marginBottom: '1.1rem'
+            borderRadius: 14, padding: '1.1rem', marginBottom: '1.1rem',
           }}>
             <div style={{ fontWeight: 700, fontSize: '0.88rem', color: accentColor, marginBottom: '0.75rem' }}>
               <i className="bi bi-person-plus-fill me-2"></i>Agregar vendedor a esta categoría
@@ -346,8 +343,7 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ flex: '1 1 220px' }}>
                 <label className="jd-label" style={{ fontSize: '0.62rem' }}>VENDEDOR *</label>
-                <select className="jd-input" value={vendedorSel}
-                  onChange={e => onSelectVendedor(e.target.value)}>
+                <select className="jd-input" value={vendedorSel} onChange={e => onSelectVendedor(e.target.value)}>
                   <option value="">— Seleccionar vendedor —</option>
                   {vendedoresDisp.map(v => (
                     <option key={v.id} value={v.id}>
@@ -356,14 +352,14 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                   ))}
                 </select>
               </div>
-
               <button
                 className="btn-jordyn"
                 onClick={agregar}
                 disabled={saving || !vendedorSel || loadingPreview || (preview && !preview.puedeAgregar)}
-                style={{ height: 44, padding: '0 22px', flexShrink: 0, fontSize: '0.85rem',
-                  background: `linear-gradient(135deg,${accentColor},${accentColor}cc)` }}
-              >
+                style={{
+                  height: 44, padding: '0 22px', flexShrink: 0, fontSize: '0.85rem',
+                  background: `linear-gradient(135deg,${accentColor},${accentColor}cc)`,
+                }}>
                 {saving
                   ? <span className="jd-spinner" style={{ width: 16, height: 16 }}></span>
                   : <><i className="bi bi-plus-lg me-1"></i>Agregar</>
@@ -371,7 +367,7 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
               </button>
             </div>
 
-            {/* Preview */}
+            {/* Preview cargando */}
             {loadingPreview && (
               <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--jordyn-muted)' }}>
                 <span className="jd-spinner" style={{ width: 14, height: 14 }}></span>
@@ -379,8 +375,9 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
               </div>
             )}
 
+            {/* Preview resultado */}
             {preview && !loadingPreview && (
-              <div style={{ marginTop: '0.85rem' }}>
+              <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
 
                 {/* Sin números */}
                 {preview.sinNumeros && (
@@ -399,11 +396,9 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                   </div>
                 )}
 
-                {/* Resumen de números */}
                 {!preview.sinNumeros && !preview.yaEnAmbas && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-
-                    {/* Libres */}
+                  <>
+                    {/* Números libres */}
                     {preview.libres.length > 0 && (
                       <div style={{ background: '#f0fff8', border: '1.5px solid #2ecc7140', borderRadius: 10, padding: '10px 14px' }}>
                         <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1a7a40', marginBottom: 6 }}>
@@ -417,7 +412,7 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                               padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800,
                               background: esSim ? (l.serie === 'A' ? '#f0f5ff' : '#fff0f5') : 'rgba(10,191,188,0.1)',
                               color: esSim ? (l.serie === 'A' ? '#4361ee' : '#e91e8c') : 'var(--jordyn-primary)',
-                              border: `1px solid ${esSim ? (l.serie === 'A' ? '#4361ee40' : '#e91e8c40') : 'rgba(10,191,188,0.3)'}`
+                              border: `1px solid ${esSim ? (l.serie === 'A' ? '#4361ee40' : '#e91e8c40') : 'rgba(10,191,188,0.3)'}`,
                             }}>
                               {l.numero}{esSim ? `-${l.serie}` : ''}
                             </span>
@@ -442,7 +437,7 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                           {preview.colisiones.slice(0, 20).map(c => (
                             <span key={c.numero} title={`Conflicto con: ${c.dueno}`} style={{
                               padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800,
-                              background: '#fff0f0', border: '1px solid #ffcccc', color: '#c0392b'
+                              background: '#fff0f0', border: '1px solid #ffcccc', color: '#c0392b',
                             }}>
                               {c.numero}
                             </span>
@@ -462,27 +457,26 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                       </div>
                     )}
 
-                    {/* Estado final */}
+                    {/* Todos en conflicto */}
                     {preview.libres.length === 0 && preview.colisiones.length > 0 && (
                       <div style={{ background: '#fff5f5', border: '1.5px solid #e63946', borderRadius: 10, padding: '10px 14px', fontSize: '0.78rem', color: '#c0392b', fontWeight: 700, textAlign: 'center' }}>
                         <i className="bi bi-x-circle-fill me-2"></i>
                         Todos los números de este vendedor tienen conflictos. No se puede agregar.
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             )}
           </div>
 
-          {/* Buscador */}
+          {/* Buscador en vendedores asignados */}
           <div style={{ marginBottom: '0.85rem' }}>
-            <input className="jd-input"
-              value={busqVend} onChange={e => setBusqVend(e.target.value)}
+            <input className="jd-input" value={busqVend} onChange={e => setBusqVend(e.target.value)}
               placeholder="🔍 Buscar vendedor asignado..." />
           </div>
 
-          {/* LISTA DE VENDEDORES ASIGNADOS */}
+          {/* Lista de vendedores asignados */}
           {loading ? (
             <div className="d-flex justify-content-center py-4">
               <div className="jd-spinner" style={{ width: 36, height: 36 }}></div>
@@ -497,9 +491,8 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {Object.entries(porVendedor).map(([vid, vdata]) => {
-                const totalNums  = vdata.numeros.length;
-                const numsA      = vdata.numeros.filter(n => n.serie === 'A');
-                const numsB      = vdata.numeros.filter(n => n.serie === 'B');
+                const numsA = vdata.numeros.filter(n => n.serie === 'A');
+                const numsB = vdata.numeros.filter(n => n.serie === 'B');
 
                 return (
                   <div key={vid} style={{ border: `2px solid ${accentColor}25`, borderRadius: 12, overflow: 'hidden' }}>
@@ -507,34 +500,35 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                     <div style={{
                       background: 'var(--jordyn-bg2)', padding: '0.7rem 1rem',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      borderBottom: '1px solid var(--jordyn-border)'
+                      borderBottom: '1px solid var(--jordyn-border)',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{
                           width: 36, height: 36, borderRadius: '50%',
                           background: accentColor, color: '#fff',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 800, fontSize: '0.9rem', flexShrink: 0
+                          fontWeight: 800, fontSize: '0.9rem', flexShrink: 0,
                         }}>
                           {vdata.nombre.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>{vdata.nombre}</div>
                           <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)' }}>
-                            {totalNums} número(s)
-                            {esSim && ` · ${numsA.length > 0 ? `Serie A: ${numsA.length}` : ''} ${numsB.length > 0 ? `Serie B: ${numsB.length}` : ''}`.trim()}
+                            {vdata.numeros.length} número(s)
+                            {esSim && [
+                              numsA.length > 0 && `Serie A: ${numsA.length}`,
+                              numsB.length > 0 && `Serie B: ${numsB.length}`,
+                            ].filter(Boolean).map(t => ` · ${t}`).join('')}
                           </div>
                         </div>
                       </div>
                       <button
                         onClick={() => setConfirmQuitar({ vendedor_id: vid, nombre: vdata.nombre })}
-                        title="Quitar vendedor de la categoría"
                         style={{
                           background: '#fff5f5', border: '1px solid #ffcccc',
                           borderRadius: 8, padding: '5px 10px', cursor: 'pointer',
-                          fontSize: '0.75rem', color: '#e63946', display: 'flex', alignItems: 'center', gap: 4
-                        }}
-                      >
+                          fontSize: '0.75rem', color: '#e63946', display: 'flex', alignItems: 'center', gap: 4,
+                        }}>
                         <i className="bi bi-person-dash-fill"></i> Quitar
                       </button>
                     </div>
@@ -547,9 +541,11 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                           if (!nums.length) return null;
                           return (
                             <div key={serie} style={{ marginBottom: '0.5rem' }}>
-                              <div style={{ fontSize: '0.62rem', fontWeight: 700, marginBottom: 5,
+                              <div style={{
+                                fontSize: '0.62rem', fontWeight: 700, marginBottom: 5,
                                 color: serie === 'A' ? '#4361ee' : '#e91e8c',
-                                textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+                                textTransform: 'uppercase', letterSpacing: '0.6px',
+                              }}>
                                 ● Serie {serie} ({nums.length} números)
                               </div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -559,12 +555,12 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                                       padding: '3px 9px', borderRadius: 7, fontWeight: 800, fontSize: '0.72rem',
                                       background: serie === 'A' ? '#f0f5ff' : '#fff0f5',
                                       border: `1.5px solid ${serie === 'A' ? '#4361ee40' : '#e91e8c40'}`,
-                                      color: serie === 'A' ? '#4361ee' : '#e91e8c'
+                                      color: serie === 'A' ? '#4361ee' : '#e91e8c',
                                     }}>{n.numero}</span>
-                                    <button onClick={() => quitarNumero(n.id)} title="Quitar este número" style={{
-                                      background: 'none', border: 'none', color: '#ddd', cursor: 'pointer',
-                                      padding: '0 1px', fontSize: '0.6rem', lineHeight: 1
-                                    }}><i className="bi bi-x-circle"></i></button>
+                                    <button onClick={() => quitarNumero(n.id)} title="Quitar este número"
+                                      style={{ background: 'none', border: 'none', color: '#ddd', cursor: 'pointer', padding: '0 1px', fontSize: '0.6rem', lineHeight: 1 }}>
+                                      <i className="bi bi-x-circle"></i>
+                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -579,12 +575,12 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
                                 padding: '3px 9px', borderRadius: 7, fontWeight: 800, fontSize: '0.72rem',
                                 background: 'rgba(10,191,188,0.1)',
                                 border: '1.5px solid rgba(10,191,188,0.35)',
-                                color: 'var(--jordyn-primary)'
+                                color: 'var(--jordyn-primary)',
                               }}>{n.numero}</span>
-                              <button onClick={() => quitarNumero(n.id)} title="Quitar este número" style={{
-                                background: 'none', border: 'none', color: '#ddd', cursor: 'pointer',
-                                padding: '0 1px', fontSize: '0.6rem', lineHeight: 1
-                              }}><i className="bi bi-x-circle"></i></button>
+                              <button onClick={() => quitarNumero(n.id)} title="Quitar este número"
+                                style={{ background: 'none', border: 'none', color: '#ddd', cursor: 'pointer', padding: '0 1px', fontSize: '0.6rem', lineHeight: 1 }}>
+                                <i className="bi bi-x-circle"></i>
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -601,13 +597,11 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
       {/* Confirm quitar vendedor */}
       {confirmQuitar && (
         <div onClick={e => e.target === e.currentTarget && setConfirmQuitar(null)}
-          style={{ ...S.overlay, zIndex: 10100 }}>
+          style={{ ...S.overlay, zIndex: 10200 }}>
           <div style={S.modal(420)}>
             <div style={S.header('linear-gradient(135deg,#b37700,#f0a500)')}>
               <div style={{ fontWeight: 800 }}>⚠️ Quitar vendedor de categoría</div>
-              <button onClick={() => setConfirmQuitar(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-                <i className="bi bi-x-lg"></i>
-              </button>
+              <button onClick={() => setConfirmQuitar(null)} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
             </div>
             <div style={S.body}>
               <p style={{ fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.7 }}>
@@ -635,14 +629,14 @@ function ModalVerCategoria({ categoria, todosVendedores, onClose, onSaved }) {
    MODAL — NÚMEROS GLOBALES DEL VENDEDOR
 ══════════════════════════════════════════════════════════════ */
 function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
-  const [asignados,   setAsignados]   = useState([]);
-  const [numInput,    setNumInput]    = useState('');
-  const [rangoIni,    setRangoIni]    = useState('');
-  const [rangoFin,    setRangoFin]    = useState('');
-  const [cantidad,    setCantidad]    = useState(10);
-  const [loadingAl,   setLoadingAl]   = useState(false);
-  const [loadingIni,  setLoadingIni]  = useState(true);
-  const [tab,         setTab]         = useState('manual');
+  const [asignados,  setAsignados]  = useState([]);
+  const [numInput,   setNumInput]   = useState('');
+  const [rangoIni,   setRangoIni]   = useState('');
+  const [rangoFin,   setRangoFin]   = useState('');
+  const [cantidad,   setCantidad]   = useState(10);
+  const [loadingAl,  setLoadingAl]  = useState(false);
+  const [loadingIni, setLoadingIni] = useState(true);
+  const [tab,        setTab]        = useState('manual');
 
   useEffect(() => {
     (async () => {
@@ -657,10 +651,9 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
   }, [vendedor.id]);
 
   const agregar = async (nums) => {
-    // Solo validar que el vendedor no tenga ya esos números (otros vendedores SÍ pueden tenerlos)
     const sinDuplicados = nums.filter(n => NUM_RE.test(n) && !asignados.includes(n));
-    const yaPropio = nums.filter(n => asignados.includes(n));
-    if (yaPropio.length) toast.info(`Ya los tenías: ${yaPropio.slice(0,5).join(', ')}`);
+    const yaPropio      = nums.filter(n => asignados.includes(n));
+    if (yaPropio.length) toast.info(`Ya los tenías: ${yaPropio.slice(0, 5).join(', ')}`);
     if (!sinDuplicados.length) return;
     try {
       await API.post('/numeros/asignar', { vendedor_id: vendedor.id, numeros: sinDuplicados });
@@ -697,7 +690,7 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
     setLoadingAl(true);
     try {
       const res = await API.get(`/vendedores/${vendedor.id}/numeros-aleatorios`, {
-        params: { cantidad, excluir: asignados.join(',') }
+        params: { cantidad, excluir: asignados.join(',') },
       });
       const nums = res.data.numeros_sugeridos || [];
       if (!nums.length) { toast.warning('No hay sugerencias disponibles'); return; }
@@ -707,7 +700,7 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
   };
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{ ...S.overlay, zIndex: 10200 }}>
       <div style={S.modal(700)}>
         <div style={S.header()}>
           <div>
@@ -718,15 +711,13 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
               {asignados.length} asignados · Cualquier número de 000–999 está disponible
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-            <i className="bi bi-x-lg"></i>
-          </button>
+          <button onClick={onClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
         </div>
 
         <div style={S.body}>
           <div className="jd-alert jd-alert-info mb-3" style={{ fontSize: '0.78rem' }}>
             <i className="bi bi-info-circle-fill me-2"></i>
-            Estos son los números fijos del vendedor. <strong>Varios vendedores pueden tener los mismos números</strong> — la validación de exclusividad ocurre al asignarlos a una categoría de rifa.
+            Estos son los números fijos del vendedor. <strong>Varios vendedores pueden tener los mismos números</strong> — la validación de exclusividad ocurre al asignarlos a una categoría.
           </div>
 
           {/* Barra progreso */}
@@ -739,14 +730,14 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
               <div style={{
                 height: '100%', borderRadius: 8,
                 background: 'linear-gradient(90deg, var(--jordyn-primary), var(--jordyn-green))',
-                width: `${(asignados.length / 1000) * 100}%`, transition: 'width 0.4s ease'
+                width: `${(asignados.length / 1000) * 100}%`, transition: 'width 0.4s ease',
               }} />
             </div>
           </div>
 
           {/* Tabs */}
           <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)', marginBottom: '1rem' }}>
-            {[['manual','Manual'],['rango','Rango'],['aleatorio','Aleatorios']].map(([k,l]) => (
+            {[['manual', 'Manual'], ['rango', 'Rango'], ['aleatorio', 'Aleatorios']].map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} style={{
                 flex: 1, padding: '8px 6px', border: 'none', cursor: 'pointer',
                 fontSize: '0.78rem', fontWeight: 600,
@@ -757,43 +748,42 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
             ))}
           </div>
 
+          {/* Tab: manual */}
           {tab === 'manual' && (
-            <div className="d-flex gap-2 mb-3">
-              <input className="jd-input" value={numInput}
-                onChange={e => setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <input className="jd-input" value={numInput} onChange={e => setNumInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && agregarManual()}
-                placeholder="000" maxLength={3}
-                style={{ maxWidth: 100, textAlign: 'center', fontWeight: 800, letterSpacing: 4, fontSize: '1.1rem' }} />
+                placeholder="000–999" style={{ maxWidth: 120 }} maxLength={3} />
               <button className="btn-jordyn" onClick={agregarManual}>
                 <i className="bi bi-plus-lg me-1"></i>Agregar
               </button>
             </div>
           )}
 
+          {/* Tab: rango */}
           {tab === 'rango' && (
-            <div className="d-flex gap-2 mb-3 flex-wrap">
-              <input className="jd-input" value={rangoIni}
-                onChange={e => setRangoIni(e.target.value.replace(/\D/g,''))}
-                placeholder="Desde" style={{ maxWidth: 90, textAlign:'center' }} maxLength={3} />
-              <span style={{ alignSelf:'center', color:'var(--jordyn-muted)' }}>→</span>
-              <input className="jd-input" value={rangoFin}
-                onChange={e => setRangoFin(e.target.value.replace(/\D/g,''))}
-                placeholder="Hasta" style={{ maxWidth: 90, textAlign:'center' }} maxLength={3} />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <input className="jd-input" value={rangoIni} onChange={e => setRangoIni(e.target.value)}
+                placeholder="Desde" style={{ maxWidth: 90 }} maxLength={3} />
+              <span style={{ color: 'var(--jordyn-muted)' }}>—</span>
+              <input className="jd-input" value={rangoFin} onChange={e => setRangoFin(e.target.value)}
+                placeholder="Hasta" style={{ maxWidth: 90 }} maxLength={3} />
               <button className="btn-jordyn" onClick={agregarRango}>
                 <i className="bi bi-plus-lg me-1"></i>Agregar rango
               </button>
             </div>
           )}
 
+          {/* Tab: aleatorios */}
           {tab === 'aleatorio' && (
-            <div className="d-flex gap-2 mb-3 align-items-center">
-              <input type="number" className="jd-input" value={cantidad} min={1} max={500}
-                onChange={e => setCantidad(Math.min(500, Math.max(1, parseInt(e.target.value)||1)))}
-                style={{ maxWidth: 80, textAlign:'center' }} />
-              <span style={{ fontSize:'0.82rem', color:'var(--jordyn-muted)' }}>números aleatorios</span>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <input type="number" className="jd-input" value={cantidad}
+                onChange={e => setCantidad(Math.min(200, Math.max(1, parseInt(e.target.value) || 1)))}
+                style={{ maxWidth: 80 }} min={1} max={200} />
+              <span style={{ fontSize: '0.8rem', color: 'var(--jordyn-muted)' }}>números aleatorios</span>
               <button className="btn-jordyn" onClick={agregarAleatorios} disabled={loadingAl}>
                 {loadingAl
-                  ? <span className="jd-spinner" style={{width:16,height:16}}></span>
+                  ? <span className="jd-spinner" style={{ width: 16, height: 16 }}></span>
                   : <><i className="bi bi-shuffle me-1"></i>Generar</>
                 }
               </button>
@@ -803,26 +793,26 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
           {/* Números asignados */}
           {loadingIni ? (
             <div className="d-flex justify-content-center py-3">
-              <div className="jd-spinner" style={{width:32,height:32}}></div>
+              <div className="jd-spinner" style={{ width: 32, height: 32 }}></div>
             </div>
           ) : asignados.length === 0 ? (
-            <div className="jd-alert jd-alert-warning" style={{fontSize:'0.82rem'}}>
+            <div className="jd-alert jd-alert-warning" style={{ fontSize: '0.82rem' }}>
               Sin números asignados. Usa las opciones de arriba para agregar.
             </div>
           ) : (
             <div>
-              <div style={{fontSize:'0.68rem',fontWeight:700,color:'var(--jordyn-muted)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:8}}>
+              <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>
                 NÚMEROS ASIGNADOS ({asignados.length}) · Click para quitar
               </div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {asignados.map(n => (
                   <div key={n} onClick={() => quitar(n)} title="Click para quitar" style={{
-                    padding:'4px 10px', borderRadius:8, fontWeight:800, fontSize:'0.75rem',
-                    background:'rgba(10,191,188,0.1)', border:'1.5px solid rgba(10,191,188,0.4)',
-                    color:'var(--jordyn-primary)', cursor:'pointer', transition:'all .15s',
+                    padding: '4px 10px', borderRadius: 8, fontWeight: 800, fontSize: '0.75rem',
+                    background: 'rgba(10,191,188,0.1)', border: '1.5px solid rgba(10,191,188,0.4)',
+                    color: 'var(--jordyn-primary)', cursor: 'pointer', transition: 'all .15s',
                   }}
-                    onMouseEnter={e => { e.currentTarget.style.background='#fff5f5'; e.currentTarget.style.borderColor='#e63946'; e.currentTarget.style.color='#e63946'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background='rgba(10,191,188,0.1)'; e.currentTarget.style.borderColor='rgba(10,191,188,0.4)'; e.currentTarget.style.color='var(--jordyn-primary)'; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#fff5f5'; e.currentTarget.style.borderColor = '#e63946'; e.currentTarget.style.color = '#e63946'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(10,191,188,0.1)'; e.currentTarget.style.borderColor = 'rgba(10,191,188,0.4)'; e.currentTarget.style.color = 'var(--jordyn-primary)'; }}
                   >{n}</div>
                 ))}
               </div>
@@ -835,234 +825,133 @@ function ModalNumerosVendedor({ vendedor, onClose, onSaved }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   PANEL — CATEGORÍAS GLOBALES
+   CARD DE CATEGORÍA  (usada en el grid principal)
 ══════════════════════════════════════════════════════════════ */
-function PanelCategorias({ todosVendedores, onClose }) {
-  const [categorias,  setCategorias]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [modalCrear,  setModalCrear]  = useState(false);
-  const [editCat,     setEditCat]     = useState(null);
-  const [verCat,      setVerCat]      = useState(null);
-  const [confirmDel,  setConfirmDel]  = useState(null);
-  const [filtroTipo,  setFiltroTipo]  = useState('todos');
-  const [busqCat,     setBusqCat]     = useState('');
+function CategoriaCard({ cat, vendedoresActivos, onEdit, onDelete, onSaved }) {
+  const [verModal, setVerModal] = useState(false);
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await API.get('/categorias-globales');
-      setCategorias(res.data);
-    } catch { toast.error('Error cargando categorías'); }
-    finally   { setLoading(false); }
-  }, []);
-
-  useEffect(() => { cargar(); }, [cargar]);
-
-  const eliminar = async (cat) => {
-    try {
-      await API.delete(`/categorias-globales/${cat.id}`);
-      toast.success('Categoría eliminada');
-      setConfirmDel(null); cargar();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error eliminando'); setConfirmDel(null); }
-  };
-
-  const filtradas = categorias.filter(c => {
-    const okTipo = filtroTipo === 'todos' || c.tipo === filtroTipo;
-    const okBusq = !busqCat  || c.nombre.toLowerCase().includes(busqCat.toLowerCase());
-    return okTipo && okBusq;
-  });
+  const esSim   = cat.tipo === 'simultanea';
+  const accent  = esSim ? '#e91e8c' : '#4361ee';
 
   return (
-    <div onClick={e => e.target === e.currentTarget && onClose()} style={S.overlay}>
-      <div style={S.modal(920)}>
+    <>
+      <div
+        style={{
+          border: `2px solid ${accent}25`, borderRadius: 14, overflow: 'hidden',
+          background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+          transition: 'box-shadow .2s, border-color .2s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 24px ${accent}22`; e.currentTarget.style.borderColor = `${accent}55`; }}
+        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'; e.currentTarget.style.borderColor = `${accent}25`; }}
+      >
+        {/* Barra de color superior */}
+        <div style={{ height: 4, background: `linear-gradient(90deg,${accent},${accent}88)` }} />
 
-        {/* Header */}
-        <div style={S.header('linear-gradient(135deg,#0a1628,#1a3a5c)')}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: '1rem' }}>
-              <i className="bi bi-tags-fill me-2" style={{ color: '#0abfbc' }}></i>
-              CATEGORÍAS GLOBALES DE RIFAS
+        <div style={{ padding: '1rem 1rem 0.85rem' }}>
+
+          {/* Header card */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {cat.nombre}
+              </div>
+              {cat.monto && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
+                  💰 {cat.monto}
+                </div>
+              )}
+              <span style={S.tipoBadge(cat.tipo)}>{esSim ? '⚡ Simultánea' : '🎯 Parcial'}</span>
             </div>
-            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
-              {categorias.length} categoría(s) · Parciales y Simultáneas
+            <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+              <button onClick={() => onEdit(cat)} title="Editar categoría"
+                style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)' }}>
+                <i className="bi bi-pencil-fill"></i>
+              </button>
+              <button onClick={() => onDelete(cat)} title="Eliminar categoría"
+                style={{ background: '#fff5f5', border: '1px solid #ffcccc', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946' }}>
+                <i className="bi bi-trash3-fill"></i>
+              </button>
             </div>
           </div>
-          <div className="d-flex gap-2">
-            <button onClick={() => setModalCrear(true)} style={{
-              background: '#0abfbc', border: 'none', color: '#fff', borderRadius: 8,
-              padding: '8px 16px', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem'
-            }}>
-              <i className="bi bi-plus-lg me-1"></i>Nueva categoría
-            </button>
-            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-              <i className="bi bi-x-lg"></i>
-            </button>
+
+          {/* Estadísticas */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
+            <span style={S.badge('var(--jordyn-primary)')}>
+              <i className="bi bi-people-fill"></i>{cat.total_vendedores || 0} vendedores
+            </span>
+            <span style={S.badge('#2ecc71')}>
+              <i className="bi bi-hash"></i>{cat.total_numeros || 0} números
+            </span>
+            {esSim && (
+              <>
+                <span style={S.badge('#4361ee')}>A: {cat.numeros_serie_a || 0}</span>
+                <span style={S.badge('#e91e8c')}>B: {cat.numeros_serie_b || 0}</span>
+              </>
+            )}
           </div>
-        </div>
 
-        <div style={S.body}>
-
-          {/* Filtros */}
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
-              {[['todos','Todas'],['parcial','Parcial'],['simultanea','Simultánea']].map(([k,l]) => (
-                <button key={k} onClick={() => setFiltroTipo(k)} style={S.pill(filtroTipo===k)}>{l}</button>
+          {/* Progreso series (solo simultánea) */}
+          {esSim && (
+            <div style={{ marginBottom: '0.8rem' }}>
+              {[{ label: 'A', val: cat.numeros_serie_a || 0, color: '#4361ee' }, { label: 'B', val: cat.numeros_serie_b || 0, color: '#e91e8c' }].map(({ label, val, color }) => (
+                <div key={label} style={{ marginBottom: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--jordyn-muted)', marginBottom: 2 }}>
+                    <span style={{ fontWeight: 700, color }}>Serie {label}</span>
+                    <span>{val} / 1000</span>
+                  </div>
+                  <div style={{ height: 5, borderRadius: 4, background: 'var(--jordyn-border)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: 4, background: color, width: `${Math.min((val / 1000) * 100, 100)}%`, transition: 'width 0.4s' }} />
+                  </div>
+                </div>
               ))}
             </div>
-            <input className="jd-input" style={{ flex: '1 1 200px' }}
-              value={busqCat} onChange={e => setBusqCat(e.target.value)}
-              placeholder="🔍 Buscar categoría..." />
-          </div>
+          )}
 
-          {loading ? (
-            <div className="d-flex justify-content-center py-5">
-              <div className="jd-spinner" style={{ width: 40, height: 40 }}></div>
-            </div>
-          ) : filtradas.length === 0 ? (
-            <div className="jd-alert jd-alert-warning" style={{ textAlign: 'center' }}>
-              {categorias.length === 0
-                ? <><i className="bi bi-tags" style={{ fontSize: '2rem', display: 'block', marginBottom: 8, opacity: 0.4 }}></i>Sin categorías. Crea la primera.</>
-                : 'Sin resultados para los filtros aplicados.'
-              }
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '0.85rem' }}>
-              {filtradas.map(cat => {
-                const esSim      = cat.tipo === 'simultanea';
-                const accent     = esSim ? '#e91e8c' : '#4361ee';
-                return (
-                  <div key={cat.id} style={{
-                    border: `2px solid ${accent}25`, borderRadius: 14, overflow: 'hidden',
-                    background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                    transition: 'box-shadow .2s'
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.boxShadow = `0 6px 24px ${accent}22`}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'}
-                  >
-                    <div style={{ height: 4, background: `linear-gradient(90deg,${accent},${accent}88)` }} />
-                    <div style={{ padding: '0.9rem 1rem' }}>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 3 }}>{cat.nombre}</div>
-                          {cat.monto && <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>💰 {cat.monto}</div>}
-                          <span style={S.tipoBadge(cat.tipo)}>{esSim ? '⚡ Simultánea' : '🎯 Parcial'}</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 5 }}>
-                          <button onClick={() => setEditCat(cat)} style={{
-                            background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)',
-                            borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)'
-                          }}><i className="bi bi-pencil-fill"></i></button>
-                          <button onClick={() => setConfirmDel(cat)} style={{
-                            background: '#fff5f5', border: '1px solid #ffcccc',
-                            borderRadius: 8, padding: '5px 9px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946'
-                          }}><i className="bi bi-trash3-fill"></i></button>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                        <span style={S.badge('var(--jordyn-primary)')}>
-                          <i className="bi bi-people-fill"></i> {cat.total_vendedores || 0} vendedores
-                        </span>
-                        <span style={S.badge('#2ecc71')}>
-                          <i className="bi bi-hash"></i> {cat.total_numeros || 0} números
-                        </span>
-                        {esSim && (
-                          <>
-                            <span style={S.badge('#4361ee')}>A: {cat.numeros_serie_a || 0}</span>
-                            <span style={S.badge('#e91e8c')}>B: {cat.numeros_serie_b || 0}</span>
-                          </>
-                        )}
-                      </div>
-
-                      {cat.descripcion && (
-                        <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: '0.75rem', fontStyle: 'italic' }}>
-                          {cat.descripcion}
-                        </div>
-                      )}
-
-                      <button className="btn-jordyn w-100" onClick={() => setVerCat(cat)}
-                        style={{ fontSize: '0.8rem', background: `linear-gradient(135deg,${accent},${accent}cc)` }}>
-                        <i className="bi bi-eye-fill me-1"></i>Ver vendedores asignados
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+          {/* Descripción */}
+          {cat.descripcion && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: '0.8rem', fontStyle: 'italic', lineHeight: 1.5 }}>
+              {cat.descripcion}
             </div>
           )}
+
+          {/* Botón principal */}
+          <button
+            className="btn-jordyn w-100"
+            onClick={() => setVerModal(true)}
+            style={{ fontSize: '0.8rem', background: `linear-gradient(135deg,${accent},${accent}cc)` }}>
+            <i className="bi bi-people-fill me-1"></i>
+            Gestionar vendedores {cat.total_vendedores > 0 ? `(${cat.total_vendedores})` : ''}
+          </button>
         </div>
       </div>
 
-      {modalCrear && <ModalCrearCategoria onClose={() => setModalCrear(false)} onSaved={cargar} />}
-      {editCat    && <ModalCrearCategoria categoria={editCat} onClose={() => setEditCat(null)} onSaved={cargar} />}
-      {verCat     && (
-        <ModalVerCategoria
-          categoria={verCat}
-          todosVendedores={todosVendedores}
-          onClose={() => setVerCat(null)}
-          onSaved={cargar}
+      {verModal && (
+        <ModalGestionarCategoria
+          categoria={cat}
+          todosVendedores={vendedoresActivos}
+          onClose={() => setVerModal(false)}
+          onSaved={() => { onSaved(); }}
         />
       )}
-      {confirmDel && (
-        <div onClick={e => e.target === e.currentTarget && setConfirmDel(null)}
-          style={{ ...S.overlay, zIndex: 10100 }}>
-          <div style={S.modal(420)}>
-            <div style={S.header('linear-gradient(135deg,#c0303a,#e63946)')}>
-              <div style={{ fontWeight: 800 }}>🗑️ Eliminar categoría</div>
-              <button onClick={() => setConfirmDel(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-            <div style={S.body}>
-              <p style={{ fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.7 }}>
-                ¿Eliminar la categoría <strong>"{confirmDel.nombre}"</strong>?
-                Se eliminarán todas las asignaciones de vendedores.
-              </p>
-              <div className="d-flex gap-2">
-                <button className="btn-jordyn-danger w-100" onClick={() => eliminar(confirmDel)}>
-                  <i className="bi bi-trash3-fill me-1"></i>Eliminar
-                </button>
-                <button className="btn-jordyn-outline" onClick={() => setConfirmDel(null)}
-                  style={{ flexShrink: 0, padding: '0 18px' }}>Cancelar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════
-   COMPONENTE PRINCIPAL
+   PANEL LATERAL — GESTIÓN DE VENDEDORES
+   (slide-in desde la derecha, se superpone al contenido)
 ══════════════════════════════════════════════════════════════ */
-const emptyForm = { nombre: '', cedula: '' };
-
-export default function GestionVendedores() {
-  const [vendedores,    setVendedores]    = useState([]);
-  const [loading,       setLoading]       = useState(true);
+function PanelVendedores({ vendedores, loading, onClose, onCreated, onUpdated, onDeleted, onNums }) {
   const [showForm,      setShowForm]      = useState(false);
-  const [form,          setForm]          = useState(emptyForm);
+  const [form,          setForm]          = useState({ nombre: '', cedula: '' });
   const [editando,      setEditando]      = useState(null);
   const [saving,        setSaving]        = useState(false);
   const [creds,         setCreds]         = useState(null);
-  const [modalNums,     setModalNums]     = useState(null);
-  const [modalCats,     setModalCats]     = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [busq,          setBusq]          = useState('');
   const [filtroActivo,  setFiltroActivo]  = useState('todos');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await API.get('/vendedores');
-      setVendedores(res.data);
-    } catch { toast.error('Error cargando vendedores'); }
-    finally   { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  const emptyForm = { nombre: '', cedula: '' };
 
   const guardar = async (e) => {
     e.preventDefault();
@@ -1073,14 +962,15 @@ export default function GestionVendedores() {
         await API.put(`/vendedores/${editando}`, form);
         toast.success('Vendedor actualizado');
         setEditando(null); setShowForm(false); setForm(emptyForm);
+        onUpdated && onUpdated();
       } else {
         const cred = generarCredenciales(form.nombre);
         const res  = await API.post('/auth/register', { ...form, rol: 'vendedor', ...cred });
         setCreds({ ...cred, nombre: form.nombre, id: res.data?.id });
         toast.success('Vendedor creado');
         setShowForm(false); setForm(emptyForm);
+        onCreated && onCreated();
       }
-      load();
     } catch (err) { toast.error(err.response?.data?.error || 'Error guardando'); }
     finally { setSaving(false); }
   };
@@ -1095,10 +985,11 @@ export default function GestionVendedores() {
     try {
       await API.delete(`/vendedores/${confirmDelete.id}`);
       toast.success('Vendedor eliminado');
-      setConfirmDelete(null); load();
+      setConfirmDelete(null);
+      onDeleted && onDeleted();
     } catch (err) {
       const msg = err.response?.data?.error || '';
-      if (msg.includes('ventas')) setConfirmDelete(p => ({ ...p, tieneVentas: true, errorVentas: true }));
+      if (msg.includes('ventas')) setConfirmDelete(p => ({ ...p, tieneVentas: true }));
       else toast.error(msg || 'Error eliminando');
     }
   };
@@ -1107,7 +998,8 @@ export default function GestionVendedores() {
     try {
       await API.put(`/vendedores/${confirmDelete.id}`, { activo: false });
       toast.info('Vendedor desactivado');
-      setConfirmDelete(null); load();
+      setConfirmDelete(null);
+      onUpdated && onUpdated();
     } catch { toast.error('Error desactivando'); }
   };
 
@@ -1116,222 +1008,177 @@ export default function GestionVendedores() {
     const okActivo = filtroActivo === 'todos' || (filtroActivo === 'activos' ? v.activo : !v.activo);
     return okBusq && okActivo;
   });
-
   const activos   = filtrados.filter(v =>  v.activo);
   const inactivos = filtrados.filter(v => !v.activo);
 
-  const VendedorRow = ({ v }) => (
-    <div style={{
-      border: '1.5px solid var(--jordyn-border)', borderRadius: 12, marginBottom: '0.6rem',
-      background: v.activo ? '#fff' : 'var(--jordyn-bg2)', opacity: v.activo ? 1 : 0.75,
-      boxShadow: '0 1px 6px rgba(0,0,0,0.04)', transition: 'box-shadow .2s'
-    }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(10,191,188,0.13)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.04)'}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem 1rem', flexWrap: 'wrap' }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-          background: v.activo ? 'var(--jordyn-primary)' : '#ccc',
-          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 800, fontSize: '0.95rem'
-        }}>
-          {v.nombre.charAt(0).toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            {v.nombre}
-            {!v.activo && <span style={{ background: '#eee', color: '#999', fontSize: '0.62rem', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>INACTIVO</span>}
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
-            @{v.usuario} {v.cedula && `· CC ${v.cedula}`}
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
-            <span style={S.badge('var(--jordyn-primary)')}>
-              <i className="bi bi-hash"></i>{v.numeros_count || 0} números
-            </span>
-            <span style={S.badge('#2ecc71')}>
-              <i className="bi bi-receipt"></i>{v.total_ventas || 0} ventas
-            </span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-          <button onClick={() => setModalNums({ vendedor: v })} title="Gestionar números"
-            style={{ background: 'rgba(10,191,188,0.1)', border: '1px solid rgba(10,191,188,0.3)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-primary)' }}>
-            <i className="bi bi-hash"></i>
-          </button>
-          <button onClick={() => abrirEditar(v)} title="Editar"
-            style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)' }}>
-            <i className="bi bi-pencil-fill"></i>
-          </button>
-          <button onClick={() => setConfirmDelete({ ...v, tieneVentas: (v.total_ventas || 0) > 0 })} title="Eliminar"
-            style={{ background: '#fff5f5', border: '1px solid #ffcccc', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946' }}>
-            <i className="bi bi-trash3-fill"></i>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
-    <Layout>
-      {/* Header página */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <i className="bi bi-people-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
-            Gestión de Vendedores
-          </h1>
-          <p style={{ fontSize: '0.75rem', color: 'var(--jordyn-muted)', margin: '2px 0 0' }}>
-            {vendedores.length} vendedor(es) registrados
-          </p>
-        </div>
-        <div className="d-flex gap-2 flex-wrap">
-          <button className="btn-jordyn-outline" onClick={() => setModalCats(true)}
-            style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <i className="bi bi-tags-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
-            Categorías de rifas
-          </button>
-          <button className="btn-jordyn" onClick={() => { setShowForm(p => !p); setEditando(null); setForm(emptyForm); }}
-            style={{ fontSize: '0.82rem' }}>
-            <i className={`bi bi-${showForm && !editando ? 'dash' : 'plus'}-lg me-1`}></i>
-            {showForm && !editando ? 'Cancelar' : 'Nuevo vendedor'}
-          </button>
-        </div>
-      </div>
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(8,22,22,0.5)', backdropFilter: 'blur(4px)' }} />
 
-      {/* Formulario nuevo/editar */}
-      {showForm && (
-        <div className="jd-card jd-card-primary mb-3 fade-in" style={{ padding: '1.1rem' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--jordyn-primary)', marginBottom: '0.8rem' }}>
-            {editando ? '✏️ Editar vendedor' : '➕ Nuevo vendedor'}
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 9001,
+        width: '100%', maxWidth: 480,
+        background: 'var(--jordyn-bg, #f4f7f6)',
+        boxShadow: '-8px 0 40px rgba(0,0,0,0.18)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+
+        {/* Header panel */}
+        <div style={{ background: 'linear-gradient(135deg,#0a1628,#1a3a5c)', color: '#fff', padding: '1rem 1.25rem', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="bi bi-people-fill" style={{ color: '#0abfbc' }}></i>
+              Vendedores
+            </div>
+            <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: 2 }}>
+              {vendedores.length} registrado(s)
+            </div>
           </div>
-          <form onSubmit={guardar}>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-              <div style={{ flex: '1 1 180px' }}>
-                <label className="jd-label">NOMBRE COMPLETO *</label>
-                <input className="jd-input" value={form.nombre}
-                  onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Ej: Juan Pérez" autoFocus required />
-              </div>
-              <div style={{ flex: '1 1 140px' }}>
-                <label className="jd-label">CÉDULA</label>
-                <input className="jd-input" value={form.cedula || ''}
-                  onChange={e => setForm(p => ({ ...p, cedula: e.target.value }))}
-                  placeholder="123456789" />
-              </div>
-              {editando && (
-                <div style={{ flex: '1 1 160px' }}>
-                  <label className="jd-label">NUEVA CONTRASEÑA</label>
-                  <input className="jd-input" type="password" value={form.password || ''}
-                    onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                    placeholder="Vacío = sin cambios" />
-                </div>
-              )}
-            </div>
-            {!editando && (
-              <div className="jd-alert jd-alert-info" style={{ fontSize: '0.75rem', marginBottom: '0.75rem' }}>
-                <i className="bi bi-info-circle-fill me-1"></i>
-                Las credenciales se generan automáticamente desde el nombre.
-              </div>
-            )}
-            <div className="d-flex gap-2">
-              <button type="submit" className="btn-jordyn" disabled={saving}>
-                {saving ? 'Guardando...' : <><i className="bi bi-floppy-fill me-1"></i>{editando ? 'Actualizar' : 'Crear vendedor'}</>}
-              </button>
-              <button type="button" className="btn-jordyn-outline"
-                onClick={() => { setShowForm(false); setEditando(null); setForm(emptyForm); }}>
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Credenciales generadas */}
-      {creds && (
-        <div style={{ background: 'linear-gradient(135deg,#0a3d62,#0abfbc)', borderRadius: 12, padding: '1rem 1.2rem', marginBottom: '1rem', color: '#fff' }}>
-          <div style={{ fontWeight: 800, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-            <span>✅ Vendedor creado: {creds.nombre}</span>
-            <button onClick={() => setCreds(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.7 }}>
+          <div className="d-flex gap-2">
+            <button onClick={() => { setShowForm(p => !p); setEditando(null); setForm(emptyForm); }}
+              style={{ background: '#0abfbc', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>
+              <i className={`bi bi-${showForm && !editando ? 'dash' : 'plus'}-lg me-1`}></i>
+              {showForm && !editando ? 'Cancelar' : 'Nuevo'}
+            </button>
+            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
               <i className="bi bi-x-lg"></i>
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.82rem', flexWrap: 'wrap' }}>
-            <span>👤 <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.usuario}</strong></span>
-            <span>🔑 <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.password}</strong></span>
-          </div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: 6 }}>⚠️ Copia las credenciales ahora. No se mostrarán de nuevo.</div>
         </div>
-      )}
 
-      {/* Filtros y búsqueda */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="jd-input" style={{ flex: '1 1 200px' }}
-          value={busq} onChange={e => setBusq(e.target.value)}
-          placeholder="🔍 Buscar por nombre o usuario..." />
-        <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
-          {[['todos','Todos'],['activos','Activos'],['inactivos','Inactivos']].map(([k,l]) => (
-            <button key={k} onClick={() => setFiltroActivo(k)} style={S.pill(filtroActivo===k)}>{l}</button>
-          ))}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+
+          {/* Formulario crear/editar */}
+          {showForm && (
+            <div className="jd-card jd-card-primary mb-3 fade-in" style={{ padding: '1.1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--jordyn-primary)', marginBottom: '0.8rem' }}>
+                {editando ? '✏️ Editar vendedor' : '➕ Nuevo vendedor'}
+              </div>
+              <form onSubmit={guardar}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label className="jd-label">NOMBRE COMPLETO *</label>
+                    <input className="jd-input" value={form.nombre}
+                      onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
+                      placeholder="Ej: Juan Pérez" autoFocus required />
+                  </div>
+                  <div>
+                    <label className="jd-label">CÉDULA</label>
+                    <input className="jd-input" value={form.cedula || ''}
+                      onChange={e => setForm(p => ({ ...p, cedula: e.target.value }))}
+                      placeholder="123456789" />
+                  </div>
+                  {editando && (
+                    <div>
+                      <label className="jd-label">NUEVA CONTRASEÑA</label>
+                      <input className="jd-input" type="password" value={form.password || ''}
+                        onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                        placeholder="Vacío = sin cambios" />
+                    </div>
+                  )}
+                </div>
+                {!editando && (
+                  <div className="jd-alert jd-alert-info" style={{ fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                    <i className="bi bi-info-circle-fill me-1"></i>
+                    Las credenciales se generan automáticamente desde el nombre.
+                  </div>
+                )}
+                <div className="d-flex gap-2">
+                  <button type="submit" className="btn-jordyn" disabled={saving}>
+                    {saving
+                      ? 'Guardando...'
+                      : <><i className="bi bi-floppy-fill me-1"></i>{editando ? 'Actualizar' : 'Crear vendedor'}</>
+                    }
+                  </button>
+                  <button type="button" className="btn-jordyn-outline"
+                    onClick={() => { setShowForm(false); setEditando(null); setForm(emptyForm); }}>
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Credenciales generadas */}
+          {creds && (
+            <div style={{ background: 'linear-gradient(135deg,#0a3d62,#0abfbc)', borderRadius: 12, padding: '1rem 1.2rem', marginBottom: '1rem', color: '#fff' }}>
+              <div style={{ fontWeight: 800, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                <span>✅ Vendedor creado: {creds.nombre}</span>
+                <button onClick={() => setCreds(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: 0.7 }}>
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+                <span>👤 <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.usuario}</strong></span>
+                <span>🔑 <strong style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6 }}>{creds.password}</strong></span>
+              </div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: 6 }}>⚠️ Copia las credenciales ahora. No se mostrarán de nuevo.</div>
+            </div>
+          )}
+
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input className="jd-input" style={{ flex: '1 1 160px' }}
+              value={busq} onChange={e => setBusq(e.target.value)}
+              placeholder="🔍 Buscar..." />
+            <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
+              {[['todos', 'Todos'], ['activos', 'Activos'], ['inactivos', 'Inactivos']].map(([k, l]) => (
+                <button key={k} onClick={() => setFiltroActivo(k)} style={S.pill(filtroActivo === k)}>{l}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Lista de vendedores */}
+          {loading ? (
+            <div className="d-flex justify-content-center mt-4">
+              <div className="jd-spinner" style={{ width: 36, height: 36 }}></div>
+            </div>
+          ) : (
+            <>
+              {activos.length > 0 && (
+                <div style={{ marginBottom: '1.2rem' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--jordyn-green)', display: 'inline-block' }}></span>
+                    Activos ({activos.length})
+                  </div>
+                  {activos.map(v => (
+                    <VendedorRow key={v.id} v={v}
+                      onEdit={abrirEditar}
+                      onNums={onNums}
+                      onDelete={() => setConfirmDelete({ ...v, tieneVentas: (v.total_ventas || 0) > 0 })} />
+                  ))}
+                </div>
+              )}
+              {inactivos.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ccc', display: 'inline-block' }}></span>
+                    Inactivos ({inactivos.length})
+                  </div>
+                  {inactivos.map(v => (
+                    <VendedorRow key={v.id} v={v}
+                      onEdit={abrirEditar}
+                      onNums={onNums}
+                      onDelete={() => setConfirmDelete({ ...v, tieneVentas: (v.total_ventas || 0) > 0 })} />
+                  ))}
+                </div>
+              )}
+              {filtrados.length === 0 && (
+                <div className="jd-alert jd-alert-warning">
+                  {vendedores.length === 0 ? 'Sin vendedores registrados' : 'Sin resultados para la búsqueda'}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
-
-      {/* Lista */}
-      {loading ? (
-        <div className="d-flex justify-content-center mt-5">
-          <div className="jd-spinner" style={{ width: 40, height: 40 }}></div>
-        </div>
-      ) : (
-        <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', paddingRight: 4 }}>
-          {filtrados.length === 0 && (
-            <div className="jd-alert jd-alert-warning">
-              <i className="bi bi-exclamation-triangle-fill me-1"></i>
-              {vendedores.length === 0 ? 'Sin vendedores registrados' : 'Sin resultados para la búsqueda'}
-            </div>
-          )}
-          {activos.length > 0 && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--jordyn-green)', display: 'inline-block' }}></span>
-                Activos ({activos.length})
-              </div>
-              {activos.map(v => <VendedorRow key={v.id} v={v} />)}
-            </div>
-          )}
-          {inactivos.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ccc', display: 'inline-block' }}></span>
-                Inactivos ({inactivos.length})
-              </div>
-              {inactivos.map(v => <VendedorRow key={v.id} v={v} />)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Panel categorías */}
-      {modalCats && (
-        <PanelCategorias
-          todosVendedores={vendedores.filter(v => v.activo)}
-          onClose={() => setModalCats(false)}
-        />
-      )}
-
-      {/* Modal números del vendedor */}
-      {modalNums && (
-        <ModalNumerosVendedor
-          vendedor={modalNums.vendedor}
-          onClose={() => setModalNums(null)}
-          onSaved={load}
-        />
-      )}
 
       {/* Confirm delete */}
       {confirmDelete && (
         <div onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}
-          style={{ ...S.overlay, zIndex: 10200 }}>
+          style={{ ...S.overlay, zIndex: 10000 }}>
           <div style={S.modal(440)}>
             <div style={S.header(confirmDelete.tieneVentas ? 'linear-gradient(135deg,#b37700,#f0a500)' : 'linear-gradient(135deg,#c0303a,#e63946)')}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1341,9 +1188,7 @@ export default function GestionVendedores() {
                   <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>{confirmDelete.nombre}</div>
                 </div>
               </div>
-              <button onClick={() => setConfirmDelete(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
-                <i className="bi bi-x-lg"></i>
-              </button>
+              <button onClick={() => setConfirmDelete(null)} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
             </div>
             <div style={S.body}>
               {confirmDelete.tieneVentas ? (
@@ -1377,6 +1222,262 @@ export default function GestionVendedores() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* Fila de vendedor dentro del panel */
+function VendedorRow({ v, onEdit, onNums, onDelete }) {
+  return (
+    <div style={{
+      border: '1.5px solid var(--jordyn-border)', borderRadius: 12, marginBottom: '0.6rem',
+      background: v.activo ? '#fff' : 'var(--jordyn-bg2)', opacity: v.activo ? 1 : 0.75,
+      boxShadow: '0 1px 6px rgba(0,0,0,0.04)', transition: 'box-shadow .2s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(10,191,188,0.13)'}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.04)'}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.7rem 0.9rem', flexWrap: 'wrap' }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+          background: v.activo ? 'var(--jordyn-primary)' : '#ccc',
+          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 800, fontSize: '0.95rem',
+        }}>
+          {v.nombre.charAt(0).toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {v.nombre}
+            {!v.activo && <span style={{ background: '#eee', color: '#999', fontSize: '0.6rem', padding: '1px 7px', borderRadius: 10, fontWeight: 700 }}>INACTIVO</span>}
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
+            @{v.usuario}{v.cedula ? ` · CC ${v.cedula}` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+            <span style={S.badge('var(--jordyn-primary)')}>
+              <i className="bi bi-hash"></i>{v.numeros_count || 0} núm.
+            </span>
+            <span style={S.badge('#2ecc71')}>
+              <i className="bi bi-receipt"></i>{v.total_ventas || 0} ventas
+            </span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          <button onClick={() => onNums(v)} title="Gestionar números"
+            style={{ background: 'rgba(10,191,188,0.1)', border: '1px solid rgba(10,191,188,0.3)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-primary)' }}>
+            <i className="bi bi-hash"></i>
+          </button>
+          <button onClick={() => onEdit(v)} title="Editar"
+            style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--jordyn-muted)' }}>
+            <i className="bi bi-pencil-fill"></i>
+          </button>
+          <button onClick={onDelete} title="Eliminar"
+            style={{ background: '#fff5f5', border: '1px solid #ffcccc', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontSize: '0.78rem', color: '#e63946' }}>
+            <i className="bi bi-trash3-fill"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMPONENTE PRINCIPAL — GestionVendedores
+   La pantalla muestra las categorías como cards en un grid.
+   El panel de vendedores se abre como slide-in lateral.
+══════════════════════════════════════════════════════════════ */
+export default function GestionVendedores() {
+  const [vendedores,  setVendedores]  = useState([]);
+  const [categorias,  setCategorias]  = useState([]);
+  const [loadingV,    setLoadingV]    = useState(true);
+  const [loadingC,    setLoadingC]    = useState(true);
+  const [panelVendedores, setPanelVendedores] = useState(false);
+  const [modalNums,   setModalNums]   = useState(null);    // { vendedor }
+  const [modalCrearCat, setModalCrearCat] = useState(false);
+  const [editCat,     setEditCat]     = useState(null);
+  const [confirmDelCat, setConfirmDelCat] = useState(null);
+  const [filtroTipo,  setFiltroTipo]  = useState('todos');
+  const [busqCat,     setBusqCat]     = useState('');
+
+  /* ── Cargar datos ── */
+  const cargarVendedores = useCallback(async () => {
+    setLoadingV(true);
+    try {
+      const res = await API.get('/vendedores');
+      setVendedores(res.data);
+    } catch { toast.error('Error cargando vendedores'); }
+    finally   { setLoadingV(false); }
+  }, []);
+
+  const cargarCategorias = useCallback(async () => {
+    setLoadingC(true);
+    try {
+      const res = await API.get('/categorias-globales');
+      setCategorias(res.data);
+    } catch { toast.error('Error cargando categorías'); }
+    finally   { setLoadingC(false); }
+  }, []);
+
+  useEffect(() => {
+    cargarVendedores();
+    cargarCategorias();
+  }, [cargarVendedores, cargarCategorias]);
+
+  /* ── Eliminar categoría ── */
+  const eliminarCategoria = async (cat) => {
+    try {
+      await API.delete(`/categorias-globales/${cat.id}`);
+      toast.success('Categoría eliminada');
+      setConfirmDelCat(null);
+      cargarCategorias();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error eliminando');
+      setConfirmDelCat(null);
+    }
+  };
+
+  /* ── Filtrar categorías ── */
+  const categoriasFiltradas = categorias.filter(c => {
+    const okTipo = filtroTipo === 'todos' || c.tipo === filtroTipo;
+    const okBusq = !busqCat  || c.nombre.toLowerCase().includes(busqCat.toLowerCase());
+    return okTipo && okBusq;
+  });
+
+  const vendedoresActivos = vendedores.filter(v => v.activo);
+
+  return (
+    <Layout>
+      {/* ── Header página ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="bi bi-tags-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
+            Categorías y Vendedores
+          </h1>
+          <p style={{ fontSize: '0.75rem', color: 'var(--jordyn-muted)', margin: '2px 0 0' }}>
+            {categorias.length} categoría(s) · {vendedores.length} vendedor(es)
+          </p>
+        </div>
+        <div className="d-flex gap-2 flex-wrap">
+          <button className="btn-jordyn-outline" onClick={() => setPanelVendedores(true)}
+            style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="bi bi-people-fill" style={{ color: 'var(--jordyn-primary)' }}></i>
+            Vendedores ({vendedores.length})
+          </button>
+          <button className="btn-jordyn" onClick={() => setModalCrearCat(true)}
+            style={{ fontSize: '0.82rem' }}>
+            <i className="bi bi-plus-lg me-1"></i>Nueva categoría
+          </button>
+        </div>
+      </div>
+
+      {/* ── Filtros de categorías ── */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', borderRadius: 20, overflow: 'hidden', border: '1.5px solid var(--jordyn-border)' }}>
+          {[['todos', 'Todas'], ['parcial', 'Parcial'], ['simultanea', 'Simultánea']].map(([k, l]) => (
+            <button key={k} onClick={() => setFiltroTipo(k)} style={S.pill(filtroTipo === k)}>{l}</button>
+          ))}
+        </div>
+        <input className="jd-input" style={{ flex: '1 1 200px', maxWidth: 320 }}
+          value={busqCat} onChange={e => setBusqCat(e.target.value)}
+          placeholder="🔍 Buscar categoría..." />
+      </div>
+
+      {/* ── Grid de categorías ── */}
+      {loadingC ? (
+        <div className="d-flex justify-content-center mt-5">
+          <div className="jd-spinner" style={{ width: 44, height: 44 }}></div>
+        </div>
+      ) : categoriasFiltradas.length === 0 ? (
+        <div className="jd-alert jd-alert-warning" style={{ textAlign: 'center', padding: '2.5rem' }}>
+          {categorias.length === 0
+            ? <>
+                <i className="bi bi-tags" style={{ fontSize: '2.5rem', display: 'block', marginBottom: 10, opacity: 0.4 }}></i>
+                Sin categorías. Crea la primera con el botón <strong>"Nueva categoría"</strong>.
+              </>
+            : 'Sin resultados para los filtros aplicados.'
+          }
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
+          {categoriasFiltradas.map(cat => (
+            <CategoriaCard
+              key={cat.id}
+              cat={cat}
+              vendedoresActivos={vendedoresActivos}
+              onEdit={c => setEditCat(c)}
+              onDelete={c => setConfirmDelCat(c)}
+              onSaved={cargarCategorias}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── Panel lateral de vendedores ── */}
+      {panelVendedores && (
+        <PanelVendedores
+          vendedores={vendedores}
+          loading={loadingV}
+          onClose={() => setPanelVendedores(false)}
+          onCreated={cargarVendedores}
+          onUpdated={cargarVendedores}
+          onDeleted={cargarVendedores}
+          onNums={v => setModalNums({ vendedor: v })}
+        />
+      )}
+
+      {/* ── Modal números del vendedor ── */}
+      {modalNums && (
+        <ModalNumerosVendedor
+          vendedor={modalNums.vendedor}
+          onClose={() => setModalNums(null)}
+          onSaved={cargarVendedores}
+        />
+      )}
+
+      {/* ── Modal crear categoría ── */}
+      {modalCrearCat && (
+        <ModalCrearCategoria
+          onClose={() => setModalCrearCat(false)}
+          onSaved={cargarCategorias}
+        />
+      )}
+
+      {/* ── Modal editar categoría ── */}
+      {editCat && (
+        <ModalCrearCategoria
+          categoria={editCat}
+          onClose={() => setEditCat(null)}
+          onSaved={cargarCategorias}
+        />
+      )}
+
+      {/* ── Confirm eliminar categoría ── */}
+      {confirmDelCat && (
+        <div onClick={e => e.target === e.currentTarget && setConfirmDelCat(null)}
+          style={S.overlay}>
+          <div style={S.modal(420)}>
+            <div style={S.header('linear-gradient(135deg,#c0303a,#e63946)')}>
+              <div style={{ fontWeight: 800 }}>🗑️ Eliminar categoría</div>
+              <button onClick={() => setConfirmDelCat(null)} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
+            </div>
+            <div style={S.body}>
+              <p style={{ fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.7 }}>
+                ¿Eliminar la categoría <strong>"{confirmDelCat.nombre}"</strong>?
+                Se eliminarán todas las asignaciones de vendedores en esta categoría.
+              </p>
+              <div className="d-flex gap-2">
+                <button className="btn-jordyn-danger w-100" onClick={() => eliminarCategoria(confirmDelCat)}>
+                  <i className="bi bi-trash3-fill me-1"></i>Eliminar
+                </button>
+                <button className="btn-jordyn-outline" onClick={() => setConfirmDelCat(null)}
+                  style={{ flexShrink: 0, padding: '0 18px' }}>Cancelar</button>
+              </div>
             </div>
           </div>
         </div>
