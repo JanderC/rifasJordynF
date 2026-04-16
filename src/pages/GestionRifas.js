@@ -1,15 +1,12 @@
 // ============================================================
 //   GestionRifas.js — RIFAS JORDYN
-//
-//   FLUJO DE VENDEDORES EN RIFAS:
-//   - Al crear/editar una rifa hay un multiselect con checkbox
-//     para seleccionar qué vendedores participan en esa rifa.
-//   - Los números asignados a esos vendedores quedan reservados
-//     automáticamente → NO aparecen en la pantalla pública.
-//   - Un mismo número puede venderse en rifas distintas de forma
-//     independiente (cada rifa es un juego separado).
-//   - La tarjeta de rifa muestra los vendedores participantes
-//     con cuántos números tienen en esa rifa.
+//   CAMBIOS v2:
+//   - SelectorVendedores reemplazado por SelectorCategoria.
+//   - Al crear/editar una rifa se elige UNA categoría global.
+//   - El sistema carga todos sus vendedores con números y series.
+//   - La tabla muestra el monto pendiente por vendedor en tiempo
+//     real (se recalcula cuando cambia el precio de la rifa).
+//   - vendedores_categorias se llena automáticamente para el payload.
 // ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
@@ -41,8 +38,8 @@ const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
-  // [{ vendedor_id, categoria_id }] — cada entrada es vendedor + categoría elegida
-  vendedores_categorias: [],
+  vendedores_categorias: [],      // [{ vendedor_id, categoria_id }] — se llena automático
+  categoria_seleccionada_id: null, // categoría elegida para cargar vendedores
 };
 
 const fmtCOP = v =>
@@ -189,208 +186,186 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   SELECTOR DE VENDEDORES + CATEGORÍA
-   ─ Muestra cada vendedor. Al seleccionarlo, expande sus
-     categorías (cargadas desde /vendedores/:id/categorias).
-   ─ El usuario elige vendedor + categoría → ambos quedan en
-     vendedores_categorias: [{ vendedor_id, categoria_id }]
+   SELECTOR DE CATEGORÍA
+   Nuevo flujo: se elige UNA categoría global → el sistema carga
+   todos sus vendedores con números y series asignadas.
+   La tabla muestra el monto pendiente por vendedor calculado
+   con el precio actual de la rifa.
 ════════════════════════════════════════════════════════════ */
-function SelectorVendedores({ vendedores, seleccionados, onChange }) {
-  // seleccionados = [{ vendedor_id, categoria_id }]
-  const [expandido,   setExpandido]   = useState(null);   // vendedor_id expandido
-  const [categorias,  setCategorias]  = useState({});     // { vendedor_id: [...cats] }
-  const [loadingCats, setLoadingCats] = useState({});     // { vendedor_id: bool }
+function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedoresCargados, onVendedoresCargados }) {
+  const [categorias, setCategorias] = useState([]);
+  const [cargando,   setCargando]   = useState(false);
 
-  /* ── Cargar categorías de un vendedor al expandir ── */
-  const expandirVendedor = async (vendedorId) => {
-    if (expandido === vendedorId) { setExpandido(null); return; }
-    setExpandido(vendedorId);
-    if (categorias[vendedorId]) return; // ya cargadas
-    setLoadingCats(p => ({ ...p, [vendedorId]: true }));
+  // Cargar lista de todas las categorías al montar
+  useEffect(() => {
+    API.get('/categorias-globales').then(r => setCategorias(r.data || [])).catch(() => {});
+  }, []);
+
+  const handleSeleccionar = async (catId) => {
+    if (!catId) {
+      onCategoriaChange(null);
+      onVendedoresCargados([]);
+      return;
+    }
+    onCategoriaChange(catId);
+    onVendedoresCargados([]);
+    setCargando(true);
     try {
-      const res = await API.get(`/vendedores/${vendedorId}/categorias`);
-      setCategorias(p => ({ ...p, [vendedorId]: res.data }));
-    } catch { toast.error('Error cargando categorías del vendedor'); }
-    finally { setLoadingCats(p => ({ ...p, [vendedorId]: false })); }
-  };
-
-  /* ── Toggle de una categoría ── */
-  const toggleCategoria = (vendedorId, categoriaId) => {
-    const yaEsta = seleccionados.some(s => s.vendedor_id === vendedorId && s.categoria_id === categoriaId);
-    if (yaEsta) {
-      // quitar
-      onChange(seleccionados.filter(s => !(s.vendedor_id === vendedorId && s.categoria_id === categoriaId)));
-    } else {
-      // agregar (un vendedor puede tener múltiples categorías seleccionadas)
-      onChange([...seleccionados, { vendedor_id: vendedorId, categoria_id: categoriaId }]);
+      const r = await API.get(`/categorias-globales/${catId}/para-rifa`);
+      onVendedoresCargados(r.data.vendedores || []);
+    } catch {
+      toast.error('Error cargando vendedores de la categoría');
+    } finally {
+      setCargando(false);
     }
   };
 
-  /* ── Helpers ── */
-  const vendedorTieneAlgoSeleccionado = (vid) => seleccionados.some(s => s.vendedor_id === vid);
-  const categoriaEstaSeleccionada     = (vid, cid) => seleccionados.some(s => s.vendedor_id === vid && s.categoria_id === cid);
-  const totalNumerosSeleccionados     = seleccionados.reduce((acc, s) => {
-    const cats = categorias[s.vendedor_id] || [];
-    const cat  = cats.find(c => c.id === s.categoria_id);
-    return acc + (cat?.numeros_count || 0);
-  }, 0);
-
-  const activos   = vendedores.filter(v => v.activo);
-  const inactivos = vendedores.filter(v => !v.activo);
+  const catActual = categorias.find(c => String(c.id) === String(categoriaId));
+  const esSim     = catActual?.tipo === 'simultanea';
 
   return (
     <div>
-      {/* Resumen */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: '.72rem', color: 'var(--jordyn-muted)' }}>
-          <span style={{ fontWeight: 700, color: 'var(--jordyn-primary)' }}>{seleccionados.length}</span> categoría(s) seleccionada(s)
-          {totalNumerosSeleccionados > 0 && (
-            <span style={{ marginLeft: 8, color: 'var(--jordyn-gold)', fontWeight: 700 }}>· {totalNumerosSeleccionados} números reservados</span>
-          )}
-        </div>
-        {seleccionados.length > 0 && (
-          <button type="button" onClick={() => onChange([])}
-            style={{ background: 'none', border: 'none', color: 'var(--jordyn-red)', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer' }}>
-            Quitar todos
-          </button>
-        )}
-      </div>
+      {/* Select de categoría */}
+      <select
+        className="jd-select"
+        value={categoriaId || ''}
+        onChange={e => handleSeleccionar(e.target.value || null)}
+        style={{ marginBottom: 12 }}
+      >
+        <option value="">— Seleccionar categoría —</option>
+        {categorias.map(c => (
+          <option key={c.id} value={c.id}>
+            {c.nombre} · {c.tipo === 'simultanea' ? '⚡ Simultánea' : '🎯 Parcial'}
+          </option>
+        ))}
+      </select>
 
-      {activos.length === 0 && (
-        <div className="jd-alert jd-alert-warning" style={{ fontSize: '.78rem' }}>
-          <i className="bi bi-exclamation-triangle-fill me-2"></i>No hay vendedores activos.
+      {/* Badge de tipo + spinner */}
+      {catActual && (
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            padding: '3px 12px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 800,
+            background: esSim ? '#fff0f5' : '#f0f5ff',
+            border: `1.5px solid ${esSim ? '#e91e8c40' : '#4361ee40'}`,
+            color: esSim ? '#e91e8c' : '#4361ee',
+          }}>
+            {esSim ? '⚡ Simultánea — 2 series (A+B)' : '🎯 Parcial — 1 serie'}
+          </span>
+          {cargando && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span>
+              Cargando vendedores...
+            </span>
+          )}
         </div>
       )}
 
-      {/* Lista de vendedores activos */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {activos.map(v => {
-          const isExpanded   = expandido === v.id;
-          const tieneAlgo    = vendedorTieneAlgoSeleccionado(v.id);
-          const cats         = categorias[v.id] || [];
-          const cargando     = loadingCats[v.id];
+      {/* Aviso precio */}
+      {catActual && !precioRifa && vendedoresCargados.length > 0 && (
+        <div style={{ marginBottom: 10, padding: '7px 12px', background: 'rgba(240,165,0,0.07)', border: '1px dashed rgba(240,165,0,0.4)', borderRadius: 8, fontSize: '.72rem', color: 'var(--jordyn-gold)', fontWeight: 600 }}>
+          <i className="bi bi-info-circle me-1"></i>
+          Ingresa el precio de la rifa para ver el monto pendiente por vendedor.
+        </div>
+      )}
 
-          return (
-            <div key={v.id} style={{ border: `2px solid ${tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
+      {/* Tabla de vendedores */}
+      {vendedoresCargados.length > 0 && (
+        <div style={{ background: 'rgba(124,58,237,0.04)', border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 12, overflow: 'hidden' }}>
 
-              {/* Cabecera del vendedor — click expande */}
-              <div onClick={() => expandirVendedor(v.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: tieneAlgo ? 'rgba(10,191,188,0.07)' : 'var(--jordyn-bg2)', userSelect: 'none' }}>
+          {/* Cabecera tabla */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
+            padding: '8px 14px', background: 'rgba(124,58,237,0.1)',
+            fontSize: '.62rem', fontWeight: 800, color: '#7c3aed',
+            textTransform: 'uppercase', letterSpacing: '.8px',
+          }}>
+            <span>Vendedor</span>
+            <span style={{ textAlign: 'center' }}>Números{esSim ? ' (series)' : ''}</span>
+            <span style={{ textAlign: 'right' }}>Pendiente caja</span>
+          </div>
 
-                {/* Indicador selección */}
-                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-border)' }}></div>
+          {/* Filas */}
+          {vendedoresCargados.map(v => {
+            const monto = v.total_numeros * (precioRifa || 0);
+            const nums  = v.asignaciones || [];
 
-                {/* Avatar */}
-                <div style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, background: tieneAlgo ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.08)', border: `2px solid ${tieneAlgo ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.88rem', color: 'var(--jordyn-primary)' }}>
-                  {v.nombre.charAt(0).toUpperCase()}
+            return (
+              <div key={v.vendedor_id} style={{
+                display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
+                padding: '10px 14px', borderBottom: '1px solid rgba(124,58,237,0.1)',
+                fontSize: '.8rem', alignItems: 'center',
+              }}>
+                {/* Nombre + cédula */}
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--jordyn-text)' }}>{v.vendedor_nombre}</div>
+                  {v.cedula && <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)' }}>CC {v.cedula}</div>}
                 </div>
 
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '.88rem', color: tieneAlgo ? 'var(--jordyn-primary)' : 'var(--jordyn-text)' }}>{v.nombre}</div>
-                  <div style={{ fontSize: '.62rem', color: 'var(--jordyn-muted)' }}>
-                    {tieneAlgo
-                      ? `${seleccionados.filter(s => s.vendedor_id === v.id).length} categoría(s) seleccionada(s)`
-                      : 'Click para ver categorías'}
-                  </div>
-                </div>
-
-                {/* Chevron */}
-                <i className={`bi bi-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: 'var(--jordyn-muted)', fontSize: '0.8rem' }}></i>
-              </div>
-
-              {/* Panel de categorías expandido */}
-              {isExpanded && (
-                <div style={{ padding: '10px 14px', borderTop: '1px solid var(--jordyn-border)', background: '#fff' }}>
-                  {cargando ? (
-                    <div className="d-flex justify-content-center py-3">
-                      <div className="jd-spinner" style={{ width: 20, height: 20 }}></div>
-                    </div>
-                  ) : cats.length === 0 ? (
-                    <div style={{ fontSize: '.78rem', color: 'var(--jordyn-muted)', padding: '8px 0', textAlign: 'center' }}>
-                      <i className="bi bi-exclamation-circle me-1"></i>
-                      Este vendedor no tiene categorías. Créalas en el módulo de Vendedores.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ fontSize: '.62rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 2 }}>
-                        Selecciona la(s) categoría(s) a asignar en esta rifa:
-                      </div>
-                      {cats.map(cat => {
-                        const isSel = categoriaEstaSeleccionada(v.id, cat.id);
+                {/* Números con series */}
+                <div style={{ textAlign: 'center', maxWidth: 200 }}>
+                  {esSim ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                      {['A', 'B'].map(serie => {
+                        const ns = nums.filter(a => a.serie === serie).map(a => String(a.numero).padStart(3, '0'));
+                        if (!ns.length) return null;
                         return (
-                          <div key={cat.id} onClick={() => toggleCategoria(v.id, cat.id)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', border: `2px solid ${isSel ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: isSel ? 'rgba(10,191,188,0.08)' : 'var(--jordyn-bg2)', transition: 'all .12s' }}>
-
-                            {/* Checkbox */}
-                            <div style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, border: `2px solid ${isSel ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: isSel ? 'var(--jordyn-primary)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s' }}>
-                              {isSel && <i className="bi bi-check2" style={{ color: '#fff', fontSize: '.65rem' }}></i>}
-                            </div>
-
-                            {/* Badge categoría */}
-                            <div style={{ background: isSel ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.06)', border: `1px solid ${isSel ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, borderRadius: 6, padding: '2px 10px', fontWeight: 800, fontSize: '.78rem', color: 'var(--jordyn-primary)', flexShrink: 0 }}>
-                              {cat.nombre}
-                            </div>
-
-                            {/* Info números */}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>
-                                {cat.numeros_count} números asignados (límite: {cat.max_numeros})
-                              </div>
-                              {/* Mini barra */}
-                              <div style={{ height: 4, borderRadius: 4, background: 'var(--jordyn-border)', marginTop: 3, overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${cat.max_numeros ? (cat.numeros_count / cat.max_numeros * 100) : 0}%`, background: 'var(--jordyn-primary)', borderRadius: 4 }} />
-                              </div>
-                            </div>
-
-                            {/* Badge números count */}
-                            <div style={{ background: isSel ? 'rgba(10,191,188,0.15)' : 'rgba(10,191,188,0.06)', border: `1.5px solid ${isSel ? 'rgba(10,191,188,0.4)' : 'rgba(10,191,188,0.2)'}`, borderRadius: 8, padding: '4px 9px', textAlign: 'center', flexShrink: 0 }}>
-                              <div style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--jordyn-primary)' }}>{cat.numeros_count}</div>
-                              <div style={{ fontSize: '.5rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase' }}>nums</div>
-                            </div>
+                          <div key={serie} style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                            <span style={{
+                              background: serie === 'A' ? '#f0f5ff' : '#fff0f5',
+                              border: `1px solid ${serie === 'A' ? '#4361ee30' : '#e91e8c30'}`,
+                              color: serie === 'A' ? '#4361ee' : '#e91e8c',
+                              borderRadius: 4, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800,
+                            }}>{serie}</span>
+                            <span style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', lineHeight: 1.5 }}>{ns.join(', ')}</span>
                           </div>
                         );
                       })}
                     </div>
+                  ) : (
+                    <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)', lineHeight: 1.6 }}>
+                      {nums.map(a => String(a.numero).padStart(3, '0')).join(', ')}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', marginTop: 2 }}>
+                    {v.total_numeros} {esSim ? 'serie(s)' : 'núm.'}
+                  </div>
+                </div>
+
+                {/* Monto */}
+                <div style={{ textAlign: 'right' }}>
+                  {precioRifa > 0 ? (
+                    <div style={{ fontWeight: 800, color: '#059669', fontSize: '.85rem' }}>{fmtCOP(monto)}</div>
+                  ) : (
+                    <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', fontStyle: 'italic' }}>—</div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Vendedores inactivos */}
-        {inactivos.length > 0 && (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Inactivos (no participan)</div>
-            {inactivos.map(v => (
-              <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 8, marginBottom: 4, background: 'var(--jordyn-bg2)', border: '1px dashed var(--jordyn-border)', opacity: 0.45 }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--jordyn-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '.8rem', color: 'var(--jordyn-muted)' }}>{v.nombre.charAt(0)}</div>
-                <div style={{ fontSize: '.8rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>{v.nombre}</div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
 
-      {/* Resumen final de lo seleccionado */}
-      {seleccionados.length > 0 && (
-        <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(10,191,188,0.06)', border: '1.5px solid rgba(10,191,188,0.2)', borderRadius: 10 }}>
-          <div style={{ fontSize: '.72rem', color: 'var(--jordyn-primary)', fontWeight: 700, marginBottom: 6 }}>
-            <i className="bi bi-lock-fill me-1"></i>Números que quedarán reservados en esta rifa
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {seleccionados.map((s, i) => {
-              const vend = vendedores.find(v => v.id === s.vendedor_id);
-              const cats = categorias[s.vendedor_id] || [];
-              const cat  = cats.find(c => c.id === s.categoria_id);
-              return (
-                <span key={i} style={{ background: 'rgba(10,191,188,0.12)', border: '1px solid rgba(10,191,188,0.3)', borderRadius: 6, padding: '2px 9px', fontSize: '.68rem', color: 'var(--jordyn-primary)', fontWeight: 700 }}>
-                  {vend?.nombre?.split(' ')[0] || '?'} · {cat?.nombre || '?'}: {cat?.numeros_count || 0} nums
-                </span>
-              );
-            })}
-          </div>
+          {/* Total general */}
+          {precioRifa > 0 && (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 14px', background: 'rgba(5,150,105,0.07)',
+              borderTop: '1.5px solid rgba(5,150,105,0.2)',
+            }}>
+              <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                <i className="bi bi-cash-stack me-1"></i>Total a cobrar en caja
+              </span>
+              <span style={{ fontWeight: 900, fontSize: '1rem', color: '#059669' }}>
+                {fmtCOP(vendedoresCargados.reduce((acc, v) => acc + v.total_numeros * precioRifa, 0))}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sin vendedores */}
+      {categoriaId && !cargando && vendedoresCargados.length === 0 && (
+        <div style={{ padding: '14px', textAlign: 'center', fontSize: '.78rem', color: 'var(--jordyn-muted)', background: 'var(--jordyn-bg2)', borderRadius: 10, border: '1px dashed var(--jordyn-border)' }}>
+          <i className="bi bi-exclamation-circle me-1"></i>
+          Esta categoría no tiene vendedores con números asignados.
         </div>
       )}
     </div>
@@ -464,7 +439,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
     } finally { setSelling(false); }
   };
 
-  const handlePrint    = () => { if (!rifaSel) return; printTickets([rifaSel], numero, form, user?.nombre); };
+  const handlePrint     = () => { if (!rifaSel) return; printTickets([rifaSel], numero, form, user?.nombre); };
   const handleTabChange = (t) => { if (t !== 'ticket') setVentaExitosa(false); setTab(t); };
 
   const tabs = [
@@ -690,19 +665,19 @@ function ModalNumeros({ rifa, onClose, user }) {
     return true;
   });
 
-  const total   = numeros.length || 1;
-  const pctPV   = (conteos.parcial_vendido / total * 100).toFixed(1);
-  const pctPA   = (conteos.parcial_agotado / total * 100).toFixed(1);
-  const pctAT   = (conteos.agotado_total   / total * 100).toFixed(1);
-  const pctTot  = ((conteos.parcial_vendido + conteos.parcial_agotado + conteos.agotado_total) / total * 100).toFixed(0);
+  const total  = numeros.length || 1;
+  const pctPV  = (conteos.parcial_vendido / total * 100).toFixed(1);
+  const pctPA  = (conteos.parcial_agotado / total * 100).toFixed(1);
+  const pctAT  = (conteos.agotado_total   / total * 100).toFixed(1);
+  const pctTot = ((conteos.parcial_vendido + conteos.parcial_agotado + conteos.agotado_total) / total * 100).toFixed(0);
 
   const FILTROS = [
-    { key: 'todos',           label: 'Todos',       count: conteos.todos,           color: 'var(--jordyn-text)' },
-    { key: 'libre',           label: 'Libres',      count: conteos.libre,           color: '#059669' },
-    { key: 'parcial_vendido', label: '1 venta',     count: conteos.parcial_vendido, color: '#b37700' },
-    { key: 'parcial_agotado', label: 'Semi agotado',count: conteos.parcial_agotado, color: '#c0303a' },
-    { key: 'agotado_total',   label: 'Agotado',     count: conteos.agotado_total,   color: 'var(--jordyn-red)' },
-    { key: 'sin_asignar',     label: 'Sin asignar', count: conteos.sin_asignar,     color: 'var(--jordyn-muted)' },
+    { key: 'todos',           label: 'Todos',        count: conteos.todos,           color: 'var(--jordyn-text)' },
+    { key: 'libre',           label: 'Libres',       count: conteos.libre,           color: '#059669' },
+    { key: 'parcial_vendido', label: '1 venta',      count: conteos.parcial_vendido, color: '#b37700' },
+    { key: 'parcial_agotado', label: 'Semi agotado', count: conteos.parcial_agotado, color: '#c0303a' },
+    { key: 'agotado_total',   label: 'Agotado',      count: conteos.agotado_total,   color: 'var(--jordyn-red)' },
+    { key: 'sin_asignar',     label: 'Sin asignar',  count: conteos.sin_asignar,     color: 'var(--jordyn-muted)' },
   ];
 
   return (
@@ -779,7 +754,6 @@ export default function GestionRifas() {
   const { user } = useAuth();
   const [rifas,           setRifas]           = useState([]);
   const [rifasArchivadas, setRifasArchivadas] = useState([]);
-  const [vendedores,      setVendedores]      = useState([]);   // ← NUEVO
   const [loading,         setLoading]         = useState(true);
   const [form,            setForm]            = useState(emptyForm);
   const [editId,          setEditId]          = useState(null);
@@ -791,17 +765,15 @@ export default function GestionRifas() {
   const [tasaBase,        setTasaBase]        = useState('');
   const [tasaResultado,   setTasaResultado]   = useState(null);
   const [showTasaPanel,   setShowTasaPanel]   = useState(false);
+  // Vendedores cargados desde la categoría seleccionada
+  const [vendedoresCat,   setVendedoresCat]   = useState([]);
   const fileRef = useRef();
 
   const load = useCallback(async () => {
     try {
-      const [rifasRes, vendedoresRes] = await Promise.all([
-        API.get('/rifas'),
-        API.get('/vendedores'),
-      ]);
+      const rifasRes = await API.get('/rifas');
       setRifas(rifasRes.data.filter(r => r.estado !== 'archivada'));
       setRifasArchivadas(rifasRes.data.filter(r => r.estado === 'archivada'));
-      setVendedores(vendedoresRes.data.filter(v => v.activo));
     } catch { toast.error('Error cargando datos'); }
     finally { setLoading(false); }
   }, []);
@@ -825,24 +797,27 @@ export default function GestionRifas() {
   const handleNueva = () => {
     setForm(emptyForm);
     setEditId(null);
+    setVendedoresCat([]);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleEdit = (r) => {
     setForm({
-      nombre:         r.nombre       || '',
-      descripcion:    r.descripcion  || '',
-      premio:         r.premio       || '',
-      precio:         r.precio       || '',
-      precio_display: r.precio       ? fmtCOP(r.precio) : '',
-      fecha_sorteo:   r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
-      loteria_ref:    r.loteria_ref  || '',
-      tipo:           r.tipo         || 'sencilla',
-      imagen_base64:  r.imagen_url   || '',
-      ofertas:        Array.isArray(r.ofertas) ? r.ofertas : [],
-      vendedores_categorias: Array.isArray(r.vendedores_categorias) ? r.vendedores_categorias : (r.vendedores?.map(v => ({ vendedor_id: v.id, categoria_id: v.categoria_id })).filter(x => x.categoria_id) || []),
+      nombre:                  r.nombre       || '',
+      descripcion:             r.descripcion  || '',
+      premio:                  r.premio       || '',
+      precio:                  r.precio       || '',
+      precio_display:          r.precio       ? fmtCOP(r.precio) : '',
+      fecha_sorteo:            r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
+      loteria_ref:             r.loteria_ref  || '',
+      tipo:                    r.tipo         || 'sencilla',
+      imagen_base64:           r.imagen_url   || '',
+      ofertas:                 Array.isArray(r.ofertas) ? r.ofertas : [],
+      vendedores_categorias:   [],
+      categoria_seleccionada_id: null,
     });
+    setVendedoresCat([]);
     setEditId(r.id);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -854,25 +829,27 @@ export default function GestionRifas() {
     setSaving(true);
     try {
       const payload = {
-        nombre:        form.nombre,
-        descripcion:   form.descripcion,
-        premio:        form.premio,
-        precio:        form.precio,
-        fecha_sorteo:  form.fecha_sorteo || null,
-        loteria_ref:   form.loteria_ref  || null,
-        tipo:          form.tipo,
-        imagen_url:    form.imagen_base64 || null,
-        ofertas:       form.ofertas || [],
+        nombre:               form.nombre,
+        descripcion:          form.descripcion,
+        premio:               form.premio,
+        precio:               form.precio,
+        fecha_sorteo:         form.fecha_sorteo || null,
+        loteria_ref:          form.loteria_ref  || null,
+        tipo:                 form.tipo,
+        imagen_url:           form.imagen_base64 || null,
+        ofertas:              form.ofertas || [],
         vendedores_categorias: form.vendedores_categorias || [],
+        // Enviamos también la categoría seleccionada para que el backend cree los lotes en caja
+        categoria_id:         form.categoria_seleccionada_id || null,
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
         toast.success('Rifa actualizada');
       } else {
         await API.post('/rifas', payload);
-        toast.success('Rifa creada');
+        toast.success('Rifa creada — lotes de caja generados automáticamente');
       }
-      setShowForm(false); setForm(emptyForm); setEditId(null); load();
+      setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); load();
     } catch (err) { toast.error(err.response?.data?.error || 'Error guardando rifa'); }
     finally { setSaving(false); }
   };
@@ -890,7 +867,6 @@ export default function GestionRifas() {
   /* ── Tarjeta de rifa ── */
   const RifaCard = ({ r, archivada = false }) => {
     const ofertas   = Array.isArray(r.ofertas) ? r.ofertas : [];
-    // Vendedores participantes en esta rifa
     const vends     = Array.isArray(r.vendedores) ? r.vendedores : [];
     const totalNums = vends.reduce((acc, v) => acc + (v.numeros_count || 0), 0);
 
@@ -933,7 +909,7 @@ export default function GestionRifas() {
           </div>
         </div>
 
-        {/* ── SECCIÓN VENDEDORES DE LA RIFA ── */}
+        {/* Vendedores */}
         {vends.length > 0 && (
           <div style={{ marginBottom: '0.75rem', padding: '10px 12px', background: 'rgba(124,58,237,0.05)', border: '1.5px solid rgba(124,58,237,0.18)', borderRadius: 10 }}>
             <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -963,7 +939,7 @@ export default function GestionRifas() {
           </div>
         )}
 
-        {/* Ofertas activas */}
+        {/* Ofertas */}
         {ofertas.length > 0 && (
           <div style={{ marginBottom: '0.75rem', padding: '8px 10px', background: 'rgba(10,191,188,.05)', border: '1px solid rgba(10,191,188,.2)', borderRadius: 8 }}>
             <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 5 }}>
@@ -1159,20 +1135,39 @@ export default function GestionRifas() {
                 <textarea className="jd-input" rows={2} value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Detalles del premio, condiciones, etc." style={{ resize: 'vertical' }} />
               </div>
 
-              {/* ══ VENDEDORES PARTICIPANTES ══ */}
+              {/* ══ CATEGORÍA DE VENDEDORES ══ */}
               <div className="col-12">
                 <div style={{ borderTop: '1px solid var(--jordyn-border)', paddingTop: '1.25rem' }}>
                   <label className="jd-label" style={{ fontSize: '.7rem' }}>
                     <i className="bi bi-people-fill me-1" style={{ color: '#7c3aed' }}></i>
-                    VENDEDORES QUE PARTICIPAN EN ESTA RIFA
+                    CATEGORÍA DE VENDEDORES
                   </label>
                   <p style={{ fontSize: '.75rem', color: 'var(--jordyn-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-                    Los números fijos de cada vendedor seleccionado quedarán <strong>reservados automáticamente</strong> — no aparecerán en la pantalla pública para que el cliente los compre directamente.
+                    Selecciona la categoría. Sus vendedores y números fijos quedarán <strong>reservados automáticamente</strong>
+                    {' '}y se crearán lotes en <strong>Caja</strong> con el monto pendiente por cada vendedor.
                   </p>
-                  <SelectorVendedores
-                    vendedores={vendedores}
-                    seleccionados={form.vendedores_categorias}
-                    onChange={sel => setForm(p => ({ ...p, vendedores_categorias: sel }))}
+                  <SelectorCategoria
+                    precioRifa={form.precio}
+                    categoriaId={form.categoria_seleccionada_id}
+                    onCategoriaChange={catId => {
+                      setForm(p => ({
+                        ...p,
+                        categoria_seleccionada_id: catId,
+                        vendedores_categorias: [],
+                      }));
+                      setVendedoresCat([]);
+                    }}
+                    vendedoresCargados={vendedoresCat}
+                    onVendedoresCargados={vends => {
+                      setVendedoresCat(vends);
+                      setForm(p => ({
+                        ...p,
+                        vendedores_categorias: vends.map(v => ({
+                          vendedor_id:  v.vendedor_id,
+                          categoria_id: p.categoria_seleccionada_id,
+                        })),
+                      }));
+                    }}
                   />
                 </div>
               </div>
@@ -1201,7 +1196,7 @@ export default function GestionRifas() {
               <button type="submit" className="btn-jordyn" disabled={saving}>
                 {saving ? <><span className="jd-spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span> Guardando...</> : <><i className="bi bi-floppy-fill me-1"></i>{editId ? 'Actualizar' : 'Crear rifa'}</>}
               </button>
-              <button type="button" className="btn-jordyn-outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); }}>Cancelar</button>
+              <button type="button" className="btn-jordyn-outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); }}>Cancelar</button>
             </div>
           </form>
         </div>
