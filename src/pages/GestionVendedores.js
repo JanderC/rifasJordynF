@@ -558,9 +558,14 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
 // ── ModalCrearVendedorEnCategoria (v7) ───────────────────────────
 // NUEVO: usa /buscar-numero para modo "nuevo vendedor".
 // NUEVO: en simultanea permite numeros[i]===numeros[j] (A y B).
-function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClose, onSaved }) {
+function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles: vendedoresDisponiblesInit, onClose, onSaved }) {
   const esSim  = categoria.tipo === 'simultanea';
   const accent = esSim ? '#e91e8c' : '#4361ee';
+
+  // Congela la lista de disponibles al momento de abrir el modal para que
+  // recargas del padre no desmонten/remonten este modal (lo que borraba el resultado).
+  const vendedoresDisponiblesRef = useRef(vendedoresDisponiblesInit);
+  const vendedoresDisponibles = vendedoresDisponiblesRef.current;
 
   const [modo,        setModo]        = useState('nuevo');
   const [vendedorSel, setVendedorSel] = useState('');
@@ -698,7 +703,19 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
               );
             })}
             <ConflictPanel colisiones={asignacion.colisiones?.map(c=>({numero:c.numero,mensaje:c.mensaje,dueno_a:c.ocupadaA?.nombre||null,dueno_b:c.ocupadaB?.nombre||null}))} titulo="Sin espacio — No asignados" />
-            <button className="btn-jordyn w-100" onClick={onClose} style={{marginTop:8}}><i className="bi bi-check-lg me-1"></i>Cerrar</button>
+            <div style={{display:'flex',gap:'0.5rem',marginTop:8}}>
+              <button className="btn-jordyn w-100" onClick={()=>{
+                setResultado(null);
+                setNumeros([]);
+                setNumInput('');
+                setForm({nombre:'',cedula:''});
+                setVendedorSel('');
+                setModo('nuevo');
+              }} style={{background:`linear-gradient(135deg,${esSim?'#7b0050,#e91e8c':'#0a3d62,#0abfbc'})`}}>
+                <i className="bi bi-person-plus-fill me-1"></i>Agregar otro vendedor
+              </button>
+              <button className="btn-jordyn-outline" onClick={onClose} style={{flexShrink:0,padding:'0 18px'}}><i className="bi bi-check-lg me-1"></i>Cerrar</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1046,7 +1063,7 @@ function ModalGestionarCategoria({ categoria, onClose, onSaved }) {
         </div>
       </div>
 
-      {modalAgregar&&<ModalCrearVendedorEnCategoria categoria={categoria} vendedoresDisponibles={vendDisp} onClose={()=>setModalAgregar(false)} onSaved={()=>{cargar();onSaved?.();}} />}
+      {modalAgregar&&<ModalCrearVendedorEnCategoria categoria={categoria} vendedoresDisponibles={vendDisp} onClose={()=>{setModalAgregar(false);}} onSaved={()=>{cargar();onSaved?.();}} />}
       {modalNums&&<ModalNumerosEnCategoria categoria={categoria} vendedor={modalNums} onClose={()=>setModalNums(null)} onSaved={()=>{cargar();onSaved?.();}} />}
       {modalEditar&&<ModalEditarVendedor vendedor={modalEditar} onClose={()=>setModalEditar(null)} onSaved={()=>{setModalEditar(null);cargar();onSaved?.();}} />}
 
