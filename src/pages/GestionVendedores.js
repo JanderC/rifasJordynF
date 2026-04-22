@@ -287,6 +287,8 @@ function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
 
 // ── ModalNumerosEnCategoria ──────────────────────────────────────
 function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
+  // Registra si hubo cambios para notificar al padre solo al cerrar (evita recargas que desmontarían este modal)
+  const huboCambiosRef = useRef(false);
   const [numeros,setNumeros]       = useState([]);
   const [numInput,setNumInput]     = useState('');
   const [rangoIni,setRangoIni]     = useState('');
@@ -340,7 +342,8 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
         if (porSerie.B.length) addNotif(`Serie B: ${porSerie.B.join(', ')} ✓`,'success');
       }
       r.data.colisiones?.forEach(c=>addNotif(`${c.numero}: ${c.mensaje}`,'error'));
-      await cargar(); onSaved?.();
+      huboCambiosRef.current = true;
+      await cargar(); // solo recarga internamente, sin notificar al padre para no desmontar este modal
     } catch(err) {
       const msg=err.response?.data?.error||'Error';
       addNotif(msg,'error'); toast.error(msg);
@@ -350,7 +353,8 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   const quitarDelPool = async numero => {
     try {
       await API.delete(`/categorias-globales/${categoria.id}/vendedores/${vendedor.id}/numeros`,{data:{numeros:[numero]}});
-      await cargar(); onSaved?.();
+      huboCambiosRef.current = true;
+      await cargar();
     } catch(err) { toast.error(err.response?.data?.error||'Error'); }
   };
 
@@ -358,7 +362,8 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
     try {
       await API.delete(`/categorias-globales/${categoria.id}/asignaciones/${asignacion_id}`);
       addNotif('Serie liberada.','info');
-      await cargar(); onSaved?.();
+      huboCambiosRef.current = true;
+      await cargar();
     } catch(err) { toast.error(err.response?.data?.error||'Error'); }
   };
 
@@ -368,7 +373,8 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
       const r = await API.post(`/categorias-globales/${categoria.id}/vendedores/${vendedor.id}/asignar`);
       addNotif(r.data.message,'success');
       r.data.colisiones?.forEach(c=>addNotif(`${c.numero}: ${c.mensaje}`,'warning'));
-      await cargar(); onSaved?.();
+      huboCambiosRef.current = true;
+      await cargar();
     } catch(err) {
       const d=err.response?.data;
       addNotif(d?.error||'Error','error');
@@ -392,6 +398,11 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
     agregarAlPool(nums);
   };
 
+  const handleClose = () => {
+    if (huboCambiosRef.current) onSaved?.();
+    onClose();
+  };
+
   const conSerie   = numeros.filter(n=>n.serie);
   const sinSerie   = numeros.filter(n=>!n.serie);
   const total      = numeros.length;
@@ -399,14 +410,14 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   const bgSerie    = s=>s==='A'?'#f0f5ff':s==='B'?'#fff0f5':'#f5f5f5';
 
   return (
-    <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{...S.overlay,zIndex:10300}}>
+    <div onClick={e=>e.target===e.currentTarget&&handleClose()} style={{...S.overlay,zIndex:10300}}>
       <div style={S.modal(700)}>
         <div style={S.header(`linear-gradient(135deg,${esSim?'#7b0050,#e91e8c':'#0a3d62,#0abfbc'})`)}>
           <div>
             <div style={{fontWeight:800,fontSize:'1rem'}}><i className="bi bi-hash me-1"></i>{vendedor.nombre}</div>
             <div style={{fontSize:'0.72rem',opacity:0.85,marginTop:2}}>{categoria.nombre} — {total} pool — {conSerie.length} asignados — {sinSerie.length} pendientes</div>
           </div>
-          <button onClick={onClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
+          <button onClick={handleClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
         </div>
         <div style={S.body}>
           <div className="jd-alert jd-alert-info mb-3" style={{fontSize:'0.75rem',lineHeight:1.7}}>
@@ -558,14 +569,9 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
 // ── ModalCrearVendedorEnCategoria (v7) ───────────────────────────
 // NUEVO: usa /buscar-numero para modo "nuevo vendedor".
 // NUEVO: en simultanea permite numeros[i]===numeros[j] (A y B).
-function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles: vendedoresDisponiblesInit, onClose, onSaved }) {
+function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClose, onSaved }) {
   const esSim  = categoria.tipo === 'simultanea';
   const accent = esSim ? '#e91e8c' : '#4361ee';
-
-  // Congela la lista de disponibles al momento de abrir el modal para que
-  // recargas del padre no desmонten/remonten este modal (lo que borraba el resultado).
-  const vendedoresDisponiblesRef = useRef(vendedoresDisponiblesInit);
-  const vendedoresDisponibles = vendedoresDisponiblesRef.current;
 
   const [modo,        setModo]        = useState('nuevo');
   const [vendedorSel, setVendedorSel] = useState('');
@@ -703,19 +709,7 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles: vende
               );
             })}
             <ConflictPanel colisiones={asignacion.colisiones?.map(c=>({numero:c.numero,mensaje:c.mensaje,dueno_a:c.ocupadaA?.nombre||null,dueno_b:c.ocupadaB?.nombre||null}))} titulo="Sin espacio — No asignados" />
-            <div style={{display:'flex',gap:'0.5rem',marginTop:8}}>
-              <button className="btn-jordyn w-100" onClick={()=>{
-                setResultado(null);
-                setNumeros([]);
-                setNumInput('');
-                setForm({nombre:'',cedula:''});
-                setVendedorSel('');
-                setModo('nuevo');
-              }} style={{background:`linear-gradient(135deg,${esSim?'#7b0050,#e91e8c':'#0a3d62,#0abfbc'})`}}>
-                <i className="bi bi-person-plus-fill me-1"></i>Agregar otro vendedor
-              </button>
-              <button className="btn-jordyn-outline" onClick={onClose} style={{flexShrink:0,padding:'0 18px'}}><i className="bi bi-check-lg me-1"></i>Cerrar</button>
-            </div>
+            <button className="btn-jordyn w-100" onClick={onClose} style={{marginTop:8}}><i className="bi bi-check-lg me-1"></i>Cerrar</button>
           </div>
         </div>
       </div>
@@ -1063,7 +1057,7 @@ function ModalGestionarCategoria({ categoria, onClose, onSaved }) {
         </div>
       </div>
 
-      {modalAgregar&&<ModalCrearVendedorEnCategoria categoria={categoria} vendedoresDisponibles={vendDisp} onClose={()=>{setModalAgregar(false);}} onSaved={()=>{cargar();onSaved?.();}} />}
+      {modalAgregar&&<ModalCrearVendedorEnCategoria categoria={categoria} vendedoresDisponibles={vendDisp} onClose={()=>setModalAgregar(false)} onSaved={()=>{cargar();onSaved?.();}} />}
       {modalNums&&<ModalNumerosEnCategoria categoria={categoria} vendedor={modalNums} onClose={()=>setModalNums(null)} onSaved={()=>{cargar();onSaved?.();}} />}
       {modalEditar&&<ModalEditarVendedor vendedor={modalEditar} onClose={()=>setModalEditar(null)} onSaved={()=>{setModalEditar(null);cargar();onSaved?.();}} />}
 
