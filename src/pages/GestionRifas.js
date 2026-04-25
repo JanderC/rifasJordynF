@@ -1,12 +1,12 @@
 // ============================================================
 //   GestionRifas.js — RIFAS JORDYN
-//   CAMBIOS v2:
-//   - SelectorVendedores reemplazado por SelectorCategoria.
-//   - Al crear/editar una rifa se elige UNA categoría global.
-//   - El sistema carga todos sus vendedores con números y series.
-//   - La tabla muestra el monto pendiente por vendedor en tiempo
-//     real (se recalcula cuando cambia el precio de la rifa).
-//   - vendedores_categorias se llena automáticamente para el payload.
+//   CAMBIOS v3:
+//   - SelectorCategoria con selección individual de vendedores.
+//   - Checkboxes por vendedor: se puede incluir/excluir de la rifa.
+//   - checkbox maestro con estado indeterminado.
+//   - El payload solo incluye los vendedores seleccionados.
+//   - Series A y B mostradas por separado en rifas simultáneas.
+//   - Monto pendiente calculado solo para vendedores seleccionados.
 // ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
@@ -38,8 +38,7 @@ const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
-  vendedores_categorias: [],      // [{ vendedor_id, categoria_id }] — se llena automático
-  categoria_seleccionada_id: null, // categoría elegida para cargar vendedores
+  categoria_seleccionada_id: null,
 };
 
 const fmtCOP = v =>
@@ -187,16 +186,26 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
 
 /* ════════════════════════════════════════════════════════════
    SELECTOR DE CATEGORÍA
-   Nuevo flujo: se elige UNA categoría global → el sistema carga
-   todos sus vendedores con números y series asignadas.
-   La tabla muestra el monto pendiente por vendedor calculado
-   con el precio actual de la rifa.
+   Flujo:
+   1. Se elige una categoría → GET /categorias-globales/:id/para-rifa
+   2. Se listan todos los vendedores con sus números y series (A/B)
+   3. Cada vendedor tiene un checkbox para incluirlo o no en la rifa
+   4. El padre recibe vendedoresCargados (todos) y selectedIds (los marcados)
+   5. Para rifas simultáneas se muestran las series A y B por separado
+   6. El monto pendiente se calcula en tiempo real con el precio de la rifa
 ════════════════════════════════════════════════════════════ */
-function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedoresCargados, onVendedoresCargados }) {
+function SelectorCategoria({
+  precioRifa,
+  categoriaId,
+  onCategoriaChange,
+  vendedoresCargados,
+  onVendedoresCargados,
+  selectedVendedorIds,
+  onSelectionChange,
+}) {
   const [categorias, setCategorias] = useState([]);
   const [cargando,   setCargando]   = useState(false);
 
-  // Cargar lista de todas las categorías al montar
   useEffect(() => {
     API.get('/categorias-globales').then(r => setCategorias(r.data || [])).catch(() => {});
   }, []);
@@ -205,14 +214,19 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
     if (!catId) {
       onCategoriaChange(null);
       onVendedoresCargados([]);
+      onSelectionChange([]);
       return;
     }
     onCategoriaChange(catId);
     onVendedoresCargados([]);
+    onSelectionChange([]);
     setCargando(true);
     try {
       const r = await API.get(`/categorias-globales/${catId}/para-rifa`);
-      onVendedoresCargados(r.data.vendedores || []);
+      const vends = r.data.vendedores || [];
+      onVendedoresCargados(vends);
+      // Por defecto todos quedan seleccionados
+      onSelectionChange(vends.map(v => v.vendedor_id));
     } catch {
       toast.error('Error cargando vendedores de la categoría');
     } finally {
@@ -220,8 +234,30 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
     }
   };
 
-  const catActual = categorias.find(c => String(c.id) === String(categoriaId));
-  const esSim     = catActual?.tipo === 'simultanea';
+  const toggleVendedor = (vendedorId) => {
+    if (selectedVendedorIds.includes(vendedorId)) {
+      onSelectionChange(selectedVendedorIds.filter(id => id !== vendedorId));
+    } else {
+      onSelectionChange([...selectedVendedorIds, vendedorId]);
+    }
+  };
+
+  const toggleTodos = () => {
+    if (selectedVendedorIds.length === vendedoresCargados.length) {
+      onSelectionChange([]);
+    } else {
+      onSelectionChange(vendedoresCargados.map(v => v.vendedor_id));
+    }
+  };
+
+  const catActual  = categorias.find(c => String(c.id) === String(categoriaId));
+  const esSim      = catActual?.tipo === 'simultanea';
+  const todosSelec = vendedoresCargados.length > 0 && selectedVendedorIds.length === vendedoresCargados.length;
+  const algunoSel  = selectedVendedorIds.length > 0 && !todosSelec;
+
+  const totalPendiente = vendedoresCargados
+    .filter(v => selectedVendedorIds.includes(v.vendedor_id))
+    .reduce((acc, v) => acc + v.total_numeros * (precioRifa || 0), 0);
 
   return (
     <div>
@@ -240,7 +276,7 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
         ))}
       </select>
 
-      {/* Badge de tipo + spinner */}
+      {/* Badge tipo + spinner */}
       {catActual && (
         <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{
@@ -268,33 +304,60 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
         </div>
       )}
 
-      {/* Tabla de vendedores */}
+      {/* Tabla de vendedores con selección */}
       {vendedoresCargados.length > 0 && (
         <div style={{ background: 'rgba(124,58,237,0.04)', border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 12, overflow: 'hidden' }}>
 
-          {/* Cabecera tabla */}
+          {/* Cabecera con checkbox "seleccionar todos" */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
+            display: 'grid', gridTemplateColumns: '28px 1fr auto auto', gap: 8,
             padding: '8px 14px', background: 'rgba(124,58,237,0.1)',
             fontSize: '.62rem', fontWeight: 800, color: '#7c3aed',
             textTransform: 'uppercase', letterSpacing: '.8px',
+            alignItems: 'center',
           }}>
+            <input
+              type="checkbox"
+              checked={todosSelec}
+              ref={el => { if (el) el.indeterminate = algunoSel; }}
+              onChange={toggleTodos}
+              style={{ cursor: 'pointer', accentColor: '#7c3aed', width: 14, height: 14 }}
+              title="Seleccionar / deseleccionar todos"
+            />
             <span>Vendedor</span>
-            <span style={{ textAlign: 'center' }}>Números{esSim ? ' (series)' : ''}</span>
+            <span style={{ textAlign: 'center' }}>Números{esSim ? ' (A / B)' : ''}</span>
             <span style={{ textAlign: 'right' }}>Pendiente caja</span>
           </div>
 
           {/* Filas */}
           {vendedoresCargados.map(v => {
-            const monto = v.total_numeros * (precioRifa || 0);
-            const nums  = v.asignaciones || [];
+            const seleccionado = selectedVendedorIds.includes(v.vendedor_id);
+            const monto        = v.total_numeros * (precioRifa || 0);
+            const nums         = v.asignaciones || [];
 
             return (
-              <div key={v.vendedor_id} style={{
-                display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8,
-                padding: '10px 14px', borderBottom: '1px solid rgba(124,58,237,0.1)',
-                fontSize: '.8rem', alignItems: 'center',
-              }}>
+              <div
+                key={v.vendedor_id}
+                onClick={() => toggleVendedor(v.vendedor_id)}
+                style={{
+                  display: 'grid', gridTemplateColumns: '28px 1fr auto auto', gap: 8,
+                  padding: '10px 14px', borderBottom: '1px solid rgba(124,58,237,0.1)',
+                  fontSize: '.8rem', alignItems: 'center',
+                  background: seleccionado ? 'rgba(124,58,237,0.04)' : 'rgba(0,0,0,0.01)',
+                  opacity: seleccionado ? 1 : 0.45,
+                  cursor: 'pointer',
+                  transition: 'opacity .15s, background .15s',
+                }}
+              >
+                {/* Checkbox */}
+                <input
+                  type="checkbox"
+                  checked={seleccionado}
+                  onChange={() => toggleVendedor(v.vendedor_id)}
+                  onClick={e => e.stopPropagation()}
+                  style={{ cursor: 'pointer', accentColor: '#7c3aed', width: 14, height: 14 }}
+                />
+
                 {/* Nombre + cédula */}
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--jordyn-text)' }}>{v.vendedor_nombre}</div>
@@ -302,9 +365,9 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
                 </div>
 
                 {/* Números con series */}
-                <div style={{ textAlign: 'center', maxWidth: 200 }}>
+                <div style={{ textAlign: 'center', maxWidth: 220 }}>
                   {esSim ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
                       {['A', 'B'].map(serie => {
                         const ns = nums.filter(a => a.serie === serie).map(a => String(a.numero).padStart(3, '0'));
                         if (!ns.length) return null;
@@ -314,9 +377,11 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
                               background: serie === 'A' ? '#f0f5ff' : '#fff0f5',
                               border: `1px solid ${serie === 'A' ? '#4361ee30' : '#e91e8c30'}`,
                               color: serie === 'A' ? '#4361ee' : '#e91e8c',
-                              borderRadius: 4, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800,
+                              borderRadius: 4, padding: '1px 6px', fontSize: '.62rem', fontWeight: 800, flexShrink: 0,
                             }}>{serie}</span>
-                            <span style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', lineHeight: 1.5 }}>{ns.join(', ')}</span>
+                            <span style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', lineHeight: 1.5 }}>
+                              {ns.join(', ')}
+                            </span>
                           </div>
                         );
                       })}
@@ -334,7 +399,9 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
                 {/* Monto */}
                 <div style={{ textAlign: 'right' }}>
                   {precioRifa > 0 ? (
-                    <div style={{ fontWeight: 800, color: '#059669', fontSize: '.85rem' }}>{fmtCOP(monto)}</div>
+                    <div style={{ fontWeight: 800, color: seleccionado ? '#059669' : 'var(--jordyn-muted)', fontSize: '.85rem' }}>
+                      {fmtCOP(monto)}
+                    </div>
                   ) : (
                     <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', fontStyle: 'italic' }}>—</div>
                   )}
@@ -343,21 +410,24 @@ function SelectorCategoria({ precioRifa, categoriaId, onCategoriaChange, vendedo
             );
           })}
 
-          {/* Total general */}
-          {precioRifa > 0 && (
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '10px 14px', background: 'rgba(5,150,105,0.07)',
-              borderTop: '1.5px solid rgba(5,150,105,0.2)',
-            }}>
-              <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                <i className="bi bi-cash-stack me-1"></i>Total a cobrar en caja
-              </span>
+          {/* Pie: seleccionados + total */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 14px', background: 'rgba(5,150,105,0.07)',
+            borderTop: '1.5px solid rgba(5,150,105,0.2)',
+            flexWrap: 'wrap', gap: 6,
+          }}>
+            <span style={{ fontSize: '.72rem', color: 'var(--jordyn-muted)' }}>
+              <i className="bi bi-people-fill me-1" style={{ color: '#7c3aed' }}></i>
+              {selectedVendedorIds.length} de {vendedoresCargados.length} vendedor(es) seleccionados
+            </span>
+            {precioRifa > 0 && (
               <span style={{ fontWeight: 900, fontSize: '1rem', color: '#059669' }}>
-                {fmtCOP(vendedoresCargados.reduce((acc, v) => acc + v.total_numeros * precioRifa, 0))}
+                <i className="bi bi-cash-stack me-1"></i>
+                {fmtCOP(totalPendiente)}
               </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -766,7 +836,8 @@ export default function GestionRifas() {
   const [tasaResultado,   setTasaResultado]   = useState(null);
   const [showTasaPanel,   setShowTasaPanel]   = useState(false);
   // Vendedores cargados desde la categoría seleccionada
-  const [vendedoresCat,   setVendedoresCat]   = useState([]);
+  const [vendedoresCat,      setVendedoresCat]      = useState([]);
+  const [selectedVendorIds,  setSelectedVendorIds]  = useState([]);
   const fileRef = useRef();
 
   const load = useCallback(async () => {
@@ -798,6 +869,7 @@ export default function GestionRifas() {
     setForm(emptyForm);
     setEditId(null);
     setVendedoresCat([]);
+    setSelectedVendorIds([]);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -814,10 +886,10 @@ export default function GestionRifas() {
       tipo:                    r.tipo         || 'sencilla',
       imagen_base64:           r.imagen_url   || '',
       ofertas:                 Array.isArray(r.ofertas) ? r.ofertas : [],
-      vendedores_categorias:   [],
       categoria_seleccionada_id: null,
     });
     setVendedoresCat([]);
+    setSelectedVendorIds([]);
     setEditId(r.id);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -828,19 +900,23 @@ export default function GestionRifas() {
     if (!form.nombre || !form.premio || !form.precio) { toast.error('Nombre, premio y precio son requeridos'); return; }
     setSaving(true);
     try {
+      // Solo los vendedores marcados con checkbox
+      const vendedoresSeleccionados = vendedoresCat
+        .filter(v => selectedVendorIds.includes(v.vendedor_id))
+        .map(v => ({ vendedor_id: v.vendedor_id, categoria_id: form.categoria_seleccionada_id }));
+
       const payload = {
-        nombre:               form.nombre,
-        descripcion:          form.descripcion,
-        premio:               form.premio,
-        precio:               form.precio,
-        fecha_sorteo:         form.fecha_sorteo || null,
-        loteria_ref:          form.loteria_ref  || null,
-        tipo:                 form.tipo,
-        imagen_url:           form.imagen_base64 || null,
-        ofertas:              form.ofertas || [],
-        vendedores_categorias: form.vendedores_categorias || [],
-        // Enviamos también la categoría seleccionada para que el backend cree los lotes en caja
-        categoria_id:         form.categoria_seleccionada_id || null,
+        nombre:                form.nombre,
+        descripcion:           form.descripcion,
+        premio:                form.premio,
+        precio:                form.precio,
+        fecha_sorteo:          form.fecha_sorteo || null,
+        loteria_ref:           form.loteria_ref  || null,
+        tipo:                  form.tipo,
+        imagen_url:            form.imagen_base64 || null,
+        ofertas:               form.ofertas || [],
+        vendedores_categorias: vendedoresSeleccionados,
+        categoria_id:          form.categoria_seleccionada_id || null,
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
@@ -849,7 +925,7 @@ export default function GestionRifas() {
         await API.post('/rifas', payload);
         toast.success('Rifa creada — lotes de caja generados automáticamente');
       }
-      setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); load();
+      setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); setSelectedVendorIds([]); load();
     } catch (err) { toast.error(err.response?.data?.error || 'Error guardando rifa'); }
     finally { setSaving(false); }
   };
@@ -1150,24 +1226,14 @@ export default function GestionRifas() {
                     precioRifa={form.precio}
                     categoriaId={form.categoria_seleccionada_id}
                     onCategoriaChange={catId => {
-                      setForm(p => ({
-                        ...p,
-                        categoria_seleccionada_id: catId,
-                        vendedores_categorias: [],
-                      }));
+                      setForm(p => ({ ...p, categoria_seleccionada_id: catId }));
                       setVendedoresCat([]);
+                      setSelectedVendorIds([]);
                     }}
                     vendedoresCargados={vendedoresCat}
-                    onVendedoresCargados={vends => {
-                      setVendedoresCat(vends);
-                      setForm(p => ({
-                        ...p,
-                        vendedores_categorias: vends.map(v => ({
-                          vendedor_id:  v.vendedor_id,
-                          categoria_id: p.categoria_seleccionada_id,
-                        })),
-                      }));
-                    }}
+                    onVendedoresCargados={vends => setVendedoresCat(vends)}
+                    selectedVendedorIds={selectedVendorIds}
+                    onSelectionChange={ids => setSelectedVendorIds(ids)}
                   />
                 </div>
               </div>
@@ -1196,7 +1262,7 @@ export default function GestionRifas() {
               <button type="submit" className="btn-jordyn" disabled={saving}>
                 {saving ? <><span className="jd-spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></span> Guardando...</> : <><i className="bi bi-floppy-fill me-1"></i>{editId ? 'Actualizar' : 'Crear rifa'}</>}
               </button>
-              <button type="button" className="btn-jordyn-outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); }}>Cancelar</button>
+              <button type="button" className="btn-jordyn-outline" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); setVendedoresCat([]); setSelectedVendorIds([]); }}>Cancelar</button>
             </div>
           </form>
         </div>
