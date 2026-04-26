@@ -1374,7 +1374,6 @@ function CategoriaCard({ cat, onEdit, onDelete, onSaved }) {
           </div>
           <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap',marginBottom:'0.8rem'}}>
             <span style={S.badge('var(--jordyn-primary)')}><i className="bi bi-people-fill"></i>{cat.total_vendedores||0} vendedores</span>
-            <span style={S.badge('#2ecc71')}><i className="bi bi-hash"></i>{cat.total_numeros_definidos||0} números</span>
             {esSim&&<><span style={S.badge('#4361ee')}>A:{cat.numeros_serie_a||0}</span><span style={S.badge('#e91e8c')}>B:{cat.numeros_serie_b||0}</span></>}
           </div>
           {esSim&&(
