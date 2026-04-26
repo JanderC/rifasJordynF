@@ -286,8 +286,15 @@ function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
 }
 
 // ── ModalNumerosEnCategoria ──────────────────────────────────────
+// ── ModalNumerosEnCategoria (con selección múltiple para borrado) ──
+// CAMBIOS:
+// • Nuevo estado `seleccionados` (Set de claves "numero|serie" para con-serie, "numero" para sin-serie)
+// • Botón "Seleccionar" arriba de cada sección → entra en modo selección
+// • Al seleccionar al menos uno, aparece barra inferior con "Eliminar X seleccionados" y "Cancelar"
+// • El delete llama al mismo endpoint pero con todos los seleccionados de una vez
+// • Los botones individuales de basura siguen funcionando en modo normal (sin selección activa)
+
 function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
-  // Registra si hubo cambios para notificar al padre solo al cerrar (evita recargas que desmontarían este modal)
   const huboCambiosRef = useRef(false);
   const [numeros,setNumeros]       = useState([]);
   const [numInput,setNumInput]     = useState('');
@@ -300,6 +307,12 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   const [preview,setPreview]       = useState(null);
   const [loadingPrev,setLoadingPrev]=useState(false);
   const [notifs,setNotifs]         = useState([]);
+
+  // ── Nuevos estados para selección múltiple ──
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  // Las claves son: para "con serie" → `${numero}-${serie}-${asignacion_id}`, para "sin serie" → numero
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [eliminandoLote, setEliminandoLote] = useState(false);
 
   const esSim  = categoria.tipo === 'simultanea';
   const accent = esSim ? '#e91e8c' : '#4361ee';
@@ -329,6 +342,9 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   useEffect(()=>{ cargar(); },[cargar]);
   useEffect(()=>{ if(numeros.length>0) cargarPreview(); else setPreview(null); },[numeros.length,cargarPreview]);
 
+  // Limpiar selección al recargar
+  useEffect(()=>{ setSeleccionados(new Set()); setModoSeleccion(false); },[numeros]);
+
   const agregarAlPool = async nums => {
     const validos = nums.filter(n=>NUM_RE.test(n));
     if (!validos.length) return toast.error('Sin números válidos');
@@ -343,7 +359,7 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
       }
       r.data.colisiones?.forEach(c=>addNotif(`${c.numero}: ${c.mensaje}`,'error'));
       huboCambiosRef.current = true;
-      await cargar(); // solo recarga internamente, sin notificar al padre para no desmontar este modal
+      await cargar();
     } catch(err) {
       const msg=err.response?.data?.error||'Error';
       addNotif(msg,'error'); toast.error(msg);
@@ -365,6 +381,68 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
       huboCambiosRef.current = true;
       await cargar();
     } catch(err) { toast.error(err.response?.data?.error||'Error'); }
+  };
+
+  // ── Eliminar lote de seleccionados ──────────────────────────────
+  // La clave de selección para "sin serie" es simplemente el número.
+  // Para "con serie" es `${numero}||asig:${asignacion_id}` — pero el
+  // endpoint DELETE /numeros borra pool+asignación juntos, así que
+  // recolectamos los números únicos a borrar del pool.
+  // Para "liberar serie" sin quitar del pool llamamos /asignaciones/:id.
+  //
+  // Decisión de UX: cuando el usuario selecciona ítems "con serie",
+  // se QUITA DEL POOL (elimina asignación + pool). Si solo quiere
+  // liberar la serie individualmente usa el × de siempre.
+  // Esto es consistente con el botón 🗑 individual.
+  const eliminarSeleccionados = async () => {
+    if (!seleccionados.size) return;
+    setEliminandoLote(true);
+    try {
+      // Extraer los números únicos de las claves seleccionadas
+      // Claves: "sinSerie:NUM" | "conSerie:NUM:SERIE:ASIG_ID"
+      const numerosABorrar = new Set();
+      for (const clave of seleccionados) {
+        const partes = clave.split(':');
+        numerosABorrar.add(partes[1]); // siempre el numero está en índice 1
+      }
+      await API.delete(
+        `/categorias-globales/${categoria.id}/vendedores/${vendedor.id}/numeros`,
+        { data: { numeros: [...numerosABorrar] } }
+      );
+      addNotif(`${numerosABorrar.size} número(s) eliminados.`, 'success');
+      huboCambiosRef.current = true;
+      await cargar();
+    } catch(err) {
+      toast.error(err.response?.data?.error||'Error al eliminar');
+    } finally {
+      setEliminandoLote(false);
+      setModoSeleccion(false);
+      setSeleccionados(new Set());
+    }
+  };
+
+  const toggleSeleccion = (clave) => {
+    setSeleccionados(prev => {
+      const next = new Set(prev);
+      next.has(clave) ? next.delete(clave) : next.add(clave);
+      return next;
+    });
+  };
+
+  const seleccionarTodos = (items) => {
+    setSeleccionados(prev => {
+      const next = new Set(prev);
+      items.forEach(clave => next.add(clave));
+      return next;
+    });
+  };
+
+  const deseleccionarTodos = (items) => {
+    setSeleccionados(prev => {
+      const next = new Set(prev);
+      items.forEach(clave => next.delete(clave));
+      return next;
+    });
   };
 
   const asignarNumeros = async () => {
@@ -409,6 +487,14 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   const colorSerie = s=>s==='A'?'#4361ee':s==='B'?'#e91e8c':'#aaa';
   const bgSerie    = s=>s==='A'?'#f0f5ff':s==='B'?'#fff0f5':'#f5f5f5';
 
+  // Claves para "seleccionar todos" de cada sección
+  const clavesConSerie = conSerie.map(n => `conSerie:${n.numero}:${n.serie}:${n.asignacion_id}`);
+  const clavesSinSerie = sinSerie.map(n => `sinSerie:${n.numero}`);
+  const todasLasClaves = [...clavesConSerie, ...clavesSinSerie];
+
+  const todosConSerieSeleccionados = clavesConSerie.length > 0 && clavesConSerie.every(c => seleccionados.has(c));
+  const todosSinSerieSeleccionados = clavesSinSerie.length > 0 && clavesSinSerie.every(c => seleccionados.has(c));
+
   return (
     <div onClick={e=>e.target===e.currentTarget&&handleClose()} style={{...S.overlay,zIndex:10300}}>
       <div style={S.modal(700)}>
@@ -417,14 +503,34 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
             <div style={{fontWeight:800,fontSize:'1rem'}}><i className="bi bi-hash me-1"></i>{vendedor.nombre}</div>
             <div style={{fontSize:'0.72rem',opacity:0.85,marginTop:2}}>{categoria.nombre} — {total} pool — {conSerie.length} asignados — {sinSerie.length} pendientes</div>
           </div>
-          <button onClick={handleClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            {total > 0 && !modoSeleccion && (
+              <button
+                onClick={()=>setModoSeleccion(true)}
+                style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',color:'#fff',borderRadius:8,padding:'5px 12px',cursor:'pointer',fontSize:'0.74rem',fontWeight:700,display:'flex',alignItems:'center',gap:5}}>
+                <i className="bi bi-check2-square"></i> Seleccionar
+              </button>
+            )}
+            {modoSeleccion && (
+              <button
+                onClick={()=>{ setModoSeleccion(false); setSeleccionados(new Set()); }}
+                style={{background:'rgba(255,255,255,0.18)',border:'1px solid rgba(255,255,255,0.35)',color:'#fff',borderRadius:8,padding:'5px 12px',cursor:'pointer',fontSize:'0.74rem',fontWeight:700}}>
+                Cancelar
+              </button>
+            )}
+            <button onClick={handleClose} style={S.closeBtn}><i className="bi bi-x-lg"></i></button>
+          </div>
         </div>
+
         <div style={S.body}>
           <div className="jd-alert jd-alert-info mb-3" style={{fontSize:'0.75rem',lineHeight:1.7}}>
             <i className="bi bi-info-circle-fill me-2"></i>
             {esSim?<><strong>Simultánea:</strong> Puedes agregar el mismo número dos veces para ocupar Serie A y Serie B.</>:<><strong>Parcial:</strong> Un número = un vendedor.</>}
           </div>
+
           <InlineNotif items={notifs} onClear={()=>setNotifs([])} />
+
+          {/* Barra de progreso pool */}
           <div style={{background:'var(--jordyn-bg2)',borderRadius:10,padding:'0.75rem 1rem',marginBottom:'1rem',border:'1px solid var(--jordyn-border)'}}>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.72rem',color:'var(--jordyn-muted)',fontWeight:600,marginBottom:5}}>
               <span>POOL</span><span>{total} — {conSerie.length} asignados — {sinSerie.length} pendientes</span>
@@ -433,58 +539,94 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
               <div style={{height:'100%',borderRadius:8,background:`linear-gradient(90deg,${accent},${accent}88)`,width:`${(total/1000)*100}%`,transition:'width 0.4s'}} />
             </div>
           </div>
-          <div style={{display:'flex',borderRadius:10,overflow:'hidden',border:'1.5px solid var(--jordyn-border)',marginBottom:'0.85rem'}}>
-            {[['manual','Manual'],['rango','Rango']].map(([k,l],i)=>(
-              <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:'8px 6px',border:'none',cursor:'pointer',fontSize:'0.78rem',fontWeight:600,background:tab===k?accent:'transparent',color:tab===k?'#fff':'var(--jordyn-muted)',borderRight:i===0?'1.5px solid var(--jordyn-border)':'none'}}>{l}</button>
-            ))}
-          </div>
-          {tab==='manual'&&(
-            <div style={{marginBottom:'1rem'}}>
-              <div style={{display:'flex',gap:'0.5rem',alignItems:'flex-start',flexWrap:'wrap'}}>
-                <div>
-                  <input className="jd-input" value={numInput}
-                    onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
-                    onKeyDown={e=>e.key==='Enter'&&agregarManual()}
-                    placeholder="000-999"
-                    style={{maxWidth:110,textAlign:'center',fontWeight:700,letterSpacing:2,fontSize:'1rem',borderColor:infoInput?(infoInput.disponible?accent:'#ffaaaa'):undefined}}
-                    maxLength={3} />
-                  <div style={{marginTop:5,minHeight:42}}>
-                    {validando?<span className="jd-spinner" style={{width:12,height:12}}></span>
-                      :numInput.length===3&&infoInput?<SerieBadge info={infoInput} />:null}
+
+          {/* Tabs agregar (ocultar en modo selección) */}
+          {!modoSeleccion && (
+            <>
+              <div style={{display:'flex',borderRadius:10,overflow:'hidden',border:'1.5px solid var(--jordyn-border)',marginBottom:'0.85rem'}}>
+                {[['manual','Manual'],['rango','Rango']].map(([k,l],i)=>(
+                  <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:'8px 6px',border:'none',cursor:'pointer',fontSize:'0.78rem',fontWeight:600,background:tab===k?accent:'transparent',color:tab===k?'#fff':'var(--jordyn-muted)',borderRight:i===0?'1.5px solid var(--jordyn-border)':'none'}}>{l}</button>
+                ))}
+              </div>
+              {tab==='manual'&&(
+                <div style={{marginBottom:'1rem'}}>
+                  <div style={{display:'flex',gap:'0.5rem',alignItems:'flex-start',flexWrap:'wrap'}}>
+                    <div>
+                      <input className="jd-input" value={numInput}
+                        onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
+                        onKeyDown={e=>e.key==='Enter'&&agregarManual()}
+                        placeholder="000-999"
+                        style={{maxWidth:110,textAlign:'center',fontWeight:700,letterSpacing:2,fontSize:'1rem',borderColor:infoInput?(infoInput.disponible?accent:'#ffaaaa'):undefined}}
+                        maxLength={3} />
+                      <div style={{marginTop:5,minHeight:42}}>
+                        {validando?<span className="jd-spinner" style={{width:12,height:12}}></span>
+                          :numInput.length===3&&infoInput?<SerieBadge info={infoInput} />:null}
+                      </div>
+                    </div>
+                    <button className="btn-jordyn" onClick={agregarManual} disabled={saving||(infoInput&&!infoInput.disponible)}
+                      style={{background:`linear-gradient(135deg,${accent},${accent}cc)`,height:44}}>
+                      <i className="bi bi-plus-lg me-1"></i>Agregar
+                    </button>
                   </div>
                 </div>
-                <button className="btn-jordyn" onClick={agregarManual} disabled={saving||(infoInput&&!infoInput.disponible)}
-                  style={{background:`linear-gradient(135deg,${accent},${accent}cc)`,height:44}}>
-                  <i className="bi bi-plus-lg me-1"></i>Agregar
+              )}
+              {tab==='rango'&&(
+                <div style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'1rem',flexWrap:'wrap'}}>
+                  <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:90}} maxLength={3} />
+                  <span style={{color:'var(--jordyn-muted)'}}>—</span>
+                  <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:90}} maxLength={3} />
+                  <button className="btn-jordyn" onClick={agregarRango} disabled={saving} style={{background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
+                    <i className="bi bi-plus-lg me-1"></i>Agregar rango
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Modo selección: instrucción */}
+          {modoSeleccion && (
+            <div style={{background:'#fff8e1',border:'1.5px solid #f0a50060',borderRadius:10,padding:'8px 14px',marginBottom:'1rem',fontSize:'0.78rem',color:'#7a5c00',display:'flex',alignItems:'center',gap:8}}>
+              <i className="bi bi-info-circle-fill"></i>
+              Seleccioná los números que querés eliminar y luego presioná el botón rojo.
+              {todasLasClaves.length > 0 && (
+                <button
+                  onClick={()=> seleccionados.size === todasLasClaves.length
+                    ? deseleccionarTodos(todasLasClaves)
+                    : seleccionarTodos(todasLasClaves)}
+                  style={{marginLeft:'auto',background:'none',border:'1px solid #f0a500',color:'#7a5c00',borderRadius:6,padding:'2px 10px',cursor:'pointer',fontSize:'0.72rem',fontWeight:700}}>
+                  {seleccionados.size === todasLasClaves.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
                 </button>
-              </div>
+              )}
             </div>
           )}
-          {tab==='rango'&&(
-            <div style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'1rem',flexWrap:'wrap'}}>
-              <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:90}} maxLength={3} />
-              <span style={{color:'var(--jordyn-muted)'}}>—</span>
-              <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:90}} maxLength={3} />
-              <button className="btn-jordyn" onClick={agregarRango} disabled={saving} style={{background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
-                <i className="bi bi-plus-lg me-1"></i>Agregar rango
-              </button>
-            </div>
-          )}
+
           {loading
             ?<div className="d-flex justify-content-center py-4"><div className="jd-spinner" style={{width:36,height:36}}></div></div>
             :(
             <>
+              {/* Sección: pendientes de asignación */}
               {sinSerie.length>0&&(
                 <div style={{background:'var(--jordyn-bg2)',border:`2px solid ${accent}30`,borderRadius:14,padding:'1rem',marginBottom:'1rem'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:preview?'0.75rem':0}}>
-                    <div style={{fontWeight:700,fontSize:'0.85rem',color:accent}}><i className="bi bi-lightning-fill me-1"></i>{sinSerie.length} pendiente(s)</div>
-                    <button className="btn-jordyn" onClick={asignarNumeros} disabled={asignando||loadingPrev}
-                      style={{height:36,padding:'0 16px',fontSize:'0.8rem',background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
-                      {asignando?<span className="jd-spinner" style={{width:14,height:14}}></span>:<><i className="bi bi-send-fill me-1"></i>Asignar series</>}
-                    </button>
+                    <div style={{fontWeight:700,fontSize:'0.85rem',color:accent,display:'flex',alignItems:'center',gap:8}}>
+                      <i className="bi bi-lightning-fill"></i>{sinSerie.length} pendiente(s)
+                      {modoSeleccion && (
+                        <button
+                          onClick={()=> todosSinSerieSeleccionados ? deseleccionarTodos(clavesSinSerie) : seleccionarTodos(clavesSinSerie)}
+                          style={{background:'none',border:`1px solid ${accent}`,color:accent,borderRadius:6,padding:'1px 8px',cursor:'pointer',fontSize:'0.68rem',fontWeight:700}}>
+                          {todosSinSerieSeleccionados ? 'Ninguno' : 'Todos'}
+                        </button>
+                      )}
+                    </div>
+                    {!modoSeleccion && (
+                      <button className="btn-jordyn" onClick={asignarNumeros} disabled={asignando||loadingPrev}
+                        style={{height:36,padding:'0 16px',fontSize:'0.8rem',background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
+                        {asignando?<span className="jd-spinner" style={{width:14,height:14}}></span>:<><i className="bi bi-send-fill me-1"></i>Asignar series</>}
+                      </button>
+                    )}
                   </div>
                   {loadingPrev&&<div style={{fontSize:'0.72rem',color:'var(--jordyn-muted)',display:'flex',alignItems:'center',gap:6}}><span className="jd-spinner" style={{width:12,height:12}}></span> Calculando...</div>}
-                  {preview&&!loadingPrev&&(
+                  {preview&&!loadingPrev&&!modoSeleccion&&(
                     <div style={{display:'flex',flexDirection:'column',gap:'0.45rem'}}>
                       {['A','B'].map(serie=>{
                         const nums=preview.libres?.filter(l=>l.serie===serie)||[];
@@ -503,12 +645,51 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
                       <ConflictPanel colisiones={preview.colisiones} titulo="Sin espacio — NO se asignarán" />
                     </div>
                   )}
+                  {/* Chips sin serie con checkbox en modo selección */}
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:'0.6rem'}}>
+                    {sinSerie.map(n=>{
+                      const clave = `sinSerie:${n.numero}`;
+                      const selec = seleccionados.has(clave);
+                      return (
+                        <div key={n.numero} style={{display:'flex',alignItems:'center',gap:2}}>
+                          {modoSeleccion ? (
+                            <div
+                              onClick={()=>toggleSeleccion(clave)}
+                              style={{display:'flex',alignItems:'center',gap:4,padding:'3px 10px',borderRadius:6,cursor:'pointer',
+                                fontWeight:800,fontSize:'0.7rem',
+                                background: selec ? '#ffe0e0' : '#f9f9f9',
+                                border: selec ? '2px solid #e63946' : '1.5px solid #ddd',
+                                color: selec ? '#e63946' : '#999',
+                                transition:'all .12s'}}>
+                              <i className={`bi ${selec?'bi-check-square-fill':'bi-square'}`} style={{fontSize:'0.75rem'}}></i>
+                              {n.numero}
+                            </div>
+                          ) : (
+                            <>
+                              <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:'#f9f9f9',border:'1.5px solid #ddd',color:'#999'}}>{n.numero}</span>
+                              <button onClick={()=>quitarDelPool(n.numero)} style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
+
+              {/* Sección: con serie asignada */}
               {conSerie.length>0&&(
                 <div style={{marginBottom:'0.75rem'}}>
-                  <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--jordyn-muted)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:8}}>
-                    Con serie ({conSerie.length}) — × libera serie · 🗑 quita del pool
+                  <div style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.65rem',fontWeight:700,color:'var(--jordyn-muted)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:8}}>
+                    <span>Con serie ({conSerie.length})</span>
+                    {!modoSeleccion && <span style={{fontWeight:400}}>× libera serie · 🗑 quita del pool</span>}
+                    {modoSeleccion && (
+                      <button
+                        onClick={()=> todosConSerieSeleccionados ? deseleccionarTodos(clavesConSerie) : seleccionarTodos(clavesConSerie)}
+                        style={{background:'none',border:'1px solid var(--jordyn-border)',color:'var(--jordyn-muted)',borderRadius:6,padding:'1px 8px',cursor:'pointer',fontSize:'0.68rem',fontWeight:700}}>
+                        {todosConSerieSeleccionados ? 'Ninguno' : 'Todos'}
+                      </button>
+                    )}
                   </div>
                   {esSim
                     ?['A','B'].map(serie=>{
@@ -519,56 +700,118 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
                           <div key={serie} style={{marginBottom:'0.5rem'}}>
                             <div style={{fontSize:'0.62rem',fontWeight:700,color,marginBottom:4,textTransform:'uppercase'}}>Serie {serie} ({nums.length})</div>
                             <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                              {nums.sort((a,b)=>a.numero.localeCompare(b.numero)).map(n=>(
-                                <div key={`${n.numero}-${n.serie}`} style={{display:'flex',alignItems:'center',gap:2}}>
-                                  <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:bgSerie(serie),border:`1.5px solid ${color}40`,color}}>{n.numero}</span>
-                                  <button onClick={()=>liberarSerie(n.asignacion_id)} title="Liberar serie" style={{background:'none',border:'none',color:'#999',cursor:'pointer',padding:0,fontSize:'0.8rem',fontWeight:700}}>×</button>
-                                  <button onClick={()=>quitarDelPool(n.numero)} title="Quitar" style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
-                                </div>
-                              ))}
+                              {nums.sort((a,b)=>a.numero.localeCompare(b.numero)).map(n=>{
+                                const clave = `conSerie:${n.numero}:${n.serie}:${n.asignacion_id}`;
+                                const selec = seleccionados.has(clave);
+                                return (
+                                  <div key={`${n.numero}-${n.serie}`} style={{display:'flex',alignItems:'center',gap:2}}>
+                                    {modoSeleccion ? (
+                                      <div
+                                        onClick={()=>toggleSeleccion(clave)}
+                                        style={{display:'flex',alignItems:'center',gap:4,padding:'3px 10px',borderRadius:6,cursor:'pointer',
+                                          fontWeight:800,fontSize:'0.7rem',
+                                          background: selec ? '#ffe0e0' : bgSerie(serie),
+                                          border: selec ? `2px solid #e63946` : `1.5px solid ${color}40`,
+                                          color: selec ? '#e63946' : color,
+                                          transition:'all .12s'}}>
+                                        <i className={`bi ${selec?'bi-check-square-fill':'bi-square'}`} style={{fontSize:'0.75rem'}}></i>
+                                        {n.numero}
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:bgSerie(serie),border:`1.5px solid ${color}40`,color}}>{n.numero}</span>
+                                        <button onClick={()=>liberarSerie(n.asignacion_id)} title="Liberar serie" style={{background:'none',border:'none',color:'#999',cursor:'pointer',padding:0,fontSize:'0.8rem',fontWeight:700}}>×</button>
+                                        <button onClick={()=>quitarDelPool(n.numero)} title="Quitar del pool" style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );
                       })
                     :(
                       <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                        {conSerie.sort((a,b)=>a.numero.localeCompare(b.numero)).map(n=>(
-                          <div key={n.numero} style={{display:'flex',alignItems:'center',gap:2}}>
-                            <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:'rgba(10,191,188,0.1)',border:'1.5px solid rgba(10,191,188,0.35)',color:'var(--jordyn-primary)'}}>{n.numero}</span>
-                            <button onClick={()=>liberarSerie(n.asignacion_id)} style={{background:'none',border:'none',color:'#999',cursor:'pointer',padding:0,fontSize:'0.8rem',fontWeight:700}}>×</button>
-                            <button onClick={()=>quitarDelPool(n.numero)} style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
-                          </div>
-                        ))}
+                        {conSerie.sort((a,b)=>a.numero.localeCompare(b.numero)).map(n=>{
+                          const clave = `conSerie:${n.numero}:${n.serie}:${n.asignacion_id}`;
+                          const selec = seleccionados.has(clave);
+                          return (
+                            <div key={n.numero} style={{display:'flex',alignItems:'center',gap:2}}>
+                              {modoSeleccion ? (
+                                <div
+                                  onClick={()=>toggleSeleccion(clave)}
+                                  style={{display:'flex',alignItems:'center',gap:4,padding:'3px 10px',borderRadius:6,cursor:'pointer',
+                                    fontWeight:800,fontSize:'0.7rem',
+                                    background: selec ? '#ffe0e0' : 'rgba(10,191,188,0.1)',
+                                    border: selec ? '2px solid #e63946' : '1.5px solid rgba(10,191,188,0.35)',
+                                    color: selec ? '#e63946' : 'var(--jordyn-primary)',
+                                    transition:'all .12s'}}>
+                                  <i className={`bi ${selec?'bi-check-square-fill':'bi-square'}`} style={{fontSize:'0.75rem'}}></i>
+                                  {n.numero}
+                                </div>
+                              ) : (
+                                <>
+                                  <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:'rgba(10,191,188,0.1)',border:'1.5px solid rgba(10,191,188,0.35)',color:'var(--jordyn-primary)'}}>{n.numero}</span>
+                                  <button onClick={()=>liberarSerie(n.asignacion_id)} style={{background:'none',border:'none',color:'#999',cursor:'pointer',padding:0,fontSize:'0.8rem',fontWeight:700}}>×</button>
+                                  <button onClick={()=>quitarDelPool(n.numero)} style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )
                   }
                 </div>
               )}
-              {sinSerie.length>0&&(
-                <div>
-                  <div style={{fontSize:'0.65rem',fontWeight:700,color:'#f0a500',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:6}}>Sin serie ({sinSerie.length})</div>
-                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                    {sinSerie.map(n=>(
-                      <div key={n.numero} style={{display:'flex',alignItems:'center',gap:2}}>
-                        <span style={{padding:'3px 8px',borderRadius:6,fontWeight:800,fontSize:'0.7rem',background:'#f9f9f9',border:'1.5px solid #ddd',color:'#999'}}>{n.numero}</span>
-                        <button onClick={()=>quitarDelPool(n.numero)} style={{background:'none',border:'none',color:'#e63946',cursor:'pointer',padding:0,fontSize:'0.65rem'}}><i className="bi bi-trash3"></i></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
               {total===0&&<div className="jd-alert jd-alert-warning" style={{fontSize:'0.82rem'}}>Sin números en el pool.</div>}
             </>
           )}
         </div>
+
+        {/* ── Barra inferior de acción en modo selección ── */}
+        {modoSeleccion && (
+          <div style={{
+            padding:'0.85rem 1.5rem',
+            borderTop:'2px solid var(--jordyn-border)',
+            background:'#fff',
+            display:'flex',
+            alignItems:'center',
+            justifyContent:'space-between',
+            gap:12,
+            flexShrink:0
+          }}>
+            <span style={{fontSize:'0.8rem',color:'var(--jordyn-muted)',fontWeight:600}}>
+              {seleccionados.size === 0
+                ? 'Ningún número seleccionado'
+                : `${seleccionados.size} número${seleccionados.size!==1?'s':''} seleccionado${seleccionados.size!==1?'s':''}`}
+            </span>
+            <div style={{display:'flex',gap:8}}>
+              <button
+                onClick={()=>{ setModoSeleccion(false); setSeleccionados(new Set()); }}
+                className="btn-jordyn-outline"
+                style={{padding:'6px 18px',fontSize:'0.8rem'}}>
+                Cancelar
+              </button>
+              <button
+                onClick={eliminarSeleccionados}
+                disabled={seleccionados.size===0 || eliminandoLote}
+                style={{background:seleccionados.size>0?'linear-gradient(135deg,#c0303a,#e63946)':'#ddd',
+                  border:'none',color:'#fff',borderRadius:8,padding:'6px 20px',cursor:seleccionados.size>0?'pointer':'not-allowed',
+                  fontSize:'0.8rem',fontWeight:700,display:'flex',alignItems:'center',gap:6,opacity:seleccionados.size===0?0.5:1}}>
+                {eliminandoLote
+                  ? <><span className="jd-spinner" style={{width:14,height:14}}></span> Eliminando...</>
+                  : <><i className="bi bi-trash3-fill"></i> Eliminar {seleccionados.size>0?seleccionados.size:''}</>}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-// ── ModalCrearVendedorEnCategoria (v7) ───────────────────────────
-// NUEVO: usa /buscar-numero para modo "nuevo vendedor".
-// NUEVO: en simultanea permite numeros[i]===numeros[j] (A y B).
 function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClose, onSaved }) {
   const esSim  = categoria.tipo === 'simultanea';
   const accent = esSim ? '#e91e8c' : '#4361ee';
