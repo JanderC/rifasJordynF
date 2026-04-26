@@ -218,26 +218,36 @@ export default function Sidebar() {
         @media (max-width: 768px) {
           #sidebar-close { display: block !important; }
 
-          /* Sidebar como columna flex de altura completa para que el footer siempre quede visible */
+          /* El sidebar ocupa exactamente la pantalla visible, sin depender del padre */
           .jd-sidebar {
             display: flex !important;
             flex-direction: column !important;
-            height: 100dvh !important;
-            height: 100vh !important;
-            max-height: 100dvh !important;
-            max-height: 100vh !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            bottom: 0 !important;
+            height: 100% !important;
+            max-height: 100% !important;
             overflow: hidden !important;
-          }
-
-          /* El área de links hace scroll, no el sidebar completo */
-          .jd-sidebar > div[style*="flex: 1"],
-          .jd-sidebar > div[style*="flex:1"] {
-            overflow-y: auto !important;
-            -webkit-overflow-scrolling: touch;
           }
 
           /* Brand no se encoge */
           .jd-sidebar-brand {
+            flex-shrink: 0 !important;
+          }
+
+          /* El área de links ocupa el espacio restante y hace scroll si hay muchos items */
+          .jd-sidebar > div[style*="flex: 1"],
+          .jd-sidebar > div[style*="flex:1"] {
+            flex: 1 1 0 !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          /* Footer de usuario nunca se encoge ni se sale */
+          .jd-sidebar > div[style*="flexShrink: 0"],
+          .jd-sidebar > div[style*="flex-shrink: 0"] {
             flex-shrink: 0 !important;
           }
         }
