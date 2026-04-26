@@ -136,7 +136,7 @@ export default function Sidebar() {
         </div>
 
         {/* Links */}
-        <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem' }}>
+        <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', overflowY: 'auto', overflowX: 'hidden' }}>
           {/* Separador visual si hay reservas pendientes */}
           {user?.rol === 'dueno' && pendientes > 0 && (
             <div style={{
@@ -158,7 +158,7 @@ export default function Sidebar() {
         </div>
 
         {/* Separador + usuario + logout */}
-        <div style={{ borderTop: '1px solid var(--jordyn-border)', padding: '0.9rem 1.1rem' }}>
+        <div style={{ borderTop: '1px solid var(--jordyn-border)', padding: '0.9rem 1.1rem', flexShrink: 0 }}>
           <div style={{ marginBottom: '0.7rem' }}>
             {/* Avatar inicial */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -217,6 +217,29 @@ export default function Sidebar() {
       <style>{`
         @media (max-width: 768px) {
           #sidebar-close { display: block !important; }
+
+          /* Sidebar como columna flex de altura completa para que el footer siempre quede visible */
+          .jd-sidebar {
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100dvh !important;
+            height: 100vh !important;
+            max-height: 100dvh !important;
+            max-height: 100vh !important;
+            overflow: hidden !important;
+          }
+
+          /* El área de links hace scroll, no el sidebar completo */
+          .jd-sidebar > div[style*="flex: 1"],
+          .jd-sidebar > div[style*="flex:1"] {
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          /* Brand no se encoge */
+          .jd-sidebar-brand {
+            flex-shrink: 0 !important;
+          }
         }
       `}</style>
     </>
