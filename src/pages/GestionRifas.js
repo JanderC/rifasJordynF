@@ -36,7 +36,7 @@ const LOTERIAS = [
 
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
-  fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
+  fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
   categoria_seleccionada_id: null,
 };
@@ -53,7 +53,14 @@ const fileToBase64 = file => new Promise((res, rej) => {
 
 const parseFecha = (f) => {
   if (!f) return null;
-  const d = new Date(String(f).replace(' ', 'T'));
+  const s = String(f).replace(' ', 'T');
+  // Si es solo fecha (YYYY-MM-DD) la construimos con hora local para evitar
+  // que JavaScript la trate como UTC medianoche y la tire al día anterior
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0); // mediodía local, sin riesgo de desfase
+  }
+  const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 };
 const fmtF = f => {
@@ -884,7 +891,6 @@ export default function GestionRifas() {
       precio:                  r.precio       || '',
       precio_display:          r.precio       ? fmtCOP(r.precio) : '',
       fecha_sorteo:            r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
-      hora_sorteo:             r.fecha_sorteo && r.fecha_sorteo.includes('T') ? r.fecha_sorteo.split('T')[1]?.slice(0,5) : '',
       loteria_ref:             r.loteria_ref  || '',
       tipo:                    r.tipo         || 'sencilla',
       imagen_base64:           r.imagen_url   || '',
@@ -913,9 +919,7 @@ export default function GestionRifas() {
         descripcion:           form.descripcion,
         premio:                form.premio,
         precio:                form.precio,
-        fecha_sorteo:          form.fecha_sorteo
-                               ? (form.hora_sorteo ? `${form.fecha_sorteo}T${form.hora_sorteo}:00` : form.fecha_sorteo)
-                               : null,
+        fecha_sorteo:          form.fecha_sorteo || null,
         loteria_ref:           form.loteria_ref  || null,
         tipo:                  form.tipo,
         imagen_url:            form.imagen_base64 || null,
@@ -983,7 +987,7 @@ export default function GestionRifas() {
       <div className={`jd-card ${r.activa ? 'jd-card-primary' : ''} fade-in`} style={{ opacity: r.activa ? 1 : 0.72, height: '100%' }}>
 
         {r.imagen_url && (
-          <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--jordyn-bg2)', borderRadius: 10, overflow: 'hidden', marginBottom: '0.75rem', position: 'relative' }}>
+          <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--jordyn-bg2)', borderRadius: 10, overflow: 'hidden', marginBottom: '0.75rem' }}>
             <img src={r.imagen_url} alt="Premio" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </div>
         )}
@@ -1006,10 +1010,7 @@ export default function GestionRifas() {
           </div>
           <div className="col-6">
             <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>SORTEO</div>
-            <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{fmtF(r.fecha_sorteo)}</div>
-            {fmtHora(r.fecha_sorteo) && (
-              <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-primary)', fontWeight: 700, marginTop: 1 }}>🕐 {fmtHora(r.fecha_sorteo)}</div>
-            )}
+            <div style={{ fontWeight: 600 }}>{fmtF(r.fecha_sorteo)}</div>
           </div>
           <div className="col-6">
             <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>VENTAS</div>
@@ -1215,15 +1216,9 @@ export default function GestionRifas() {
               </div>
 
               {/* Fecha */}
-              <div className="col-6 col-md-2">
+              <div className="col-12 col-md-4">
                 <label className="jd-label">FECHA DE SORTEO</label>
                 <input className="jd-input" type="date" value={form.fecha_sorteo} onChange={e => setForm(p => ({ ...p, fecha_sorteo: e.target.value }))} />
-              </div>
-
-              {/* Hora */}
-              <div className="col-6 col-md-2">
-                <label className="jd-label">HORA</label>
-                <input className="jd-input" type="time" value={form.hora_sorteo || ''} onChange={e => setForm(p => ({ ...p, hora_sorteo: e.target.value }))} />
               </div>
 
               {/* Tipo */}
