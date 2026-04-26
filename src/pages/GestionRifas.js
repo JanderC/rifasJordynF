@@ -831,6 +831,8 @@ export default function GestionRifas() {
   const [showForm,        setShowForm]        = useState(false);
   const [showArchivadas,  setShowArchivadas]  = useState(false);
   const [modalNums,       setModalNums]       = useState(null);
+  const [confirmDelete,   setConfirmDelete]   = useState(null);
+  const [deletingRifa,    setDeletingRifa]    = useState(false);
   const [tasaValor,       setTasaValor]       = useState('');
   const [tasaBase,        setTasaBase]        = useState('');
   const [tasaResultado,   setTasaResultado]   = useState(null);
@@ -932,10 +934,38 @@ export default function GestionRifas() {
 
   const handleToggle   = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
   const handleArchivar = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: false, estado: 'archivada' }); toast.success('Rifa archivada'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error archivando rifa'); } };
-  const handleDelete   = async (r) => {
-    if (!window.confirm(`¿Eliminar definitivamente "${r.nombre}"?`)) return;
-    try { await API.delete(`/rifas/${r.id}`); toast.success('Rifa eliminada'); load(); }
-    catch (err) { toast.error(err.response?.data?.error || 'Error eliminando rifa'); }
+  // Paso 1: intentar DELETE sin force. Si el backend devuelve 409 con info,
+  // se guarda en confirmDelete para mostrar el modal de advertencia.
+  const handleDelete = async (r) => {
+    try {
+      await API.delete(`/rifas/${r.id}`);
+      toast.success('Rifa eliminada');
+      load();
+    } catch (err) {
+      const data = err.response?.data;
+      if (err.response?.status === 409 && data?.requiere_fuerza) {
+        // Hay ventas → abrir modal de advertencia con la info que devolvió el backend
+        setConfirmDelete({ rifa: r, info: data });
+      } else {
+        toast.error(data?.error || 'Error eliminando rifa');
+      }
+    }
+  };
+
+  // Paso 2: el usuario confirmó en el modal → borrar con force=true
+  const handleDeleteForce = async () => {
+    if (!confirmDelete) return;
+    setDeletingRifa(true);
+    try {
+      await API.delete(`/rifas/${confirmDelete.rifa.id}?force=true`);
+      toast.success(`Rifa "${confirmDelete.rifa.nombre}" eliminada junto con sus ventas`);
+      setConfirmDelete(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error eliminando rifa');
+    } finally {
+      setDeletingRifa(false);
+    }
   };
 
   const rifasActivas = rifas.filter(r => r.activa);
@@ -1050,6 +1080,7 @@ export default function GestionRifas() {
             <a href={`/diseno-ticket?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
             <button onClick={() => handleToggle(r)} style={{ background: 'transparent', border: `1.5px solid ${r.activa ? 'rgba(230,57,70,0.4)' : 'rgba(6,214,160,0.4)'}`, color: r.activa ? 'var(--jordyn-red)' : 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', fontFamily: 'var(--jordyn-font)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>{r.activa ? 'Desactivar' : 'Activar'}</button>
             <button onClick={() => handleArchivar(r)} title="Archivar" style={{ background: 'transparent', border: '1.5px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', marginLeft: 'auto' }}><i className="bi bi-archive"></i></button>
+            <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }} title="Eliminar rifa"><i className="bi bi-trash3"></i></button>
           </div>
         )}
         {archivada && (
@@ -1298,6 +1329,90 @@ export default function GestionRifas() {
       )}
 
       {modalNums && <ModalNumeros rifa={modalNums} onClose={() => setModalNums(null)} user={user} />}
+
+      {/* ═══ MODAL CONFIRMACIÓN ELIMINAR RIFA CON VENTAS ═══ */}
+      {confirmDelete && (
+        <div style={{ position:'fixed',inset:0,zIndex:10500,background:'rgba(8,22,22,0.78)',backdropFilter:'blur(7px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem' }}>
+          <div style={{ width:'100%',maxWidth:500,background:'#fff',borderRadius:18,overflow:'hidden',boxShadow:'0 32px 80px rgba(230,57,70,0.22)' }}>
+
+            {/* Cabecera roja */}
+            <div style={{ background:'linear-gradient(135deg,#b91c1c,#e63946)',padding:'1.1rem 1.5rem',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+              <div style={{ color:'#fff' }}>
+                <div style={{ fontWeight:800,fontSize:'1rem',display:'flex',alignItems:'center',gap:8 }}>
+                  <i className="bi bi-exclamation-triangle-fill"></i> Eliminar rifa
+                </div>
+                <div style={{ fontSize:'0.75rem',opacity:0.88,marginTop:2 }}>{confirmDelete.rifa.nombre}</div>
+              </div>
+              <button onClick={() => setConfirmDelete(null)} style={{ background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:'0.85rem' }}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            {/* Cuerpo */}
+            <div style={{ padding:'1.25rem 1.5rem' }}>
+
+              {/* Advertencia activa */}
+              {confirmDelete.info?.activa && (
+                <div style={{ background:'#fff8e1',border:'1.5px solid #f0a500',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'flex-start',gap:10 }}>
+                  <i className="bi bi-broadcast" style={{ color:'#b07800',fontSize:'1.1rem',flexShrink:0,marginTop:1 }}></i>
+                  <div style={{ fontSize:'0.82rem',color:'#7a5c00',lineHeight:1.6 }}>
+                    <strong>¡Esta rifa está ACTIVA!</strong> Asegúrate de haber terminado el sorteo antes de eliminarla.
+                  </div>
+                </div>
+              )}
+
+              {/* Vendedores involucrados */}
+              {confirmDelete.info?.vendedores?.length > 0 && (
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:'0.72rem',fontWeight:700,color:'#7c3aed',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8,display:'flex',alignItems:'center',gap:6 }}>
+                    <i className="bi bi-people-fill"></i>
+                    {confirmDelete.info.vendedores.length} vendedor(es) en esta rifa
+                  </div>
+                  <div style={{ display:'flex',flexWrap:'wrap',gap:6 }}>
+                    {confirmDelete.info.vendedores.map(v => (
+                      <span key={v.id} style={{ background:'rgba(124,58,237,0.08)',border:'1px solid rgba(124,58,237,0.22)',borderRadius:20,padding:'4px 12px',fontSize:'0.72rem',color:'#7c3aed',fontWeight:700,display:'flex',alignItems:'center',gap:5 }}>
+                        <span style={{ width:20,height:20,borderRadius:'50%',background:'rgba(124,58,237,0.15)',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'0.62rem',fontWeight:900 }}>
+                          {v.nombre.charAt(0).toUpperCase()}
+                        </span>
+                        {v.nombre}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Advertencia ventas */}
+              <div style={{ background:'#fff5f5',border:'1.5px solid rgba(230,57,70,0.35)',borderRadius:10,padding:'12px 14px',marginBottom:18 }}>
+                <div style={{ display:'flex',alignItems:'flex-start',gap:10 }}>
+                  <i className="bi bi-trash3-fill" style={{ color:'#e63946',fontSize:'1.1rem',flexShrink:0,marginTop:1 }}></i>
+                  <div style={{ fontSize:'0.82rem',color:'#c0392b',lineHeight:1.6 }}>
+                    Se eliminarán permanentemente <strong>{confirmDelete.info?.total_ventas} venta(s)</strong> registradas.
+                    Esta acción <strong>no se puede deshacer</strong>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones */}
+              <div style={{ display:'flex',gap:10,justifyContent:'flex-end' }}>
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  disabled={deletingRifa}
+                  style={{ background:'transparent',border:'1.5px solid var(--jordyn-border)',color:'var(--jordyn-muted)',borderRadius:8,padding:'8px 18px',cursor:'pointer',fontWeight:600,fontSize:'0.82rem' }}>
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteForce}
+                  disabled={deletingRifa}
+                  style={{ background:'linear-gradient(135deg,#b91c1c,#e63946)',border:'none',color:'#fff',borderRadius:8,padding:'8px 20px',cursor:deletingRifa?'wait':'pointer',fontWeight:700,fontSize:'0.82rem',display:'flex',alignItems:'center',gap:8,opacity:deletingRifa?0.7:1 }}>
+                  {deletingRifa
+                    ? <><span style={{ width:14,height:14,border:'2px solid rgba(255,255,255,0.4)',borderTopColor:'#fff',borderRadius:'50%',display:'inline-block',animation:'spin 0.7s linear infinite' }}></span> Eliminando...</>
+                    : <><i className="bi bi-trash3-fill"></i> Sí, eliminar todo</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
