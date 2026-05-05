@@ -30,7 +30,13 @@ const fmtMoneyPDF = (p) => p
   ? new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', minimumFractionDigits:0 }).format(p)
   : '$0';
 
-/* ── Mini ticket para PDF (178×100 px @ 2x → imprime nítido) ── */
+// ── Dimensiones del ticket en la hoja ──
+// Letra landscape = 279×216 mm → área útil ~269×206 mm
+// 5 cols × 2 rows con margen: ticket = 246px ancho × 142px alto (proporciones tarjeta)
+const TW = 246; // ticket width px
+const TH = 142; // ticket height px
+
+/* ── Ticket horizontal nítido para PDF ── */
 function MiniTicketPDF({ rifa, vendedor, numero, design: d }) {
   const ac  = d.accentColor  || '#0abfbc';
   const ac2 = d.accentColor2 || '#f0a500';
@@ -44,90 +50,119 @@ function MiniTicketPDF({ rifa, vendedor, numero, design: d }) {
 
   return (
     <div style={{
-      width:178, height:100,
+      width:TW, height:TH,
       background:bg,
-      borderRadius:5,
+      borderRadius:8,
       overflow:'hidden',
-      fontFamily:"'Poppins',sans-serif",
+      fontFamily:"'Poppins','Segoe UI',sans-serif",
       position:'relative',
-      border:`1px solid ${ac}40`,
+      border:`1.5px solid ${ac}45`,
       flexShrink:0,
-      pageBreakInside:'avoid',
+      boxSizing:'border-box',
     }}>
-      {/* Top stripe */}
-      <div style={{ height:2, background:`linear-gradient(90deg,${ac},${ac2},${ac})` }} />
+      {/* Top accent stripe */}
+      <div style={{ height:4, background:`linear-gradient(90deg,${ac},${ac2},${ac})`, flexShrink:0 }} />
+
       {/* Watermark */}
       <div style={{
         position:'absolute', top:'50%', left:'50%',
-        transform:'translate(-50%,-50%) rotate(-18deg)',
-        fontSize:28, fontWeight:900,
-        color:'rgba(255,255,255,0.022)',
-        whiteSpace:'nowrap', pointerEvents:'none', letterSpacing:8,
+        transform:'translate(-50%,-50%) rotate(-15deg)',
+        fontSize:52, fontWeight:900,
+        color:'rgba(255,255,255,0.028)',
+        whiteSpace:'nowrap', pointerEvents:'none', letterSpacing:14,
+        userSelect:'none',
       }}>
         {d.watermarkText || 'JORDYN'}
       </div>
-      <div style={{ display:'flex', height:'calc(100% - 2px)' }}>
-        {/* Left: número */}
+
+      {/* Body */}
+      <div style={{ display:'flex', height:`${TH - 4 - 3}px` }}>
+
+        {/* ── Columna izquierda: número ── */}
         <div style={{
-          width:46, flexShrink:0,
+          width:72, flexShrink:0,
           display:'flex', flexDirection:'column',
           alignItems:'center', justifyContent:'center',
-          background:'rgba(0,0,0,0.18)',
-          borderRight:`1px dashed ${ac}28`,
-          position:'relative',
+          background:'rgba(0,0,0,0.22)',
+          borderRight:`1px dashed ${ac}30`,
+          position:'relative', gap:0,
         }}>
-          <div style={{ position:'absolute', width:34, height:34, borderRadius:'50%', background:`radial-gradient(circle,${ac}20 0%,transparent 70%)` }} />
-          <div style={{ fontSize:5, fontWeight:800, letterSpacing:2, color:`${ac}80`, textTransform:'uppercase', marginBottom:1, textAlign:'center' }}>Nº</div>
-          <div style={{ fontSize:20, fontWeight:900, color:ac, lineHeight:1, letterSpacing:3, textShadow:`0 0 10px ${ac}50`, position:'relative', zIndex:1, textAlign:'center' }}>
+          {/* Glow */}
+          <div style={{ position:'absolute', width:60, height:60, borderRadius:'50%', background:`radial-gradient(circle,${ac}22 0%,transparent 70%)` }} />
+          <div style={{ fontSize:8, fontWeight:800, letterSpacing:3, color:`${ac}88`, textTransform:'uppercase', marginBottom:4, textAlign:'center', position:'relative', zIndex:1 }}>
+            Nº suerte
+          </div>
+          <div style={{ fontSize:34, fontWeight:900, color:ac, lineHeight:1, letterSpacing:4, position:'relative', zIndex:1, textAlign:'center' }}>
             {numStr}
           </div>
-          <div style={{ fontSize:4, fontWeight:700, color:'rgba(255,255,255,0.22)', textAlign:'center', marginTop:3, letterSpacing:1, textTransform:'uppercase', maxWidth:44, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          <div style={{ fontSize:7, fontWeight:700, color:'rgba(255,255,255,0.3)', textAlign:'center', marginTop:6, letterSpacing:1.5, textTransform:'uppercase', maxWidth:68, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', position:'relative', zIndex:1 }}>
             {nombre}
           </div>
         </div>
-        {/* Right: datos */}
-        <div style={{ flex:1, padding:'5px 7px', display:'flex', flexDirection:'column' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:3, paddingBottom:3, borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+
+        {/* ── Columna derecha: datos ── */}
+        <div style={{ flex:1, padding:'10px 14px', display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+
+          {/* Header: brand + fecha */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', paddingBottom:7, borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
             <div>
-              <div style={{ fontSize:6, fontWeight:900, color:ac, letterSpacing:.3 }}>{d.brandText || 'RIFAS JORDYN'}</div>
-              {loteria && <div style={{ fontSize:4.5, color:'rgba(255,255,255,0.28)', marginTop:1 }}>{loteria}</div>}
+              <div style={{ fontSize:10, fontWeight:900, color:ac, letterSpacing:.5, lineHeight:1 }}>{d.brandText || 'RIFAS JORDYN'}</div>
+              {loteria && <div style={{ fontSize:7.5, color:'rgba(255,255,255,0.32)', marginTop:2, letterSpacing:.5 }}>{loteria}</div>}
             </div>
-            <div style={{ fontSize:4.5, color:'rgba(255,255,255,0.25)', textAlign:'right', lineHeight:1.6 }}>{fecha}</div>
+            <div style={{ fontSize:8, color:'rgba(255,255,255,0.28)', textAlign:'right', lineHeight:1.7 }}>{fecha}</div>
           </div>
-          <div style={{ marginBottom:3 }}>
-            <div style={{ fontSize:4, fontWeight:700, letterSpacing:2, color:ac2, textTransform:'uppercase', marginBottom:1 }}>Premio</div>
-            <div style={{ fontSize:5.5, fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
+
+          {/* Premio */}
+          <div>
+            <div style={{ fontSize:7, fontWeight:700, letterSpacing:2.5, color:ac2, textTransform:'uppercase', marginBottom:3 }}>🏆 Premio</div>
+            <div style={{ fontSize:10, fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', flex:1, paddingTop:3, borderTop:`1px solid rgba(255,255,255,0.05)` }}>
+
+          {/* Footer: vendedor + valor */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', paddingTop:7, borderTop:`1px solid rgba(255,255,255,0.06)` }}>
             <div>
-              <div style={{ fontSize:4, fontWeight:700, color:'rgba(255,255,255,0.22)', textTransform:'uppercase', letterSpacing:1.5, marginBottom:1 }}>Vendedor</div>
-              <div style={{ fontSize:5, fontWeight:700, color:'#cde8e8', maxWidth:80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              <div style={{ fontSize:7, fontWeight:700, color:'rgba(255,255,255,0.28)', textTransform:'uppercase', letterSpacing:2, marginBottom:2 }}>Vendedor</div>
+              <div style={{ fontSize:9, fontWeight:700, color:'#cde8e8', maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                 {vendedor?.nombre || '—'}
               </div>
             </div>
-            <div style={{ background:`${ac}15`, border:`1px solid ${ac}35`, borderRadius:2, padding:'1px 5px', textAlign:'center' }}>
-              <div style={{ fontSize:4, fontWeight:700, color:`${ac}80`, letterSpacing:1, textTransform:'uppercase' }}>Valor</div>
-              <div style={{ fontSize:5.5, fontWeight:900, color:ac2 }}>{valor}</div>
+            <div style={{ background:`${ac}18`, border:`1.5px solid ${ac}40`, borderRadius:5, padding:'4px 9px', textAlign:'center' }}>
+              <div style={{ fontSize:7, fontWeight:700, color:`${ac}90`, letterSpacing:1.5, textTransform:'uppercase' }}>Valor</div>
+              <div style={{ fontSize:10, fontWeight:900, color:ac2, letterSpacing:.5 }}>{valor}</div>
             </div>
           </div>
+
         </div>
       </div>
-      {/* Bottom stripe */}
-      <div style={{ height:1.5, background:`linear-gradient(90deg,${ac2},${ac},${ac2})` }} />
+
+      {/* Bottom accent stripe */}
+      <div style={{ height:3, background:`linear-gradient(90deg,${ac2},${ac},${ac2})` }} />
     </div>
   );
 }
 
-/* ── Hoja PDF oculta: 5 cols × 2 filas = 10 tickets ── */
+/* ── Hoja PDF oculta: 5 cols × 2 filas = 10 tickets ──
+   Renderizada a alta resolución off-screen para html2canvas scale:4  */
 function HojaPDF({ rifa, vendedor, numeros, design }) {
+  // Hoja carta landscape en px @96dpi → 1100×849 aprox.
+  // Usamos dimensiones mayores para que scale:4 dé ~300dpi real
+  const COLS = 5, ROWS = 2;
+  const GAP_X = 18, GAP_Y = 22;
+  const PAD_X = 28, PAD_Y = 24;
+  const sheetW = PAD_X * 2 + COLS * TW + (COLS - 1) * GAP_X; // ~1354px
+  const sheetH = PAD_Y * 2 + ROWS * TH + (ROWS - 1) * GAP_Y; // ~376px
+
   return (
     <div style={{
-      width:1200, padding:'20px 18px',
-      background:'#e8f5f5',
+      width: sheetW,
+      height: sheetH,
+      background:'#dff0f0',
+      padding:`${PAD_Y}px ${PAD_X}px`,
       display:'grid',
-      gridTemplateColumns:'repeat(5, 186px)',
-      gridTemplateRows:'repeat(2, 108px)',
-      gap:'14px 10px',
+      gridTemplateColumns:`repeat(${COLS}, ${TW}px)`,
+      gridTemplateRows:`repeat(${ROWS}, ${TH}px)`,
+      columnGap: GAP_X,
+      rowGap: GAP_Y,
       boxSizing:'border-box',
     }}>
       {numeros.map((n, i) => (
@@ -156,6 +191,10 @@ function GeneradorPDF({ design, rifas, loadingRifas }) {
     setGenerando(true);
     setProgreso(0);
 
+    // Pre-cargar fuente Poppins para que html2canvas la capture nítida
+    await document.fonts.load('900 32px Poppins');
+    await document.fonts.load('700 10px Poppins');
+
     const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'letter' });
 
     for (let pg = 0; pg < paginas; pg++) {
@@ -169,20 +208,29 @@ function GeneradorPDF({ design, rifas, loadingRifas }) {
       const { createElement } = await import('react');
       const root = createRoot(div);
 
+      // Esperar fuente Poppins + render completo
       await new Promise(resolve => {
         root.render(createElement(HojaPDF, { rifa:rifaActual, vendedor:vendedorActual, numeros:nums, design }));
-        setTimeout(resolve, 700);
+        setTimeout(resolve, 1200);
       });
 
       const canvas = await html2canvas(div.firstChild, {
-        scale:2, useCORS:true, backgroundColor:'#e8f5f5',
+        scale: 4,           // 4x → ~288dpi real → texto perfectamente nítido
+        useCORS: true,
+        backgroundColor: '#dff0f0',
+        logging: false,
+        allowTaint: true,
+        imageTimeout: 0,
       });
 
       root.unmount();
       document.body.removeChild(div);
 
       if (pg > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 4, 4, 270, 190);
+      // Carta landscape = 279×216mm, margen 4mm → área 271×208mm
+      const imgW = 271, imgH = (canvas.height / canvas.width) * imgW;
+      const offY = (208 - imgH) / 2; // centrar verticalmente
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.97), 'JPEG', 4, Math.max(4, offY), imgW, imgH);
       setProgreso(Math.round(((pg + 1) / paginas) * 100));
     }
 
@@ -195,8 +243,8 @@ function GeneradorPDF({ design, rifas, loadingRifas }) {
   const S = {
     card:  { background:'var(--jordyn-card, #12241f)', border:'1px solid var(--jordyn-border)', borderRadius:10, padding:'18px 20px' },
     label: { fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1.5px', display:'block', marginBottom:5 },
-    sel:   { width:'100%', padding:'8px 10px', background:'var(--jordyn-input-bg, #0d1a16)', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'var(--jordyn-text, #d4eeee)', fontSize:'.88rem', outline:'none' },
-    inp:   { width:'100%', padding:'8px 10px', background:'var(--jordyn-input-bg, #0d1a16)', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'var(--jordyn-text, #d4eeee)', fontSize:'.88rem', outline:'none', boxSizing:'border-box' },
+    sel:   { width:'100%', padding:'8px 10px', background:'#0d1a16', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'#d4eeee', fontSize:'.88rem', outline:'none', appearance:'auto' },
+    inp:   { width:'100%', padding:'8px 10px', background:'#0d1a16', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'#d4eeee', fontSize:'.88rem', outline:'none', boxSizing:'border-box' },
     badge: { display:'inline-block', background:'rgba(240,165,0,.15)', border:'1px solid rgba(240,165,0,.35)', color:'var(--jordyn-gold, #f0a500)', fontSize:'.62rem', fontWeight:700, padding:'1px 8px', borderRadius:10, marginLeft:8 },
     prog:  { height:4, background:'var(--jordyn-border)', borderRadius:2, overflow:'hidden', marginTop:8 },
     fill:  { height:'100%', background:'linear-gradient(90deg,#0abfbc,#f0a500)', transition:'width .3s' },
