@@ -5,11 +5,325 @@
 //   ✅ Guarda en BD via PUT /api/ticket-design (sin localStorage)
 //   ✅ Preview en tiempo real
 // ============================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import { TicketPreview, DEFAULT_DESIGN, useTicketDesign } from '../components/Ticket';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
+/* ─────────────────────────────────────────────────────────
+   HELPERS PDF
+───────────────────────────────────────────────────────── */
+const parseFechaPDF = (f) => {
+  if (!f) return null;
+  const d = new Date(String(f).replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d;
+};
+const fmtFechaPDF = (f) => {
+  const d = parseFechaPDF(f);
+  if (!d) return 'Por definir';
+  return d.toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric', timeZone:'America/Caracas' });
+};
+const fmtMoneyPDF = (p) => p
+  ? new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', minimumFractionDigits:0 }).format(p)
+  : '$0';
+
+/* ── Mini ticket para PDF (178×100 px @ 2x → imprime nítido) ── */
+function MiniTicketPDF({ rifa, vendedor, numero, design: d }) {
+  const ac  = d.accentColor  || '#0abfbc';
+  const ac2 = d.accentColor2 || '#f0a500';
+  const bg  = d.bgDark       || '#1a2e2e';
+  const nombre  = rifa?.nombre || 'RIFA';
+  const premio  = rifa?.premio || '—';
+  const fecha   = fmtFechaPDF(rifa?.fecha_sorteo);
+  const valor   = fmtMoneyPDF(rifa?.precio);
+  const loteria = rifa?.loteria_ref || '';
+  const numStr  = String(numero).padStart(3, '0');
+
+  return (
+    <div style={{
+      width:178, height:100,
+      background:bg,
+      borderRadius:5,
+      overflow:'hidden',
+      fontFamily:"'Poppins',sans-serif",
+      position:'relative',
+      border:`1px solid ${ac}40`,
+      flexShrink:0,
+      pageBreakInside:'avoid',
+    }}>
+      {/* Top stripe */}
+      <div style={{ height:2, background:`linear-gradient(90deg,${ac},${ac2},${ac})` }} />
+      {/* Watermark */}
+      <div style={{
+        position:'absolute', top:'50%', left:'50%',
+        transform:'translate(-50%,-50%) rotate(-18deg)',
+        fontSize:28, fontWeight:900,
+        color:'rgba(255,255,255,0.022)',
+        whiteSpace:'nowrap', pointerEvents:'none', letterSpacing:8,
+      }}>
+        {d.watermarkText || 'JORDYN'}
+      </div>
+      <div style={{ display:'flex', height:'calc(100% - 2px)' }}>
+        {/* Left: número */}
+        <div style={{
+          width:46, flexShrink:0,
+          display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center',
+          background:'rgba(0,0,0,0.18)',
+          borderRight:`1px dashed ${ac}28`,
+          position:'relative',
+        }}>
+          <div style={{ position:'absolute', width:34, height:34, borderRadius:'50%', background:`radial-gradient(circle,${ac}20 0%,transparent 70%)` }} />
+          <div style={{ fontSize:5, fontWeight:800, letterSpacing:2, color:`${ac}80`, textTransform:'uppercase', marginBottom:1, textAlign:'center' }}>Nº</div>
+          <div style={{ fontSize:20, fontWeight:900, color:ac, lineHeight:1, letterSpacing:3, textShadow:`0 0 10px ${ac}50`, position:'relative', zIndex:1, textAlign:'center' }}>
+            {numStr}
+          </div>
+          <div style={{ fontSize:4, fontWeight:700, color:'rgba(255,255,255,0.22)', textAlign:'center', marginTop:3, letterSpacing:1, textTransform:'uppercase', maxWidth:44, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {nombre}
+          </div>
+        </div>
+        {/* Right: datos */}
+        <div style={{ flex:1, padding:'5px 7px', display:'flex', flexDirection:'column' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:3, paddingBottom:3, borderBottom:`1px solid rgba(255,255,255,0.07)` }}>
+            <div>
+              <div style={{ fontSize:6, fontWeight:900, color:ac, letterSpacing:.3 }}>{d.brandText || 'RIFAS JORDYN'}</div>
+              {loteria && <div style={{ fontSize:4.5, color:'rgba(255,255,255,0.28)', marginTop:1 }}>{loteria}</div>}
+            </div>
+            <div style={{ fontSize:4.5, color:'rgba(255,255,255,0.25)', textAlign:'right', lineHeight:1.6 }}>{fecha}</div>
+          </div>
+          <div style={{ marginBottom:3 }}>
+            <div style={{ fontSize:4, fontWeight:700, letterSpacing:2, color:ac2, textTransform:'uppercase', marginBottom:1 }}>Premio</div>
+            <div style={{ fontSize:5.5, fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{premio}</div>
+          </div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', flex:1, paddingTop:3, borderTop:`1px solid rgba(255,255,255,0.05)` }}>
+            <div>
+              <div style={{ fontSize:4, fontWeight:700, color:'rgba(255,255,255,0.22)', textTransform:'uppercase', letterSpacing:1.5, marginBottom:1 }}>Vendedor</div>
+              <div style={{ fontSize:5, fontWeight:700, color:'#cde8e8', maxWidth:80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {vendedor?.nombre || '—'}
+              </div>
+            </div>
+            <div style={{ background:`${ac}15`, border:`1px solid ${ac}35`, borderRadius:2, padding:'1px 5px', textAlign:'center' }}>
+              <div style={{ fontSize:4, fontWeight:700, color:`${ac}80`, letterSpacing:1, textTransform:'uppercase' }}>Valor</div>
+              <div style={{ fontSize:5.5, fontWeight:900, color:ac2 }}>{valor}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Bottom stripe */}
+      <div style={{ height:1.5, background:`linear-gradient(90deg,${ac2},${ac},${ac2})` }} />
+    </div>
+  );
+}
+
+/* ── Hoja PDF oculta: 5 cols × 2 filas = 10 tickets ── */
+function HojaPDF({ rifa, vendedor, numeros, design }) {
+  return (
+    <div style={{
+      width:1200, padding:'20px 18px',
+      background:'#e8f5f5',
+      display:'grid',
+      gridTemplateColumns:'repeat(5, 186px)',
+      gridTemplateRows:'repeat(2, 108px)',
+      gap:'14px 10px',
+      boxSizing:'border-box',
+    }}>
+      {numeros.map((n, i) => (
+        <MiniTicketPDF key={i} rifa={rifa} vendedor={vendedor} numero={n} design={design} />
+      ))}
+    </div>
+  );
+}
+
+/* ── Panel de generación PDF ── */
+function GeneradorPDF({ design, rifas, loadingRifas }) {
+  const [rifaId,     setRifaId]     = useState('');
+  const [vendedorId, setVendedorId] = useState('');
+  const [numInicio,  setNumInicio]  = useState(1);
+  const [paginas,    setPaginas]    = useState(1);
+  const [generando,  setGenerando]  = useState(false);
+  const [progreso,   setProgreso]   = useState(0);
+
+  const rifaActual     = rifas.find(r => String(r.id) === String(rifaId));
+  const vendedoresRifa = rifaActual?.vendedores || [];
+  const vendedorActual = vendedoresRifa.find(v => String(v.id) === String(vendedorId));
+  const totalTickets   = paginas * 10;
+
+  const handleGenerar = async () => {
+    if (!rifaActual) { toast.warning('Selecciona una rifa primero'); return; }
+    setGenerando(true);
+    setProgreso(0);
+
+    const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'letter' });
+
+    for (let pg = 0; pg < paginas; pg++) {
+      const nums = Array.from({ length:10 }, (_, i) => numInicio + pg * 10 + i);
+
+      const div = document.createElement('div');
+      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-999;';
+      document.body.appendChild(div);
+
+      const { createRoot } = await import('react-dom/client');
+      const { createElement } = await import('react');
+      const root = createRoot(div);
+
+      await new Promise(resolve => {
+        root.render(createElement(HojaPDF, { rifa:rifaActual, vendedor:vendedorActual, numeros:nums, design }));
+        setTimeout(resolve, 700);
+      });
+
+      const canvas = await html2canvas(div.firstChild, {
+        scale:2, useCORS:true, backgroundColor:'#e8f5f5',
+      });
+
+      root.unmount();
+      document.body.removeChild(div);
+
+      if (pg > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 4, 4, 270, 190);
+      setProgreso(Math.round(((pg + 1) / paginas) * 100));
+    }
+
+    const fn = `tickets_${(rifaActual.nombre||'rifa').replace(/\s+/g,'_')}_${vendedorActual?.nombre?.replace(/\s+/g,'_') || 'todos'}_${numInicio}-${numInicio + totalTickets - 1}.pdf`;
+    pdf.save(fn);
+    toast.success(`✅ PDF generado: ${totalTickets} tickets`);
+    setGenerando(false);
+  };
+
+  const S = {
+    card:  { background:'var(--jordyn-card, #12241f)', border:'1px solid var(--jordyn-border)', borderRadius:10, padding:'18px 20px' },
+    label: { fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1.5px', display:'block', marginBottom:5 },
+    sel:   { width:'100%', padding:'8px 10px', background:'var(--jordyn-input-bg, #0d1a16)', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'var(--jordyn-text, #d4eeee)', fontSize:'.88rem', outline:'none' },
+    inp:   { width:'100%', padding:'8px 10px', background:'var(--jordyn-input-bg, #0d1a16)', border:'1px solid var(--jordyn-border)', borderRadius:6, color:'var(--jordyn-text, #d4eeee)', fontSize:'.88rem', outline:'none', boxSizing:'border-box' },
+    badge: { display:'inline-block', background:'rgba(240,165,0,.15)', border:'1px solid rgba(240,165,0,.35)', color:'var(--jordyn-gold, #f0a500)', fontSize:'.62rem', fontWeight:700, padding:'1px 8px', borderRadius:10, marginLeft:8 },
+    prog:  { height:4, background:'var(--jordyn-border)', borderRadius:2, overflow:'hidden', marginTop:8 },
+    fill:  { height:'100%', background:'linear-gradient(90deg,#0abfbc,#f0a500)', transition:'width .3s' },
+  };
+
+  return (
+    <div style={S.card}>
+      {/* Título sección */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
+        <div style={{ width:32, height:32, borderRadius:8, background:'rgba(10,191,188,.15)', border:'1px solid rgba(10,191,188,.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
+          🎟
+        </div>
+        <div>
+          <div style={{ fontSize:'.72rem', fontWeight:800, color:'var(--jordyn-primary, #0abfbc)', textTransform:'uppercase', letterSpacing:'1.5px' }}>
+            Generar PDF de Tickets
+          </div>
+          <div style={{ fontSize:'.65rem', color:'var(--jordyn-muted)', marginTop:1 }}>
+            10 boletos por hoja · Anclado a esta rifa y vendedor
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 16px' }}>
+
+        {/* Rifa */}
+        <div style={{ gridColumn:'1 / -1' }}>
+          <label style={S.label}>Rifa</label>
+          {loadingRifas
+            ? <div style={{ fontSize:'.8rem', color:'var(--jordyn-muted)' }}>Cargando rifas…</div>
+            : (
+              <select style={S.sel} value={rifaId} onChange={e => { setRifaId(e.target.value); setVendedorId(''); }}>
+                <option value="">— Selecciona una rifa —</option>
+                {rifas.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
+                    {r.estado === 'activa' ? ' ✅' : ''}
+                    {r.fecha_sorteo ? ` · ${fmtFechaPDF(r.fecha_sorteo)}` : ''}
+                  </option>
+                ))}
+              </select>
+            )
+          }
+        </div>
+
+        {/* Info rifa seleccionada */}
+        {rifaActual && (
+          <div style={{ gridColumn:'1 / -1', background:'rgba(10,191,188,0.05)', border:'1px solid rgba(10,191,188,0.15)', borderRadius:7, padding:'9px 13px', display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'4px 12px' }}>
+            {[
+              ['Premio',   rifaActual.premio],
+              ['Sorteo',   fmtFechaPDF(rifaActual.fecha_sorteo)],
+              ['Precio',   fmtMoneyPDF(rifaActual.precio)],
+              ['Lotería',  rifaActual.loteria_ref],
+              ['Ventas',   `${rifaActual.total_ventas || 0} boletos`],
+              ['Vendedores', `${vendedoresRifa.length} asignados`],
+            ].filter(([,v]) => v).map(([l, v]) => (
+              <div key={l} style={{ padding:'2px 0' }}>
+                <div style={{ fontSize:'.55rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:1 }}>{l}</div>
+                <div style={{ fontSize:'.75rem', fontWeight:700, color:'#d4eeee', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Vendedor */}
+        <div style={{ gridColumn:'1 / -1' }}>
+          <label style={S.label}>Vendedor</label>
+          <select style={S.sel} value={vendedorId} onChange={e => setVendedorId(e.target.value)} disabled={!rifaActual}>
+            <option value="">— Todos / Sin asignar —</option>
+            {vendedoresRifa.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.nombre} {v.usuario ? `(${v.usuario})` : ''} · {v.numeros_count || 0} números
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Número inicio */}
+        <div>
+          <label style={S.label}>Número inicial</label>
+          <input
+            type="number" min={0} max={9990} style={S.inp}
+            value={numInicio}
+            onChange={e => setNumInicio(Math.max(0, parseInt(e.target.value) || 0))}
+          />
+        </div>
+
+        {/* Páginas */}
+        <div>
+          <label style={S.label}>
+            Hojas <span style={S.badge}>{totalTickets} tickets</span>
+          </label>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <input
+              type="range" min={1} max={20} step={1}
+              value={paginas}
+              onChange={e => setPaginas(Number(e.target.value))}
+              style={{ flex:1 }}
+            />
+            <span style={{ minWidth:22, textAlign:'center', fontWeight:700, color:'var(--jordyn-primary, #0abfbc)', fontSize:'.9rem' }}>{paginas}</span>
+          </div>
+          <div style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', marginTop:3 }}>
+            Números {numInicio} → {numInicio + totalTickets - 1}
+          </div>
+        </div>
+
+        {/* Botón */}
+        <div style={{ gridColumn:'1 / -1' }}>
+          <button
+            className="btn-jordyn"
+            style={{ width:'100%', fontSize:'.9rem', opacity:(!rifaActual || generando) ? .5 : 1, cursor:(!rifaActual || generando) ? 'not-allowed' : 'pointer' }}
+            disabled={!rifaActual || generando}
+            onClick={handleGenerar}
+          >
+            {generando
+              ? <><span className="jd-spinner" style={{ width:14, height:14, borderWidth:2 }}></span>&nbsp; Generando… {progreso}%</>
+              : <><i className="bi bi-file-earmark-pdf-fill me-2"></i>Descargar PDF ({paginas} {paginas === 1 ? 'hoja' : 'hojas'})</>
+            }
+          </button>
+          {generando && (
+            <div style={S.prog}><div style={{ ...S.fill, width:`${progreso}%` }} /></div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
 
 /* ── Rifa demo para preview ── */
 const DEMO_RIFA = {
@@ -94,6 +408,17 @@ export default function DisenoTicket() {
   const [design,  setDesign]  = useState(DEFAULT_DESIGN);
   const [saving,  setSaving]  = useState(false);
   const [dirty,   setDirty]   = useState(false);
+
+  // ── Rifas para el generador PDF ──
+  const [rifas,        setRifas]        = useState([]);
+  const [loadingRifas, setLoadingRifas] = useState(true);
+
+  useEffect(() => {
+    API.get('/rifas')
+      .then(r => setRifas(r.data || []))
+      .catch(() => toast.error('Error cargando rifas'))
+      .finally(() => setLoadingRifas(false));
+  }, []);
 
   useEffect(() => {
     if (!loadingBD) {
@@ -319,6 +644,20 @@ export default function DisenoTicket() {
           .ticket-editor-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
+
+      {/* ════ SECCIÓN GENERADOR PDF ════ */}
+      <div style={{ marginTop:32, borderTop:'1px solid var(--jordyn-border)', paddingTop:28 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
+          <i className="bi bi-file-earmark-pdf-fill" style={{ color:'var(--jordyn-primary)', fontSize:'1.1rem' }}></i>
+          <h3 style={{ margin:0, fontSize:'.92rem', fontWeight:800, color:'var(--jordyn-text)', letterSpacing:.5 }}>
+            Generar PDF de Boletos
+          </h3>
+          <span style={{ fontSize:'.65rem', color:'var(--jordyn-muted)', marginLeft:4 }}>
+            — Usa el diseño actual de arriba
+          </span>
+        </div>
+        <GeneradorPDF design={design} rifas={rifas} loadingRifas={loadingRifas} />
+      </div>
 
     </Layout>
   );
