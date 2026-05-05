@@ -14,8 +14,9 @@ import BuscarNumero      from './pages/BuscarNumero';
 import NumeroGrid        from './pages/NumeroGrid';
 import Historial         from './pages/Historial';
 import Caja              from './pages/Caja';
-import DisenoTicket      from './pages/DisenoTicket';
-import ClientePublico    from './pages/ClientePublico';
+import DisenoTicket         from './pages/DisenoTicket';
+import GeneradorPDFTickets  from './pages/GeneradorPDFTickets';
+import ClientePublico       from './pages/ClientePublico';
 import GestionReservas   from './pages/GestionReservas';
 import Tasas             from './pages/Tasas';
 
@@ -55,6 +56,7 @@ function AppRoutes() {
       <Route path="/caja"          element={<PrivateRoute rol="dueno"><Caja /></PrivateRoute>} />
       <Route path="/reservas"      element={<PrivateRoute rol="dueno"><GestionReservas /></PrivateRoute>} />
       <Route path="/tasas"         element={<PrivateRoute rol="dueno"><Tasas /></PrivateRoute>} />
+      <Route path="/generador-pdf" element={<PrivateRoute rol="dueno"><GeneradorPDFTickets /></PrivateRoute>} />
 
       {/* PÚBLICA — sin autenticación */}
       <Route path="/comprar" element={<ClientePublico />} />
