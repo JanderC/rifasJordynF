@@ -1241,11 +1241,13 @@ function GridNumeros({ rifa, onComprar }) {
     return n.numero.includes(busqueda.padStart(3,'0').slice(-3));
   });
 
-  const toggleNumero = (n) => {
+  // seleccion guarda idx (numero unico por entrada), no el numero en si
+  // Asi el 264 duplicado en simultanea puede seleccionarse de forma independiente
+  const toggleNumero = (idx) => {
     setSeleccion(prev => {
       const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
       return next;
     });
   };
@@ -1260,11 +1262,11 @@ function GridNumeros({ rifa, onComprar }) {
 
     // Fisher-Yates parcial
     const arr   = [...disponibles];
-    const picks = [];
+    const picks = []; // objetos {numero, idx}
     for (let i = 0; i < cant; i++) {
       const j = Math.floor(Math.random() * (arr.length - i)) + i;
       [arr[i], arr[j]] = [arr[j], arr[i]];
-      picks.push(arr[i].numero);
+      picks.push(arr[i]);
     }
 
     // Fase 1: animación "rolling" (300ms)
@@ -1275,8 +1277,8 @@ function GridNumeros({ rifa, onComprar }) {
     setTimeout(() => {
       // Fase 2: mostrar números uno a uno
       setQpRolling(false);
-      setQpResultado(picks);
-      setSeleccion(new Set(picks));
+      setQpResultado(picks.map(p => p.numero)); // solo el numero para mostrar
+      setSeleccion(new Set(picks.map(p => p.idx))); // seleccion por idx
 
       // Revelar de a uno cada 120ms
       picks.forEach((_, i) => {
@@ -1285,12 +1287,15 @@ function GridNumeros({ rifa, onComprar }) {
     }, 700);
   };
 
-  const selArr  = [...seleccion].sort();
+  // selArr: objetos {numero, idx} seleccionados, ordenados por numero
+  const selArr = todos.filter(n => seleccion.has(n.idx)).sort((a,b) => a.numero.localeCompare(b.numero));
+  // selNums: solo los numeros para enviar al servidor y mostrar
+  const selNums = selArr.map(n => n.numero);
 
   // Cálculo de oferta activa y sugerencia
   const ofertaInfo  = calcularOferta(selArr.length, ofertas, rifa.precio);
   const sugerencia  = !ofertaInfo ? siguienteOferta(selArr.length, ofertas, rifa.precio) : null;
-  const totalNormal = rifa.precio * selArr.length;
+  const totalNormal = rifa.precio * selNums.length;
   const totalReal   = ofertaInfo ? ofertaInfo.totalConOferta : totalNormal;
 
   if (loading) return (
@@ -1516,9 +1521,9 @@ function GridNumeros({ rifa, onComprar }) {
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
             {selArr.map(n => (
-              <span key={n} className="num-chip">
-                {n}
-                <button className="num-chip-remove" onClick={() => toggleNumero(n)} title={`Quitar ${n}`}>✕</button>
+              <span key={n.idx} className="num-chip">
+                {n.numero}
+                <button className="num-chip-remove" onClick={() => toggleNumero(n.idx)} title={`Quitar ${n.numero}`}>✕</button>
               </span>
             ))}
             <button onClick={limpiar}
@@ -1540,10 +1545,10 @@ function GridNumeros({ rifa, onComprar }) {
         <>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(52px,1fr))', gap:6 }}>
             {visible.map(n => (
-              <div key={n.numero}
-                className={`num-cell ${seleccion.has(n.numero) ? 'seleccionado' : 'disponible'}`}
-                onClick={() => toggleNumero(n.numero)}
-                title={seleccion.has(n.numero) ? `Quitar ${n.numero}` : `Seleccionar ${n.numero}`}>
+              <div key={n.idx}
+                className={`num-cell ${seleccion.has(n.idx) ? 'seleccionado' : 'disponible'}`}
+                onClick={() => toggleNumero(n.idx)}
+                title={seleccion.has(n.idx) ? `Quitar ${n.numero}` : `Seleccionar ${n.numero}`}>
                 {n.numero}
               </div>
             ))}
@@ -1602,7 +1607,7 @@ function GridNumeros({ rifa, onComprar }) {
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                   {selArr.slice(0, 8).map(n => (
-                    <span key={n} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>
+                    <span key={n.idx} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n.numero}</span>
                   ))}
                   {selArr.length > 8 && <span style={{ color:'rgba(255,255,255,.5)', fontSize:'.72rem', alignSelf:'center' }}>+{selArr.length-8} más</span>}
                 </div>
@@ -1618,7 +1623,7 @@ function GridNumeros({ rifa, onComprar }) {
               </div>
 
               {/* Botón */}
-              <button className="pub-btn" onClick={() => onComprar(selArr)}
+              <button className="pub-btn" onClick={() => onComprar(selNums)}
                 style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
                 🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
               </button>
