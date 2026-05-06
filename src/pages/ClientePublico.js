@@ -1233,13 +1233,16 @@ function GridNumeros({ rifa, onComprar }) {
   }, [rifa.id]);
 
   const disponibles = todos.filter(n => n.estado === 'disponible');
-  const tomados     = todos.length - disponibles.length;
-  const pct         = todos.length > 0 ? Math.round((tomados / todos.length) * 100) : 0;
+  // Contadores: usar números únicos para no doblar el total en simultánea
+  const numerosUnicos      = [...new Set(todos.map(n => n.numero))];
+  const numerosDisponibles = [...new Set(disponibles.map(n => n.numero))];
+  const tomados            = numerosUnicos.length - numerosDisponibles.length;
+  const pct                = numerosUnicos.length > 0 ? Math.round((tomados / numerosUnicos.length) * 100) : 0;
 
-  const visible = disponibles.filter(n => {
-    if (!busqueda) return true;
-    return n.numero.includes(busqueda.padStart(3,'0').slice(-3));
-  });
+  // En búsqueda mostramos todos los estados del número para informar al cliente
+  const visible = busqueda
+    ? todos.filter(n => n.numero === busqueda.padStart(3,'0').slice(-3))
+    : disponibles;
 
   // seleccion guarda idx (numero unico por entrada), no el numero en si
   // Asi el 264 duplicado en simultanea puede seleccionarse de forma independiente
@@ -1543,24 +1546,60 @@ function GridNumeros({ rifa, onComprar }) {
         </div>
       ) : (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(52px,1fr))', gap:6 }}>
-            {visible.map(n => (
-              <div key={n.idx}
-                className={`num-cell ${seleccion.has(n.idx) ? 'seleccionado' : 'disponible'}`}
-                onClick={() => toggleNumero(n.idx)}
-                title={seleccion.has(n.idx) ? `Quitar ${n.numero}` : `Seleccionar ${n.numero}`}>
-                {n.numero}
-              </div>
-            ))}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(64px,1fr))', gap:6 }}>
+            {visible.map(n => {
+              // Estados especiales que solo aparecen en búsqueda
+              if (n.estado === 'vendido_serie') {
+                return (
+                  <div key={n.idx ?? `vs-${n.numero}-${n.serie_vendida}`}
+                    className="num-cell vendido"
+                    style={{ cursor:'default', pointerEvents:'none', flexDirection:'column', gap:2 }}
+                    title={`Número ${n.numero} Serie ${n.serie_vendida} — Vendido`}>
+                    <span style={{ fontSize:'.75rem', fontWeight:900 }}>{n.numero}</span>
+                    <span style={{ fontSize:'.5rem', fontWeight:700, opacity:.75, letterSpacing:1 }}>SERIE {n.serie_vendida} ✓</span>
+                  </div>
+                );
+              }
+              if (n.estado === 'reservado') {
+                return (
+                  <div key={n.idx ?? `res-${n.numero}`}
+                    className="num-cell apartado"
+                    style={{ cursor:'default', pointerEvents:'none' }}
+                    title={`Número ${n.numero} — Apartado`}>
+                    {n.numero}
+                  </div>
+                );
+              }
+              if (n.estado === 'agotado') {
+                return (
+                  <div key={n.idx ?? `ag-${n.numero}`}
+                    className="num-cell vendido"
+                    style={{ cursor:'default', pointerEvents:'none' }}
+                    title={`Número ${n.numero} — Agotado`}>
+                    {n.numero}
+                  </div>
+                );
+              }
+              // Disponible normal
+              return (
+                <div key={n.idx}
+                  className={`num-cell ${seleccion.has(n.idx) ? 'seleccionado' : 'disponible'}`}
+                  onClick={() => toggleNumero(n.idx)}
+                  title={seleccion.has(n.idx) ? `Quitar ${n.numero}` : `Seleccionar ${n.numero}`}>
+                  {n.numero}
+                </div>
+              );
+            })}
             {visible.length === 0 && busqueda && (
               <div style={{ gridColumn:'1/-1', textAlign:'center', padding:36, color:'#aaa', fontSize:'.88rem' }}>
-                El número <strong>{busqueda.padStart(3,'0')}</strong> no está disponible
+                El número <strong>{busqueda.padStart(3,'0')}</strong> no está disponible en este momento
               </div>
             )}
           </div>
           <div style={{ fontSize:'.65rem', color:`${DARK}44`, textAlign:'center', marginTop:10 }}>
-            Mostrando {visible.length} número{visible.length !== 1 ? 's' : ''} disponible{visible.length !== 1 ? 's' : ''}
-            {busqueda && ` para "${busqueda.padStart(3,'0')}"`}
+            {busqueda
+              ? `Resultado para "${busqueda.padStart(3,'0')}"`
+              : `Mostrando ${visible.length} número${visible.length !== 1 ? 's' : ''} disponible${visible.length !== 1 ? 's' : ''}`}
           </div>
         </>
       )}
