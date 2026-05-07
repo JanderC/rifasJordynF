@@ -801,7 +801,15 @@ function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = 
 /* ═══════════════════════════════════════════════════════════
    MODAL DE RESERVA — con soporte de ofertas
 ═══════════════════════════════════════════════════════════ */
-function ModalReserva({ rifa, numeros, onClose, onSuccess }) {
+function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
+  // numerosRaw puede ser array de strings ["007","007"] o array de objetos [{numero:"007",idx:4},{numero:"007",idx:8}]
+  // Normalizamos siempre a objetos para poder distinguir duplicados por idx
+  const numerosObjs = Array.isArray(numerosRaw)
+    ? numerosRaw.map((n, i) => typeof n === 'object' ? n : { numero: n, idx: i })
+    : [];
+  // Para mostrar y enviar como strings al servidor
+  const numeros = numerosObjs.map(n => n.numero);
+
   const [step,       setStep]     = useState(1);
   const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'' });
   const [imagen,     setImagen]   = useState(null);
@@ -905,8 +913,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
             {numeros.length > 1 ? `COMPRAR ${numeros.length} NÚMEROS` : 'COMPRAR NÚMERO'}
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
-            {numeros.map(n => (
-              <span key={n} style={{ background:'rgba(255,255,255,.22)', border:'1px solid rgba(255,255,255,.4)', color:'#fff', borderRadius:20, padding:'3px 12px', fontFamily:"'Poppins',sans-serif", fontSize:'1rem', fontWeight:900, letterSpacing:2 }}>{n}</span>
+            {numerosObjs.map((n, i) => (
+              <span key={`${n.idx}-${i}`} style={{ background:'rgba(255,255,255,.22)', border:'1px solid rgba(255,255,255,.4)', color:'#fff', borderRadius:20, padding:'3px 12px', fontFamily:"'Poppins',sans-serif", fontSize:'1rem', fontWeight:900, letterSpacing:2 }}>{n.numero}</span>
             ))}
           </div>
           <div style={{ fontSize:'.85rem', color:'rgba(255,255,255,.8)' }}>
@@ -943,8 +951,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                   🎟 {numeros.length > 1 ? `Tus ${numeros.length} números` : 'Número seleccionado'}
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: numeros.length > 1 ? 10 : 0 }}>
-                  {numeros.map(n => (
-                    <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 12px', fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n}</span>
+                  {numerosObjs.map((n, i) => (
+                    <span key={`${n.idx}-${i}`} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 12px', fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n.numero}</span>
                   ))}
                 </div>
                 {numeros.length > 1 && (
@@ -1159,8 +1167,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
               {/* Números reservados (resumen visual) */}
               <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center', marginBottom:20 }}>
-                {numeros.filter(n => !conflictos.map(c=>c.numero).includes(n)).map(n => (
-                  <span key={n} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:12, padding:'7px 18px', fontWeight:900, fontSize:'1.2rem', letterSpacing:3, boxShadow:`0 4px 16px ${TURQ}44` }}>{n}</span>
+                {numerosObjs.filter(n => !conflictos.map(c=>c.numero).includes(n.numero)).map((n, i) => (
+                  <span key={`${n.idx}-${i}`} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:12, padding:'7px 18px', fontWeight:900, fontSize:'1.2rem', letterSpacing:3, boxShadow:`0 4px 16px ${TURQ}44` }}>{n.numero}</span>
                 ))}
               </div>
 
@@ -1662,7 +1670,7 @@ function GridNumeros({ rifa, onComprar }) {
               </div>
 
               {/* Botón */}
-              <button className="pub-btn" onClick={() => onComprar(selNums)}
+              <button className="pub-btn" onClick={() => onComprar(selArr)}
                 style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
                 🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
               </button>
