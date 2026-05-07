@@ -693,8 +693,9 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
 function ModalBoleteria({ rifa, onClose }) {
   const [data,          setData]          = useState(null);
   const [loading,       setLoading]       = useState(true);
-  const [vendedorAbierto, setVendedorAbierto] = useState(null); // vendedor_id seleccionado
+  const [vendedorAbierto, setVendedorAbierto] = useState(null);
   const [saving,        setSaving]        = useState(false);
+  const [busquedaVend,  setBusquedaVend]  = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -758,6 +759,28 @@ function ModalBoleteria({ rifa, onClose }) {
           </button>
         </div>
 
+        {/* Buscador de vendedores */}
+        {!loading && data && data.vendedores.length > 0 && (
+          <div style={{ padding:'.75rem 1.25rem', borderBottom:'1px solid var(--jordyn-border)', background:'var(--jordyn-bg2)', flexShrink:0 }}>
+            <div style={{ position:'relative' }}>
+              <i className="bi bi-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem', pointerEvents:'none' }}></i>
+              <input
+                className="jd-input"
+                value={busquedaVend}
+                onChange={e => { setBusquedaVend(e.target.value); setVendedorAbierto(null); }}
+                placeholder="Buscar vendedor por nombre o cédula..."
+                style={{ paddingLeft:36, paddingRight: busquedaVend ? 36 : 12 }}
+              />
+              {busquedaVend && (
+                <button onClick={() => setBusquedaVend('')}
+                  style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--jordyn-muted)', fontSize:'.85rem', lineHeight:1, padding:2 }}>
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Body */}
         <div style={{ flex:1, overflowY:'auto', padding:'1.25rem' }}>
           {loading ? (
@@ -770,25 +793,45 @@ function ModalBoleteria({ rifa, onClose }) {
               <div style={{ fontWeight:700, marginBottom:6 }}>Sin vendedores asignados</div>
               <div style={{ fontSize:'.82rem' }}>Esta rifa no tiene vendedores. Edita la rifa para agregar una categoría con vendedores.</div>
             </div>
-          ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {data.vendedores.map(v => (
-                <PanelVendedorBoleteria
-                  key={v.vendedor_id}
-                  vendedor={v}
-                  rifa={rifa}
-                  esSimultanea={esSimultanea}
-                  disponiblesA={data.disponibles_a || []}
-                  disponiblesB={data.disponibles_b || []}
-                  abierto={vendedorAbierto === v.vendedor_id}
-                  onToggle={() => setVendedorAbierto(prev => prev === v.vendedor_id ? null : v.vendedor_id)}
-                  onAsignar={(nums, serie) => handleAsignar(v.vendedor_id, nums, serie)}
-                  onQuitar={(num, serie) => handleQuitarNumero(v.vendedor_id, num, serie)}
-                  saving={saving}
-                />
-              ))}
-            </div>
-          )}
+          ) : (() => {
+            const q = busquedaVend.trim().toLowerCase();
+            const filtrados = q
+              ? data.vendedores.filter(v =>
+                  v.vendedor_nombre?.toLowerCase().includes(q) ||
+                  (v.cedula && v.cedula.toLowerCase().includes(q))
+                )
+              : data.vendedores;
+            return filtrados.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'2.5rem', color:'var(--jordyn-muted)' }}>
+                <div style={{ fontSize:'2rem', marginBottom:10 }}>🔍</div>
+                <div style={{ fontWeight:700, marginBottom:4 }}>Sin resultados</div>
+                <div style={{ fontSize:'.82rem' }}>No hay vendedores que coincidan con "{busquedaVend}"</div>
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {q && (
+                  <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)', padding:'4px 2px' }}>
+                    {filtrados.length} de {data.vendedores.length} vendedor(es)
+                  </div>
+                )}
+                {filtrados.map(v => (
+                  <PanelVendedorBoleteria
+                    key={v.vendedor_id}
+                    vendedor={v}
+                    rifa={rifa}
+                    esSimultanea={esSimultanea}
+                    disponiblesA={data.disponibles_a || []}
+                    disponiblesB={data.disponibles_b || []}
+                    abierto={vendedorAbierto === v.vendedor_id}
+                    onToggle={() => setVendedorAbierto(prev => prev === v.vendedor_id ? null : v.vendedor_id)}
+                    onAsignar={(nums, serie) => handleAsignar(v.vendedor_id, nums, serie)}
+                    onQuitar={(num, serie) => handleQuitarNumero(v.vendedor_id, num, serie)}
+                    saving={saving}
+                  />
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
