@@ -87,10 +87,21 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   }, [onClose]);
 
   const handleAccion = async (estado) => {
-    const ok = await onAccion(reserva.id, estado, nota);
+    // Si hay hermanas pendientes y estamos aprobando/rechazando,
+    // procesarlas todas en bulk para evitar conflictos de constraint en simultánea
+    const hermanasPendientes = hermanas.filter(h => h.estado === 'pendiente');
+    const todasPendientes    = [reserva, ...hermanasPendientes].filter(r => r.estado === 'pendiente');
+
+    let ok;
+    if (todasPendientes.length > 1) {
+      // Aprobar/rechazar todas juntas (bulk) para que el backend las procese en orden
+      ok = await onAccion(todasPendientes.map(r => r.id), estado, nota, true);
+    } else {
+      ok = await onAccion(reserva.id, estado, nota, false);
+    }
+
     if (ok) {
       setReserva(p => ({ ...p, estado, nota_admin: nota }));
-      // Si se aprobó → abrir WA automáticamente con el ticket
       if (estado === 'aprobado') {
         await enviarWAConTicket();
       }
@@ -176,8 +187,8 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
 
           {/* Números */}
           <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:'1rem' }}>
-            {todosNumeros.map(n => (
-              <div key={n} style={{ background:'linear-gradient(135deg,rgba(10,191,188,.08),rgba(10,191,188,.04))', border:'2px solid rgba(10,191,188,.25)', borderRadius:10, padding:'8px 16px', display:'flex', flexDirection:'column', alignItems:'center' }}>
+            {todosNumeros.map((n, i) => (
+              <div key={`${n}-${i}`} style={{ background:'linear-gradient(135deg,rgba(10,191,188,.08),rgba(10,191,188,.04))', border:'2px solid rgba(10,191,188,.25)', borderRadius:10, padding:'8px 16px', display:'flex', flexDirection:'column', alignItems:'center' }}>
                 <div style={{ fontSize:'.55rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:2 }}>Nº</div>
                 <div style={{ fontSize:'2rem', fontWeight:900, color:'var(--jordyn-primary)', letterSpacing:'4px', lineHeight:1 }}>{n}</div>
               </div>
@@ -525,7 +536,7 @@ export default function GestionReservas() {
                   </div>
                   {esGrupo && (
                     <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:5 }}>
-                      {numeros.map(n => <span key={n} style={{ background:est.bg, color:est.color, border:`1px solid ${est.border}`, borderRadius:6, padding:'2px 8px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>)}
+                      {numeros.map((n, i) => <span key={`${n}-${i}`} style={{ background:est.bg, color:est.color, border:`1px solid ${est.border}`, borderRadius:6, padding:'2px 8px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>)}
                     </div>
                   )}
                 </div>
