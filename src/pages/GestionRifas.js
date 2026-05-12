@@ -725,11 +725,11 @@ function ModalBoleteria({ rifa, onClose }) {
     finally { setSaving(false); }
   };
 
-  const handleQuitarNumero = async (vendedorId, numero, serie) => {
+  const handleQuitarNumero = async (vendedorId, numero, serie, origen) => {
     setSaving(true);
     try {
-      await API.delete(`/rifas/${rifa.id}/boleteria-vendedores/${vendedorId}/numero`, { data: { numero, serie } });
-      toast.success(`Número ${numero} liberado`);
+      await API.delete(`/rifas/${rifa.id}/boleteria-vendedores/${vendedorId}/numero`, { data: { numero, serie, origen } });
+      toast.success(`Número ${numero}${origen === 'extra' ? ' (extra)' : ''} liberado`);
       await load();
     } catch (err) { toast.error(err.response?.data?.error || 'Error liberando número'); }
     finally { setSaving(false); }
@@ -825,7 +825,7 @@ function ModalBoleteria({ rifa, onClose }) {
                     abierto={vendedorAbierto === v.vendedor_id}
                     onToggle={() => setVendedorAbierto(prev => prev === v.vendedor_id ? null : v.vendedor_id)}
                     onAsignar={(nums, serie) => handleAsignar(v.vendedor_id, nums, serie)}
-                    onQuitar={(num, serie) => handleQuitarNumero(v.vendedor_id, num, serie)}
+                    onQuitar={(num, serie, origen) => handleQuitarNumero(v.vendedor_id, num, serie, origen)}
                     saving={saving}
                   />
                 ))}
@@ -838,22 +838,35 @@ function ModalBoleteria({ rifa, onClose }) {
   );
 }
 
-/* ── Sub-componente: panel de un vendedor en boletería ── */
+/* ── Sub-componente: panel de un vendedor en boletería ──
+   Muestra fijos + extras mezclados, con badge azul "EXTRA" para
+   los números que solo aplican a esta rifa (no afectan categorías). */
 function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, disponiblesB, abierto, onToggle, onAsignar, onQuitar, saving }) {
-  const [tabSerie,     setTabSerie]     = useState('A'); // tab activa para agregar (A o B)
-  const [modoAgregar,  setModoAgregar]  = useState('aleatorio'); // 'aleatorio' | 'manual'
-  const [cantAleatorio,setCantAleatorio] = useState('');
-  const [seleccionados, setSeleccionados] = useState(new Set()); // idx de los seleccionados manualmente
+  const [tabSerie,      setTabSerie]      = useState('A'); // tab activa para agregar (A o B)
+  const [modoAgregar,   setModoAgregar]   = useState('aleatorio'); // 'aleatorio' | 'manual'
+  const [cantAleatorio, setCantAleatorio] = useState('');
+  const [seleccionados, setSeleccionados] = useState(new Set());
 
-  // Números que ya tiene este vendedor en esta rifa, agrupados por serie
-  const fijosA = (vendedor.numeros_fijos || []).filter(n => (n.serie || 'A') === 'A').map(n => String(n.numero).padStart(3,'0'));
-  const fijosB = (vendedor.numeros_fijos || []).filter(n => n.serie === 'B').map(n => String(n.numero).padStart(3,'0'));
-  const totalFijos = (vendedor.numeros_fijos || []).length;
+  // Números que ya tiene este vendedor en esta rifa, agrupados por serie.
+  // Cada item conserva `origen` ('fijo' | 'extra') para mostrar el badge.
+  const todos = (vendedor.numeros_fijos || []).map(n => ({
+    numero: String(n.numero).padStart(3, '0'),
+    serie:  n.serie || 'A',
+    origen: n.origen || 'fijo',
+  }));
 
-  // Disponibles para la serie activa (excluir los que ya tiene el vendedor)
+  const fijosA      = todos.filter(n => n.serie === 'A');
+  const fijosB      = todos.filter(n => n.serie === 'B');
+  const totalFijos  = todos.length;
+  const totalExtras = todos.filter(n => n.origen === 'extra').length;
+
+  // Para calcular disponibles, comparamos solo por número
+  const numsA = fijosA.map(n => n.numero);
+  const numsB = fijosB.map(n => n.numero);
+
   const disponiblesActivos = tabSerie === 'A'
-    ? disponiblesA.filter(n => !fijosA.includes(String(n).padStart(3,'0')))
-    : disponiblesB.filter(n => !fijosB.includes(String(n).padStart(3,'0')));
+    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(3, '0')))
+    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(3, '0')));
 
   const toggleSeleccion = (n) => {
     setSeleccionados(prev => {
@@ -867,25 +880,60 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
     const cant = parseInt(cantAleatorio);
     if (!cant || cant < 1) { toast.error('Ingresa una cantidad válida'); return; }
     if (cant > disponiblesActivos.length) { toast.error(`Solo hay ${disponiblesActivos.length} disponibles`); return; }
-    // Fisher-Yates parcial
     const arr = [...disponiblesActivos];
     for (let i = 0; i < cant; i++) {
       const j = i + Math.floor(Math.random() * (arr.length - i));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    const picks = arr.slice(0, cant).map(n => String(n).padStart(3,'0'));
+    const picks = arr.slice(0, cant).map(n => String(n).padStart(3, '0'));
     await onAsignar(picks, tabSerie);
     setCantAleatorio('');
   };
 
   const handleAgregarManual = async () => {
     if (seleccionados.size === 0) { toast.error('Selecciona al menos un número'); return; }
-    const nums = [...seleccionados].map(n => String(n).padStart(3,'0'));
+    const nums = [...seleccionados].map(n => String(n).padStart(3, '0'));
     await onAsignar(nums, tabSerie);
     setSeleccionados(new Set());
   };
 
-  const colorSerie = (s) => s === 'A' ? { bg:'#f0f5ff', border:'#4361ee44', color:'#4361ee' } : { bg:'#fff0f5', border:'#e91e8c44', color:'#e91e8c' };
+  const colorSerie = (s) => s === 'A'
+    ? { bg:'#f0f5ff', border:'#4361ee44', color:'#4361ee' }
+    : { bg:'#fff0f5', border:'#e91e8c44', color:'#e91e8c' };
+
+  const badgeExtra = {
+    background:'#0ea5e9', color:'#fff', fontSize:'.55rem',
+    fontWeight:900, letterSpacing:.5, padding:'1px 4px',
+    borderRadius:4, lineHeight:1.1, marginLeft:4, textTransform:'uppercase',
+  };
+
+  // Render de un chip de número con badge si es extra
+  const renderChip = (item, cs) => {
+    const esExtra = item.origen === 'extra';
+    const stylesChip = esExtra
+      ? { bg:'#ecfeff', border:'#0ea5e9', color:'#0369a1' }
+      : cs;
+    return (
+      <div key={`${item.numero}-${item.serie}-${item.origen}`}
+        style={{
+          display:'flex', alignItems:'center', gap:3,
+          background:stylesChip.bg,
+          border:`1.5px solid ${stylesChip.border}`,
+          borderRadius:8, padding:'3px 8px', position:'relative',
+        }}
+        title={esExtra ? 'Número extra de esta rifa (no afecta categorías)' : 'Número fijo del vendedor'}>
+        <span style={{ fontWeight:900, fontSize:'.82rem', color:stylesChip.color, letterSpacing:1 }}>
+          {item.numero}
+        </span>
+        {esExtra && <span style={badgeExtra}>EXTRA</span>}
+        <button onClick={() => onQuitar(item.numero, item.serie, item.origen)} disabled={saving}
+          style={{ background:'none', border:'none', color:'#e63946', cursor:'pointer', padding:'0 2px', fontSize:'.7rem', opacity:saving?0.4:0.7, lineHeight:1 }}
+          title={`Quitar ${item.numero} ${item.serie}${esExtra ? ' (extra)' : ''}`}>
+          ✕
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div style={{ border:'1.5px solid rgba(124,58,237,.2)', borderRadius:12, overflow:'hidden' }}>
@@ -901,17 +949,17 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
         </div>
 
         {/* Resumen de series */}
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end', alignItems:'center' }}>
           {esSimultanea ? (
             <>
               {fijosA.length > 0 && (
                 <span style={{ ...colorSerie('A'), borderRadius:20, padding:'3px 10px', fontSize:'.68rem', fontWeight:800, border:`1px solid ${colorSerie('A').border}`, background:colorSerie('A').bg, color:colorSerie('A').color }}>
-                  A: {fijosA.length} núm.
+                  A: {fijosA.length}
                 </span>
               )}
               {fijosB.length > 0 && (
                 <span style={{ ...colorSerie('B'), borderRadius:20, padding:'3px 10px', fontSize:'.68rem', fontWeight:800, border:`1px solid ${colorSerie('B').border}`, background:colorSerie('B').bg, color:colorSerie('B').color }}>
-                  B: {fijosB.length} núm.
+                  B: {fijosB.length}
                 </span>
               )}
               {totalFijos === 0 && <span style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', fontStyle:'italic' }}>Sin números</span>}
@@ -919,6 +967,11 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
           ) : (
             <span style={{ background:'rgba(124,58,237,.08)', border:'1px solid rgba(124,58,237,.2)', borderRadius:20, padding:'3px 10px', fontSize:'.68rem', fontWeight:800, color:'#7c3aed' }}>
               {totalFijos} número(s)
+            </span>
+          )}
+          {totalExtras > 0 && (
+            <span style={{ background:'#0ea5e9', color:'#fff', borderRadius:20, padding:'3px 10px', fontSize:'.65rem', fontWeight:900, letterSpacing:.5 }}>
+              +{totalExtras} EXTRA
             </span>
           )}
         </div>
@@ -930,12 +983,25 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
       {abierto && (
         <div style={{ borderTop:'1px solid rgba(124,58,237,.1)', background:'#fafafa' }}>
 
-          {/* ── Sección: Números fijos actuales ── */}
+          {/* ── Sección: Números actuales (fijos + extras) ── */}
           <div style={{ padding:'14px 16px', borderBottom:'1px solid rgba(124,58,237,.08)' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'1px', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-              <i className="bi bi-lock-fill"></i> NÚMEROS FIJOS ASIGNADOS
+            <div style={{ fontSize:'.65rem', fontWeight:800, color:'#7c3aed', textTransform:'uppercase', letterSpacing:'1px', marginBottom:10, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              <i className="bi bi-ticket-perforated-fill"></i> NÚMEROS DEL VENDEDOR EN ESTA RIFA
               <span style={{ background:'rgba(124,58,237,.1)', borderRadius:20, padding:'1px 8px', fontWeight:700 }}>{totalFijos}</span>
+              {totalExtras > 0 && (
+                <span style={{ background:'#0ea5e9', color:'#fff', borderRadius:20, padding:'1px 8px', fontWeight:800, fontSize:'.6rem' }}>
+                  {totalExtras} extra(s)
+                </span>
+              )}
             </div>
+
+            {/* Leyenda visual cuando hay extras */}
+            {totalExtras > 0 && (
+              <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginBottom:10, background:'#fff', padding:'6px 10px', borderRadius:8, border:'1px dashed #0ea5e955' }}>
+                <i className="bi bi-info-circle" style={{ color:'#0ea5e9', marginRight:4 }}></i>
+                Los <strong style={{ color:'#0369a1' }}>números EXTRA</strong> solo aplican a esta rifa y no aparecen en los números fijos del vendedor.
+              </div>
+            )}
 
             {totalFijos === 0 ? (
               <div style={{ fontSize:'.78rem', color:'var(--jordyn-muted)', fontStyle:'italic', padding:'8px 0' }}>
@@ -944,24 +1010,17 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
             ) : esSimultanea ? (
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                 {['A','B'].map(serie => {
-                  const fijos = serie === 'A' ? fijosA : fijosB;
-                  if (!fijos.length) return null;
+                  const items = serie === 'A' ? fijosA : fijosB;
+                  if (!items.length) return null;
                   const cs = colorSerie(serie);
                   return (
                     <div key={serie}>
                       <div style={{ fontSize:'.6rem', fontWeight:800, color:cs.color, textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
                         <span style={{ background:cs.bg, border:`1px solid ${cs.border}`, borderRadius:4, padding:'1px 7px', color:cs.color }}>SERIE {serie}</span>
-                        {fijos.length} números
+                        {items.length} números
                       </div>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                        {fijos.map(n => (
-                          <div key={`${n}-${serie}`} style={{ display:'flex', alignItems:'center', gap:3, background:cs.bg, border:`1px solid ${cs.border}`, borderRadius:8, padding:'3px 8px' }}>
-                            <span style={{ fontWeight:900, fontSize:'.82rem', color:cs.color, letterSpacing:1 }}>{n}</span>
-                            <button onClick={() => onQuitar(n, serie)} disabled={saving}
-                              style={{ background:'none', border:'none', color:'#e63946', cursor:'pointer', padding:'0 2px', fontSize:'.7rem', opacity:saving?0.4:0.7, lineHeight:1 }}
-                              title={`Quitar ${n} Serie ${serie}`}>✕</button>
-                          </div>
-                        ))}
+                        {items.map(item => renderChip(item, cs))}
                       </div>
                     </div>
                   );
@@ -969,22 +1028,18 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
               </div>
             ) : (
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                {fijosA.map(n => (
-                  <div key={n} style={{ display:'flex', alignItems:'center', gap:3, background:'rgba(124,58,237,.07)', border:'1px solid rgba(124,58,237,.2)', borderRadius:8, padding:'3px 8px' }}>
-                    <span style={{ fontWeight:900, fontSize:'.82rem', color:'#7c3aed', letterSpacing:1 }}>{n}</span>
-                    <button onClick={() => onQuitar(n, 'A')} disabled={saving}
-                      style={{ background:'none', border:'none', color:'#e63946', cursor:'pointer', padding:'0 2px', fontSize:'.7rem', opacity:saving?0.4:0.7, lineHeight:1 }}
-                      title={`Quitar ${n}`}>✕</button>
-                  </div>
-                ))}
+                {fijosA.map(item => renderChip(item, { bg:'rgba(124,58,237,.07)', border:'rgba(124,58,237,.2)', color:'#7c3aed' }))}
               </div>
             )}
           </div>
 
           {/* ── Sección: Agregar números ── */}
           <div style={{ padding:'14px 16px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'1px', marginBottom:12, display:'flex', alignItems:'center', gap:6 }}>
-              <i className="bi bi-plus-circle-fill"></i> AGREGAR NÚMEROS DISPONIBLES
+            <div style={{ fontSize:'.65rem', fontWeight:800, color:'#059669', textTransform:'uppercase', letterSpacing:'1px', marginBottom:12, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+              <i className="bi bi-plus-circle-fill"></i> AGREGAR NÚMEROS EXTRA A ESTA RIFA
+              <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, letterSpacing:0, textTransform:'none' }}>
+                (no se agregan a los fijos del vendedor)
+              </span>
             </div>
 
             {/* Tabs de serie (solo en simultánea) */}
@@ -992,8 +1047,9 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
               <div style={{ display:'flex', gap:6, marginBottom:14 }}>
                 {['A','B'].map(s => {
                   const cs = colorSerie(s);
-                  const disp = s === 'A' ? disponiblesA.filter(n => !fijosA.includes(String(n).padStart(3,'0'))).length
-                                         : disponiblesB.filter(n => !fijosB.includes(String(n).padStart(3,'0'))).length;
+                  const disp = s === 'A'
+                    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(3,'0'))).length
+                    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(3,'0'))).length;
                   return (
                     <button key={s} onClick={() => { setTabSerie(s); setSeleccionados(new Set()); setCantAleatorio(''); }}
                       style={{
