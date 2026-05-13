@@ -36,7 +36,7 @@ const LOTERIAS = [
 
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
-  fecha_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
+  fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
   categoria_seleccionada_id: null,
 };
@@ -72,6 +72,17 @@ const fmtHora = f => {
   const d = parseFecha(f);
   if (!d) return null;
   return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Caracas' });
+};
+
+// Formatea el campo TIME (hora_sorteo) que viene como "22:00:00" → "10:00 PM"
+const fmtHoraSorteo = (h) => {
+  if (!h) return null;
+  const s = String(h).slice(0, 5); // "22:00"
+  const [hh, mm] = s.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return null;
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+  const hh12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${String(hh12).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${ampm}`;
 };
 
 /* ─── Estados del grid ─── */
@@ -1350,6 +1361,7 @@ export default function GestionRifas() {
       precio:                  r.precio       || '',
       precio_display:          r.precio       ? fmtCOP(r.precio) : '',
       fecha_sorteo:            r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
+      hora_sorteo:             r.hora_sorteo  ? String(r.hora_sorteo).slice(0,5) : '',
       loteria_ref:             r.loteria_ref  || '',
       tipo:                    r.tipo         || 'sencilla',
       imagen_base64:           r.imagen_url   || '',
@@ -1379,6 +1391,7 @@ export default function GestionRifas() {
         premio:                form.premio,
         precio:                form.precio,
         fecha_sorteo:          form.fecha_sorteo || null,
+        hora_sorteo:           form.hora_sorteo  || null,
         loteria_ref:           form.loteria_ref  || null,
         tipo:                  form.tipo,
         imagen_url:            form.imagen_base64 || null,
@@ -1469,7 +1482,14 @@ export default function GestionRifas() {
           </div>
           <div className="col-6">
             <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>SORTEO</div>
-            <div style={{ fontWeight: 600 }}>{fmtF(r.fecha_sorteo)}</div>
+            <div style={{ fontWeight: 600 }}>
+              {fmtF(r.fecha_sorteo)}
+              {fmtHoraSorteo(r.hora_sorteo) && (
+                <span style={{ marginLeft:6, color:'var(--jordyn-primary)', fontWeight:700, fontSize:'0.78rem' }}>
+                  · {fmtHoraSorteo(r.hora_sorteo)}
+                </span>
+              )}
+            </div>
           </div>
           <div className="col-6">
             <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>VENTAS</div>
@@ -1678,6 +1698,53 @@ export default function GestionRifas() {
               <div className="col-12 col-md-4">
                 <label className="jd-label">FECHA DE SORTEO</label>
                 <input className="jd-input" type="date" value={form.fecha_sorteo} onChange={e => setForm(p => ({ ...p, fecha_sorteo: e.target.value }))} />
+              </div>
+
+              {/* Hora del sorteo (opcional) */}
+              <div className="col-12 col-md-4">
+                <label className="jd-label">
+                  HORA DEL SORTEO
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                    (opcional)
+                  </span>
+                </label>
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  <input
+                    className="jd-input"
+                    type="time"
+                    value={form.hora_sorteo}
+                    onChange={e => setForm(p => ({ ...p, hora_sorteo: e.target.value }))}
+                    style={{ flex:1 }}
+                  />
+                  {form.hora_sorteo && (
+                    <button type="button"
+                      onClick={() => setForm(p => ({ ...p, hora_sorteo: '' }))}
+                      title="Quitar hora"
+                      style={{ background:'none', border:'1px solid var(--jordyn-border)', borderRadius:8, padding:'4px 9px', cursor:'pointer', color:'var(--jordyn-muted)', fontSize:'.85rem' }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {/* Atajos rápidos: horarios del Táchira */}
+                <div style={{ display:'flex', gap:5, marginTop:6, flexWrap:'wrap' }}>
+                  {[
+                    { lbl: '1:00 PM',  val: '13:00' },
+                    { lbl: '4:00 PM',  val: '16:00' },
+                    { lbl: '10:00 PM', val: '22:00' },
+                  ].map(h => (
+                    <button key={h.val} type="button"
+                      onClick={() => setForm(p => ({ ...p, hora_sorteo: h.val }))}
+                      style={{
+                        background: form.hora_sorteo === h.val ? 'rgba(124,58,237,.1)' : '#fff',
+                        border: `1px solid ${form.hora_sorteo === h.val ? '#7c3aed' : 'var(--jordyn-border)'}`,
+                        color:  form.hora_sorteo === h.val ? '#7c3aed' : 'var(--jordyn-muted)',
+                        borderRadius:6, padding:'3px 9px', cursor:'pointer',
+                        fontSize:'.7rem', fontWeight:600,
+                      }}>
+                      {h.lbl}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Tipo */}
