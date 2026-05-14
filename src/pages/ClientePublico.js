@@ -11,27 +11,96 @@ const VERDE   = '#22c55e';
 const fmt  = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
 
 /* ─────────────────────────────────────────────────────────────
-   FIX PUNTO 1A — parseFecha + fmtF con zona horaria explícita
-   Problema original: new Date(f) interpretaba la fecha en UTC
-   del navegador, causando desfase de horas según el país.
-   Solución: normalizar el string ISO y usar timeZone fijo.
+   parseFecha — interpreta fecha/hora SIN desfase UTC
+   ─────────────────────────────────────────────────────────────
+   Problema raíz:
+     • PostgreSQL devuelve fecha_sorteo como "2025-07-15" (solo date).
+     • new Date("2025-07-15") lo trata como UTC 00:00, que en Venezuela
+       (UTC-4) equivale a las 8 PM del día anterior → el contador muestra
+       un día menos y la fecha aparece un día antes.
+   Solución:
+     • Si el string es solo fecha (YYYY-MM-DD), se parsea como hora LOCAL
+       del país (America/Caracas) usando Date.UTC con hora 00:00 del día
+       correcto, compensando el offset.
+     • Si incluye hora (desde hora_sorteo separado), se adjunta antes de
+       parsear para que el countdown sea preciso.
+     • Se exporta buildSorteoDate(fecha, hora) para el hook useCountdown.
 ───────────────────────────────────────────────────────────── */
+
+// Zona horaria del negocio (Venezuela UTC-4 / Caracas).
+// Cambia a 'America/Bogota' si operas desde Colombia.
+const TZ_NEGOCIO = 'America/Caracas';
+
+/**
+ * Dada una fecha "YYYY-MM-DD" y una hora opcional "HH:MM:SS" o "HH:MM",
+ * construye un Date que representa ese momento en la zona TZ_NEGOCIO,
+ * sin el desfase que causaría tratar la fecha como UTC.
+ *
+ * @param {string} fecha  - "2025-07-15"  (campo fecha_sorteo del backend)
+ * @param {string} [hora] - "21:00:00"    (campo hora_sorteo del backend, opcional)
+ * @returns {Date|null}
+ */
+const buildSorteoDate = (fecha, hora) => {
+  if (!fecha) return null;
+  // Limpiar: PostgreSQL a veces devuelve "2025-07-15T00:00:00.000Z"
+  // En ese caso extraemos solo la parte YYYY-MM-DD para evitar la
+  // interpretación UTC que desplaza el día.
+  const soloFecha = String(fecha).slice(0, 10); // "2025-07-15"
+  const soloHora  = hora ? String(hora).slice(0, 5) : '00:00'; // "21:00"
+
+  // Construir string "YYYY-MM-DDTHH:MM" y parsearlo como hora local
+  // usando el truco de Intl: pedimos la fecha en TZ_NEGOCIO con formato
+  // de partes numéricas, y luego construimos el Date correctamente.
+  try {
+    // Armamos el string y lo pasamos a Date.parse con el sufijo que
+    // indique la zona horaria. Usamos el offset real de TZ_NEGOCIO para
+    // ese día (esto maneja cambios de horario de verano automáticamente).
+    const isoLocal = `${soloFecha}T${soloHora}:00`;
+
+    // Obtenemos el offset de TZ_NEGOCIO para esa fecha
+    // usando Intl.DateTimeFormat para extraer las partes
+    const tmpDate = new Date(`${soloFecha}T12:00:00Z`); // mediodía UTC como referencia
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: TZ_NEGOCIO,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(tmpDate);
+
+    const p = {};
+    parts.forEach(({ type, value }) => { p[type] = value; });
+    // Diferencia en ms entre UTC y TZ_NEGOCIO a mediodía de ese día
+    const tzOffsetMs = tmpDate.getTime() - Date.UTC(
+      parseInt(p.year), parseInt(p.month) - 1, parseInt(p.day),
+      parseInt(p.hour) % 24, parseInt(p.minute), parseInt(p.second)
+    );
+
+    // Parsear la hora local deseada como si fuera UTC, luego ajustar
+    const [y, mo, d]    = soloFecha.split('-').map(Number);
+    const [h, mi]       = soloHora.split(':').map(Number);
+    const utcEquiv      = Date.UTC(y, mo - 1, d, h, mi, 0);
+    const result        = new Date(utcEquiv + tzOffsetMs);
+    return isNaN(result.getTime()) ? null : result;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * parseFecha — para mostrar la fecha en pantalla (fmtF).
+ * Solo necesita la fecha (sin hora), interpreta en TZ_NEGOCIO.
+ */
 const parseFecha = (f) => {
   if (!f) return null;
-  // PostgreSQL puede devolver "2025-07-15T04:00:00.000Z" o "2025-07-15 04:00:00"
-  // Normalizamos el espacio por T para que todos los navegadores parseen igual
-  const iso = String(f).replace(' ', 'T');
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? null : d;
+  return buildSorteoDate(String(f).slice(0, 10), '12:00'); // mediodía para display
 };
 
 const fmtF = f => {
   const d = parseFecha(f);
   if (!d) return 'Por definir';
-  // Usa 'America/Caracas' (UTC-4). Cámbialo a 'America/Bogota' (UTC-5) si tu servidor es Colombia.
   return d.toLocaleDateString('es-CO', {
     day: '2-digit', month: 'long', year: 'numeric',
-    timeZone: 'America/Caracas',
+    timeZone: TZ_NEGOCIO,
   });
 };
 
@@ -212,19 +281,20 @@ function siguienteOferta(cantidad, ofertas, precioUnitario) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   FIX PUNTO 2B — fmtHora: extrae la hora del campo fecha_sorteo
-   Si la fecha tiene hora distinta de 00:00, la muestra en
-   formato 12h (ej: "09:00 PM"). Si es medianoche la omite.
+   fmtHora — formatea el campo hora_sorteo separado del backend
+   Recibe "21:00:00" o "21:00" y devuelve "09:00 PM".
+   Si no hay hora, devuelve null.
 ───────────────────────────────────────────────────────────── */
-const fmtHora = (f) => {
-  const d = parseFecha(f);
-  if (!d) return null;
-  // Si la hora es exactamente las 00:00:00, probablemente no se cargó hora → omitir
-  const h = d.getUTCHours(), m = d.getUTCMinutes();
-  if (h === 0 && m === 0) return null;
+const fmtHora = (hora) => {
+  if (!hora) return null;
+  const h = String(hora).trim();
+  if (!h || h === '00:00' || h === '00:00:00') return null;
+  // Construir un Date arbitrario solo para formatear la hora
+  const [hh, mm] = h.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return null;
+  const d = new Date(2000, 0, 1, hh, mm, 0);
   return d.toLocaleTimeString('es-CO', {
     hour: '2-digit', minute: '2-digit', hour12: true,
-    timeZone: 'America/Caracas',
   });
 };
 
@@ -243,7 +313,7 @@ const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds, totalR
   const numStr = todos.map(n => `*${n}*`).join(' · ');
   const id     = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
   const total  = totalReal ?? (rifa?.precio * todos.length);
-  const hora   = fmtHora(rifa?.fecha_sorteo);
+  const hora   = fmtHora(rifa?.hora_sorteo);
 
   const msg =
     `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
@@ -510,13 +580,19 @@ const injectStyles = () => {
   document.head.appendChild(s);
 };
 
-function useCountdown(targetDate) {
+/**
+ * useCountdown — acepta { fecha, hora } o un string de fecha.
+ *   • fecha: campo fecha_sorteo del backend ("2025-07-15" o ISO completo)
+ *   • hora:  campo hora_sorteo del backend ("21:00:00") — OPCIONAL
+ *
+ * Usa buildSorteoDate para armar el datetime en TZ_NEGOCIO sin desfase UTC.
+ */
+function useCountdown(fecha, hora) {
   const calc = () => {
-    if (!targetDate) return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
+    if (!fecha) return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
 
-    const iso = String(targetDate).replace(' ', 'T');
-    const target = new Date(iso);
-    if (isNaN(target.getTime())) {
+    const target = buildSorteoDate(String(fecha).slice(0, 10), hora || '00:00');
+    if (!target) {
       return { dias:0, horas:0, minutos:0, segundos:0, expired:true, invalid:true };
     }
     const diff = target - new Date();
@@ -532,11 +608,11 @@ function useCountdown(targetDate) {
   };
   const [time, setTime] = useState(calc);
   useEffect(() => {
-    if (!targetDate) return;
+    if (!fecha) return;
     setTime(calc());
     const t = setInterval(() => setTime(calc()), 1000);
     return () => clearInterval(t);
-  }, [targetDate]);
+  }, [fecha, hora]);
   return time;
 }
 
@@ -598,7 +674,7 @@ function BannerOfertas({ ofertas, precioUnitario }) {
    FIX PUNTO 1B: condición !cd.invalid agregada al render del countdown
 ═══════════════════════════════════════════════════════════ */
 function HeroRifaPrincipal({ rifa, onVerNumeros }) {
-  const cd = useCountdown(rifa.fecha_sorteo);
+  const cd = useCountdown(rifa.fecha_sorteo, rifa.hora_sorteo);
   const [imgError, setImgError] = useState(false);
   const tieneImagen = rifa.imagen_url && !imgError;
   const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
