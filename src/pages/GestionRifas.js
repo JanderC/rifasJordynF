@@ -36,6 +36,7 @@ const LOTERIAS = [
 
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
+  premio_secundario: '', premio_secundario_display: '',
   fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
   ofertas: [],
   categoria_seleccionada_id: null,
@@ -1334,6 +1335,11 @@ export default function GestionRifas() {
     setForm(p => ({ ...p, precio: num, precio_display: num ? fmtCOP(num) : '' }));
   };
 
+  const handleSubPremioChange = (val) => {
+    const num = parseCOP(val);
+    setForm(p => ({ ...p, premio_secundario: num, premio_secundario_display: num ? fmtCOP(num) : '' }));
+  };
+
   const handleImagen = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1359,6 +1365,8 @@ export default function GestionRifas() {
       premio:                  r.premio       || '',
       precio:                  r.precio       || '',
       precio_display:          r.precio       ? fmtCOP(r.precio) : '',
+      premio_secundario:       r.premio_secundario || '',
+      premio_secundario_display: r.premio_secundario ? fmtCOP(r.premio_secundario) : '',
       fecha_sorteo:            r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
       hora_sorteo:             r.hora_sorteo  ? String(r.hora_sorteo).slice(0,5) : '',
       loteria_ref:             r.loteria_ref  || '',
@@ -1389,6 +1397,7 @@ export default function GestionRifas() {
         descripcion:           form.descripcion,
         premio:                form.premio,
         precio:                form.precio,
+        premio_secundario:     form.premio_secundario || null,
         fecha_sorteo:          form.fecha_sorteo || null,
         hora_sorteo:           form.hora_sorteo  || null,
         loteria_ref:           form.loteria_ref  || null,
@@ -1678,8 +1687,38 @@ export default function GestionRifas() {
 
               {/* Premio */}
               <div className="col-12 col-md-6">
-                <label className="jd-label">DESCRIPCIÓN DEL PREMIO *</label>
-                <input className="jd-input" value={form.premio} onChange={e => setForm(p => ({ ...p, premio: e.target.value }))} placeholder="Moto, TV 65, Viaje, etc." />
+                <label className="jd-label">
+                  DESCRIPCIÓN DEL PREMIO *
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                    (el número va al ticket en grande)
+                  </span>
+                </label>
+                <input className="jd-input" value={form.premio}
+                  onChange={e => setForm(p => ({ ...p, premio: e.target.value }))}
+                  placeholder="Ej: 500 Dólares · 1000 USD · Moto · TV 65" />
+                <div style={{ fontSize:'.62rem', color:'var(--jordyn-muted)', marginTop:3 }}>
+                  💡 Si empieza con número (ej: <b>500 Dólares</b>), el "500" aparece gigante con doble color amarillo/azul, y "Dólares" en cursiva al lado.
+                </div>
+              </div>
+
+              {/* Sub-premio en pesos (opcional) */}
+              <div className="col-12 col-md-6">
+                <label className="jd-label">
+                  SUB-PREMIO EN PESOS
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                    (opcional, para el ticket)
+                  </span>
+                </label>
+                <input className="jd-input" value={form.premio_secundario_display}
+                  onChange={e => handleSubPremioChange(e.target.value)}
+                  onBlur={() => form.premio_secundario && setForm(p => ({ ...p, premio_secundario_display: fmtCOP(p.premio_secundario) }))}
+                  onFocus={() => setForm(p => ({ ...p, premio_secundario_display: p.premio_secundario ? String(p.premio_secundario) : '' }))}
+                  placeholder="Ej: 2.000.000 (aparece como 'ó 2.000.000 Pesos')" />
+                {form.premio_secundario > 0 && (
+                  <div style={{ fontSize:'.7rem', color:'var(--jordyn-primary)', marginTop:3, fontWeight:600 }}>
+                    En el ticket: <b>ó {Number(form.premio_secundario).toLocaleString('de-DE')} Pesos</b>
+                  </div>
+                )}
               </div>
 
               {/* Precio */}

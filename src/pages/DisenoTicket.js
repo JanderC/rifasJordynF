@@ -471,12 +471,15 @@ function ColorField({ label, hint, value, onChange }) {
   );
 }
 
-/* ── SizeField: control de tamaño tipo Word ──
+/* ── SizeField: control de tamaño tipo Word (en puntos) ──
+   - Dropdown con tamaños comunes tipo Word: 8, 10, 12, 14, 16, 18, 24, 36, 48, 72
    - Botones − / + para ajustar de 1 en 1
-   - Input numérico editable directamente
-   - Slider para ajuste rápido
-   - Muestra el tamaño actual con preview "Aa" del lado          */
-function SizeField({ label, hint, value, onChange, min=6, max=200, step=1 }) {
+   - Input numérico editable
+   - Slider para ajuste fino
+   - El valor se interpreta en pt (1pt ≈ 1.333px en pantalla)               */
+const TAMANOS_WORD = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 42, 48, 54, 60, 72, 80, 96];
+
+function SizeField({ label, hint, value, onChange, min=6, max=120, step=1 }) {
   const v = Number(value) || 0;
   const dec = () => onChange(Math.max(min, v - step));
   const inc = () => onChange(Math.min(max, v + step));
@@ -485,12 +488,15 @@ function SizeField({ label, hint, value, onChange, min=6, max=200, step=1 }) {
     onChange(Math.max(min, Math.min(max, num)));
   };
 
+  // Filtrar dropdown según min/max permitidos
+  const opciones = TAMANOS_WORD.filter(t => t >= min && t <= max);
+
   return (
     <div>
       <label className="jd-label" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <span>{label}</span>
         <span style={{
-          fontSize:Math.min(22, Math.max(11, v * 0.45)),
+          fontSize:Math.min(28, Math.max(11, v * 0.7)),
           fontWeight:900, color:'var(--jordyn-primary)',
           fontFamily:"'Poppins',sans-serif", lineHeight:1,
         }}>Aa</span>
@@ -498,45 +504,61 @@ function SizeField({ label, hint, value, onChange, min=6, max=200, step=1 }) {
 
       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
         {/* Botón − */}
-        <button onClick={dec} disabled={v <= min} title="Reducir"
+        <button onClick={dec} disabled={v <= min} title="Reducir 1pt"
           style={{
-            width:30, height:30, flexShrink:0,
+            width:30, height:32, flexShrink:0,
             border:'1.5px solid var(--jordyn-border)', borderRadius:6,
             background:'rgba(10,191,188,.08)', color:'var(--jordyn-primary)',
-            fontSize:'1.1rem', fontWeight:900, cursor: v <= min ? 'not-allowed' : 'pointer',
+            fontSize:'1.1rem', fontWeight:900,
+            cursor: v <= min ? 'not-allowed' : 'pointer',
             opacity: v <= min ? .35 : 1, padding:0, lineHeight:1,
           }}>−</button>
 
-        {/* Input numérico */}
+        {/* Dropdown tipo Word (tamaños comunes) */}
+        <select value={opciones.includes(v) ? v : ''}
+          onChange={e => e.target.value && onChange(Number(e.target.value))}
+          title="Tamaños comunes"
+          style={{
+            height:32, padding:'0 4px',
+            background:'#0d1a16',
+            border:'1.5px solid var(--jordyn-border)',
+            borderRadius:6, color:'var(--jordyn-primary)',
+            fontWeight:700, fontSize:'.78rem', cursor:'pointer',
+            fontFamily:'monospace',
+          }}>
+          <option value="" disabled>{v}pt</option>
+          {opciones.map(t => (
+            <option key={t} value={t}>{t} pt</option>
+          ))}
+        </select>
+
+        {/* Input numérico manual */}
         <input type="number" value={v} min={min} max={max} step={step}
           onChange={e => setNum(e.target.value)}
           className="jd-input"
+          title="Escribe el tamaño manualmente"
           style={{
-            width:62, textAlign:'center',
-            fontFamily:'monospace', fontWeight:700, fontSize:'.95rem',
-            padding:'6px 4px',
+            width:52, textAlign:'center',
+            fontFamily:'monospace', fontWeight:700, fontSize:'.9rem',
+            padding:'6px 2px', height:32,
           }} />
 
         {/* Botón + */}
-        <button onClick={inc} disabled={v >= max} title="Aumentar"
+        <button onClick={inc} disabled={v >= max} title="Aumentar 1pt"
           style={{
-            width:30, height:30, flexShrink:0,
+            width:30, height:32, flexShrink:0,
             border:'1.5px solid var(--jordyn-border)', borderRadius:6,
             background:'rgba(10,191,188,.08)', color:'var(--jordyn-primary)',
-            fontSize:'1.1rem', fontWeight:900, cursor: v >= max ? 'not-allowed' : 'pointer',
+            fontSize:'1.1rem', fontWeight:900,
+            cursor: v >= max ? 'not-allowed' : 'pointer',
             opacity: v >= max ? .35 : 1, padding:0, lineHeight:1,
           }}>+</button>
-
-        {/* Slider */}
-        <input type="range" value={v} min={min} max={max} step={step}
-          onChange={e => onChange(Number(e.target.value))}
-          style={{ flex:1, marginLeft:4, accentColor:'var(--jordyn-primary)' }} />
-
-        <span style={{
-          fontSize:'.62rem', color:'var(--jordyn-muted)',
-          fontFamily:'monospace', minWidth:24, textAlign:'right',
-        }}>{v}px</span>
       </div>
+
+      {/* Slider más sutil debajo */}
+      <input type="range" value={v} min={min} max={max} step={step}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width:'100%', marginTop:6, accentColor:'var(--jordyn-primary)' }} />
 
       {hint && <div style={{ fontSize:'.62rem', color:'var(--jordyn-muted)', marginTop:4 }}>{hint}</div>}
     </div>
@@ -712,28 +734,28 @@ export default function DisenoTicket() {
   };
 
   const aplicarTamanos = (factor, nombre) => {
-    // Escala TODOS los tamaños del diseño por un factor (1.0 = normal)
+    // Escala TODOS los tamaños del diseño por un factor (1.0 = normal, en pt)
     const ROUND = (n) => Math.max(6, Math.round(n));
     const escalado = {
-      sizeBrand:       ROUND(30 * factor),
-      sizeNumTalon:    ROUND(26 * factor),
-      sizeNumDer:      ROUND(26 * factor),
-      sizeNombre:      ROUND(13 * factor),
-      sizeTalonText:   ROUND(11 * factor),
-      sizeSlogan:      ROUND(24 * factor),
-      sizeFecha:       ROUND(22 * factor),
-      sizePremioLabel: ROUND(24 * factor),
-      sizePremioNum:   ROUND(104 * factor),
-      sizePremioTxt:   ROUND(35 * factor),
-      sizeSubPremio:   ROUND(32 * factor),
-      sizeSubMoneda:   ROUND(26 * factor),
-      sizeCaduca:      ROUND(15 * factor),
-      sizeLoteria:     ROUND(15 * factor),
-      sizeMotivac:     ROUND(15 * factor),
-      sizeBoleto:      ROUND(26 * factor),
-      sizeValor:       ROUND(42 * factor),
-      sizePesos:       ROUND(21 * factor),
-      sizeFooter:      ROUND(9 * factor),
+      sizeBrand:       ROUND(22 * factor),
+      sizeNumTalon:    ROUND(20 * factor),
+      sizeNumDer:      ROUND(20 * factor),
+      sizeNombre:      ROUND(10 * factor),
+      sizeTalonText:   ROUND(8 * factor),
+      sizeSlogan:      ROUND(18 * factor),
+      sizeFecha:       ROUND(16 * factor),
+      sizePremioLabel: ROUND(18 * factor),
+      sizePremioNum:   ROUND(78 * factor),
+      sizePremioTxt:   ROUND(26 * factor),
+      sizeSubPremio:   ROUND(24 * factor),
+      sizeSubMoneda:   ROUND(20 * factor),
+      sizeCaduca:      ROUND(11 * factor),
+      sizeLoteria:     ROUND(11 * factor),
+      sizeMotivac:     ROUND(11 * factor),
+      sizeBoleto:      ROUND(20 * factor),
+      sizeValor:       ROUND(32 * factor),
+      sizePesos:       ROUND(16 * factor),
+      sizeFooter:      ROUND(7 * factor),
     };
     setDesign(prev => ({ ...prev, ...escalado }));
     setDirty(true);
@@ -1013,48 +1035,48 @@ export default function DisenoTicket() {
           <Section title="Tamaños: premio y números" icon="bi-arrows-fullscreen" badge="6 tamaños">
             <SizeField label='Número GIGANTE del premio (500)'
               value={design.sizePremioNum} onChange={v => upd('sizePremioNum', v)}
-              min={40} max={200}
-              hint='El número grande con doble color amarillo/azul' />
+              min={24} max={120}
+              hint='El número grande con doble color amarillo/azul · default 78pt' />
             <SizeField label='Palabra "Premio" (cursiva)'
               value={design.sizePremioLabel} onChange={v => upd('sizePremioLabel', v)}
-              min={10} max={60} />
+              min={8} max={48} />
             <SizeField label='Texto del premio ("Dólares")'
               value={design.sizePremioTxt} onChange={v => upd('sizePremioTxt', v)}
-              min={12} max={80} />
+              min={10} max={60} />
             <SizeField label='Sub-premio: número (2.000.000)'
               value={design.sizeSubPremio} onChange={v => upd('sizeSubPremio', v)}
-              min={10} max={60} />
+              min={8} max={48} />
             <SizeField label='Sub-premio: "Pesos"'
               value={design.sizeSubMoneda} onChange={v => upd('sizeSubMoneda', v)}
-              min={10} max={50} />
+              min={8} max={42} />
             <SizeField label='Valor del boleto ("6 Mil")'
               value={design.sizeValor} onChange={v => upd('sizeValor', v)}
-              min={14} max={80} />
+              min={10} max={60} />
           </Section>
 
           {/* ─── Sección 10: Tamaños — Textos del encabezado ─── */}
           <Section title="Tamaños: encabezado y talón" icon="bi-fonts" badge="7 tamaños">
             <SizeField label='Slogan superior rojo'
               value={design.sizeSlogan} onChange={v => upd('sizeSlogan', v)}
-              min={10} max={50} />
+              min={8} max={42} />
             <SizeField label='Fecha del sorteo'
               value={design.sizeFecha} onChange={v => upd('sizeFecha', v)}
-              min={10} max={45} />
+              min={8} max={36} />
             <SizeField label='"GRAN RIFA" (vertical del talón)'
               value={design.sizeBrand} onChange={v => upd('sizeBrand', v)}
-              min={14} max={70} />
+              min={10} max={54} />
             <SizeField label='Número del talón izquierdo'
               value={design.sizeNumTalon} onChange={v => upd('sizeNumTalon', v)}
-              min={12} max={60} />
+              min={10} max={48} />
             <SizeField label='Número derecho (cabecera)'
               value={design.sizeNumDer} onChange={v => upd('sizeNumDer', v)}
-              min={12} max={60} />
+              min={10} max={48} />
             <SizeField label='"NOMBRE:" del talón'
               value={design.sizeNombre} onChange={v => upd('sizeNombre', v)}
-              min={8} max={28} />
+              min={6} max={22} />
             <SizeField label='Texto vertical del talón'
               value={design.sizeTalonText} onChange={v => upd('sizeTalonText', v)}
-              min={6} max={20}
+              min={6} max={16}
               hint='"BOLETO SIN CANCELAR NO JUEGA"' />
           </Section>
 
@@ -1062,22 +1084,22 @@ export default function DisenoTicket() {
           <Section title="Tamaños: pie y textos secundarios" icon="bi-text-paragraph" badge="6 tamaños">
             <SizeField label='Etiqueta "BOLETO"'
               value={design.sizeBoleto} onChange={v => upd('sizeBoleto', v)}
-              min={10} max={50} />
+              min={8} max={42} />
             <SizeField label='Sufijo "PESOS"'
               value={design.sizePesos} onChange={v => upd('sizePesos', v)}
-              min={8} max={40} />
+              min={6} max={30} />
             <SizeField label='"Caduca a los 8 días"'
               value={design.sizeCaduca} onChange={v => upd('sizeCaduca', v)}
-              min={8} max={30} />
+              min={6} max={24} />
             <SizeField label='Lotería y hora'
               value={design.sizeLoteria} onChange={v => upd('sizeLoteria', v)}
-              min={8} max={30} />
+              min={6} max={24} />
             <SizeField label='Frase motivacional'
               value={design.sizeMotivac} onChange={v => upd('sizeMotivac', v)}
-              min={8} max={30} />
+              min={6} max={24} />
             <SizeField label='Pie de página pequeño'
               value={design.sizeFooter} onChange={v => upd('sizeFooter', v)}
-              min={6} max={20} />
+              min={5} max={14} />
           </Section>
 
           {/* ─── Sección 12: Tamaño del ticket completo ─── */}

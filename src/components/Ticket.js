@@ -48,27 +48,28 @@ export const DEFAULT_DESIGN = {
   colorBorde:     '#000000', // borde del boleto
   bgPaper:        '#f5f5f0', // color de fondo (papel)
 
-  // ── Tamaños de fuente (en px, como Word) ─────────────────
-  // El usuario puede ajustar cada texto desde el editor.
-  sizeBrand:       30,  // "GRAN RIFA" vertical del talón
-  sizeNumTalon:    26,  // número del cuadro del talón izquierdo
-  sizeNumDer:      26,  // número del cuadro arriba derecha
-  sizeNombre:      13,  // "NOMBRE:"
-  sizeTalonText:   11,  // "BOLETO SIN CANCELAR NO JUEGA"
-  sizeSlogan:      24,  // slogan rojo superior
-  sizeFecha:       22,  // fecha del sorteo
-  sizePremioLabel: 24,  // palabra "Premio"
-  sizePremioNum:  104,  // número GIGANTE del premio (500, 1000, etc.)
-  sizePremioTxt:   35,  // "Dólares"
-  sizeSubPremio:   32,  // monto del sub-premio "2.000.000"
-  sizeSubMoneda:   26,  // "Pesos" (del sub-premio)
-  sizeCaduca:      15,  // "Caduca a los 8 días"
-  sizeLoteria:     15,  // "Triple Táchira ..."
-  sizeMotivac:     15,  // frase motivacional
-  sizeBoleto:      26,  // etiqueta "BOLETO"
-  sizeValor:       42,  // "6 Mil"
-  sizePesos:       21,  // sufijo "PESOS"
-  sizeFooter:      9,   // pie de página pequeño
+  // ── Tamaños de fuente (en pt, como Word) ─────────────────
+  // 12pt = texto normal, 18pt = título, 36pt = encabezado, 72pt = enorme
+  // El render aplica internamente la conversión pt → px (×1.333)
+  sizeBrand:       22,  // "GRAN RIFA" vertical del talón
+  sizeNumTalon:    20,  // número del cuadro del talón izquierdo
+  sizeNumDer:      20,  // número del cuadro arriba derecha
+  sizeNombre:      10,  // "NOMBRE:"
+  sizeTalonText:    8,  // "BOLETO SIN CANCELAR NO JUEGA"
+  sizeSlogan:      18,  // slogan rojo superior
+  sizeFecha:       16,  // fecha del sorteo
+  sizePremioLabel: 18,  // palabra "Premio"
+  sizePremioNum:   78,  // número GIGANTE del premio (500, 1000, etc.)
+  sizePremioTxt:   26,  // "Dólares"
+  sizeSubPremio:   24,  // monto del sub-premio "2.000.000"
+  sizeSubMoneda:   20,  // "Pesos" (del sub-premio)
+  sizeCaduca:      11,  // "Caduca a los 8 días"
+  sizeLoteria:     11,  // "Triple Táchira ..."
+  sizeMotivac:     11,  // frase motivacional
+  sizeBoleto:      20,  // etiqueta "BOLETO"
+  sizeValor:       32,  // "6 Mil"
+  sizePesos:       16,  // sufijo "PESOS"
+  sizeFooter:       7,  // pie de página pequeño
   ticketWidth:    780,  // ancho total del ticket en px
   ticketHeight:   340,  // alto mínimo del ticket en px
 
@@ -78,6 +79,32 @@ export const DEFAULT_DESIGN = {
   bgDark:       '#1a2e2e',
   watermarkText:'JORDYN',
   horaSort:     '',
+};
+
+// ── Conversión pt → px ──────────────────────────────────
+// Word usa pt (1pt = 1/72 pulgada). En CSS-pantalla a 96dpi: 1pt = 1.333 px
+const PT_TO_PX = 96 / 72; // = 1.3333…
+const px = (pt) => Math.round((Number(pt) || 0) * PT_TO_PX);
+
+// ── Normalizador: convierte valores legacy (px viejos) a pt ──
+// Si el usuario tenía guardado un diseño antiguo con valores en px (>=40 para
+// premio, etc.), lo detectamos y convertimos. Pasamos cualquier design por aquí.
+const normalizaDesign = (d) => {
+  if (!d) return d;
+  const out = { ...d };
+  // sizePremioNum legacy era 104 px; ahora es 78 pt. Si > 50, asumimos px viejo.
+  if (out.sizePremioNum && out.sizePremioNum > 50) {
+    // Convertir todos los tamaños conocidos de px a pt
+    [
+      'sizeBrand','sizeNumTalon','sizeNumDer','sizeNombre','sizeTalonText',
+      'sizeSlogan','sizeFecha','sizePremioLabel','sizePremioNum','sizePremioTxt',
+      'sizeSubPremio','sizeSubMoneda','sizeCaduca','sizeLoteria','sizeMotivac',
+      'sizeBoleto','sizeValor','sizePesos','sizeFooter',
+    ].forEach(k => {
+      if (out[k] != null) out[k] = Math.max(6, Math.round(out[k] / PT_TO_PX));
+    });
+  }
+  return out;
 };
 
 // ── Helpers fecha ─────────────────────────────────────────
@@ -100,8 +127,27 @@ const fmtFechaLoteria = (f) => {
   return `${dia} ${mes} - ${ano}`;
 };
 
-const extraerHora = (fechaSorteo, horaDesign) => {
+// Formatea "22:10:00" o "22:10" en "10:10 PM"
+const fmtHora12 = (horaStr) => {
+  if (!horaStr) return '';
+  const m = String(horaStr).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  let h = parseInt(m[1]), mn = m[2];
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${mn} ${ampm}`;
+};
+
+// Orden de prioridad para la hora:
+//   1. horaDesign (override manual desde el editor de diseño)
+//   2. rifa.hora_sorteo (campo TIME de la BD: "22:10:00")
+//   3. hora embebida en fecha_sorteo
+const extraerHora = (fechaSorteo, horaDesign, horaRifa) => {
   if (horaDesign && horaDesign.trim()) return horaDesign.trim();
+  if (horaRifa) {
+    const formateada = fmtHora12(horaRifa);
+    if (formateada) return formateada;
+  }
   const d = parseFechaTicket(fechaSorteo);
   if (!d) return '';
   const h = d.getUTCHours(), m = d.getUTCMinutes();
@@ -150,7 +196,7 @@ export function useTicketDesign() {
   const reload = () => {
     setLoading(true);
     API.get('/ticket-design')
-      .then(r => { if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...r.data.design }); })
+      .then(r => { if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(r.data.design) }); })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -178,7 +224,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   const premioRaw = r?.premio || '';
   const { numero: premioNum, texto: premioTxt } = splitPremio(premioRaw);
   const fecha    = fmtFechaLoteria(r?.fecha_sorteo);
-  const hora     = extraerHora(r?.fecha_sorteo, D.horaSort);
+  const hora     = extraerHora(r?.fecha_sorteo, D.horaSort, r?.hora_sorteo);
   const valorTxt = fmtValorBoleto(r?.precio);
   const subPremio= r?.premio_secundario ? fmtMilesPunto(r.premio_secundario) : '';
   const isOrig   = copia === 1;
@@ -201,17 +247,17 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
     <!-- Cuadro número arriba -->
     <div style="border:2px solid ${D.colorBorde};padding:6px 12px;
-      font-size:${D.sizeNumTalon}px;font-weight:900;color:${D.colorTalon};
+      font-size:${px(D.sizeNumTalon)}px;font-weight:900;color:${D.colorTalon};
       letter-spacing:2px;background:#fff;margin-bottom:14px;">
       ${num}
     </div>
 
     <!-- Campo NOMBRE: -->
-    <div style="font-size:${D.sizeNombre}px;font-weight:700;color:#000;
+    <div style="font-size:${px(D.sizeNombre)}px;font-weight:700;color:#000;
       align-self:flex-start;margin-left:2px;margin-top:6px;">
-      NOMBRE: ${isOrig ? '' : `<span style="font-weight:500;font-size:${Math.max(8, D.sizeNombre - 3)}px;">(copia)</span>`}
+      NOMBRE: ${isOrig ? '' : `<span style="font-weight:500;font-size:${px(Math.max(6, D.sizeNombre - 2))}px;">(copia)</span>`}
     </div>
-    <div style="font-size:${Math.max(8, D.sizeNombre - 3)}px;color:#666;align-self:flex-start;
+    <div style="font-size:${px(Math.max(6, D.sizeNombre - 2))}px;color:#666;align-self:flex-start;
       margin-left:2px;margin-top:auto;margin-bottom:4px;letter-spacing:.5px;">
       Tel:
     </div>
@@ -219,7 +265,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
     <!-- Texto vertical "GRAN RIFA" -->
     <div style="position:absolute;right:-2px;top:50%;
       transform:translateY(-50%) rotate(-90deg);transform-origin:center;
-      font-size:${D.sizeBrand}px;font-weight:900;color:${D.colorTalon};
+      font-size:${px(D.sizeBrand)}px;font-weight:900;color:${D.colorTalon};
       letter-spacing:4px;white-space:nowrap;font-style:italic;">
       ${D.brandText}
     </div>
@@ -229,7 +275,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   <div style="width:22px;flex-shrink:0;border-right:1px solid ${D.colorBorde};
     display:flex;align-items:center;justify-content:center;position:relative;">
     <div style="transform:rotate(-90deg);white-space:nowrap;
-      font-size:${D.sizeTalonText}px;font-weight:800;color:#000;letter-spacing:2px;">
+      font-size:${px(D.sizeTalonText)}px;font-weight:800;color:#000;letter-spacing:2px;">
       ${D.talonText}
     </div>
   </div>
@@ -241,13 +287,13 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div style="flex:1;">
         <!-- Slogan rojo -->
-        <div style="font-size:${D.sizeSlogan}px;font-weight:900;color:${D.colorSlogan};
+        <div style="font-size:${px(D.sizeSlogan)}px;font-weight:900;color:${D.colorSlogan};
           letter-spacing:1px;text-transform:uppercase;line-height:1;
           -webkit-text-stroke:.5px ${D.colorBorde};text-shadow:1px 1px 0 rgba(0,0,0,.15);">
           ${D.sloganTop}
         </div>
         <!-- Fecha azul -->
-        <div style="font-size:${D.sizeFecha}px;font-weight:800;color:${D.colorFecha};
+        <div style="font-size:${px(D.sizeFecha)}px;font-weight:800;color:${D.colorFecha};
           font-style:italic;letter-spacing:.5px;margin-top:2px;line-height:1;">
           ${D.fechaPrefix} ${fecha}
         </div>
@@ -255,7 +301,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
       <!-- Cuadro número arriba derecha -->
       <div style="border:2px solid ${D.colorBorde};padding:6px 14px;
-        font-size:${D.sizeNumDer}px;font-weight:900;color:${D.colorTalon};
+        font-size:${px(D.sizeNumDer)}px;font-weight:900;color:${D.colorTalon};
         letter-spacing:2px;background:#fff;margin-left:8px;flex-shrink:0;">
         ${num}
       </div>
@@ -269,7 +315,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
         padding-left:10px;">
 
         <!-- "Premio" en cursiva -->
-        <div style="font-size:${D.sizePremioLabel}px;font-weight:800;font-style:italic;
+        <div style="font-size:${px(D.sizePremioLabel)}px;font-weight:800;font-style:italic;
           color:${D.colorPremio1};letter-spacing:.5px;line-height:1;
           text-shadow:2px 2px 0 ${D.colorBorde};margin-left:30px;">
           ${D.premioLabel}
@@ -277,7 +323,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
         <!-- Número GIGANTE doble color (amarillo arriba, azul abajo) -->
         <div style="font-family:'Arial Black','Poppins',sans-serif;font-weight:900;
-          font-size:${D.sizePremioNum}px;line-height:.85;letter-spacing:2px;
+          font-size:${px(D.sizePremioNum)}px;line-height:.85;letter-spacing:2px;
           background:linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2} 52%,${D.colorPremio2} 100%);
           -webkit-background-clip:text;background-clip:text;
           -webkit-text-fill-color:transparent;
@@ -289,7 +335,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
         <!-- Texto del premio (Dólares, etc) -->
         ${premioTxt ? `
         <div style="font-family:'Brush Script MT','Lucida Handwriting',cursive;
-          font-size:${D.sizePremioTxt}px;font-weight:700;color:${D.colorDolares};font-style:italic;
+          font-size:${px(D.sizePremioTxt)}px;font-weight:700;color:${D.colorDolares};font-style:italic;
           line-height:1;margin-top:-12px;margin-left:auto;margin-right:80px;
           text-shadow:2px 2px 0 ${D.colorBorde}40;">
           ${premioTxt}
@@ -298,12 +344,12 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
         <!-- Sub-premio en pesos -->
         ${subPremio ? `
         <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;margin-left:10px;">
-          <span style="font-size:${D.sizeSubPremio}px;font-weight:900;color:${D.colorSubPremio};
+          <span style="font-size:${px(D.sizeSubPremio)}px;font-weight:900;color:${D.colorSubPremio};
             font-style:italic;text-shadow:1.5px 1.5px 0 ${D.colorBorde}40;">
             ${D.subPremioPrefix} ${subPremio}
           </span>
           <span style="font-family:'Brush Script MT','Lucida Handwriting',cursive;
-            font-size:${D.sizeSubMoneda}px;font-weight:700;color:${D.colorPesosSub};font-style:italic;
+            font-size:${px(D.sizeSubMoneda)}px;font-weight:700;color:${D.colorPesosSub};font-style:italic;
             text-shadow:1px 1px 0 ${D.colorBorde}40;">
             ${D.subPremioMoneda}
           </span>
@@ -316,13 +362,13 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
         <!-- Caduca vertical (lee de abajo hacia arriba) -->
         <div style="writing-mode:vertical-rl;
-          font-size:${D.sizeCaduca}px;font-weight:700;color:${D.colorCaduca};
+          font-size:${px(D.sizeCaduca)}px;font-weight:700;color:${D.colorCaduca};
           letter-spacing:.5px;align-self:flex-end;font-style:italic;">
           ${D.caducaText}
         </div>
 
         <!-- Lotería + hora -->
-        <div style="text-align:right;font-size:${D.sizeLoteria}px;font-weight:700;
+        <div style="text-align:right;font-size:${px(D.sizeLoteria)}px;font-weight:700;
           color:${D.colorLoteria};line-height:1.15;font-style:italic;
           margin-top:auto;">
           ${loteriaCompleta}
@@ -335,24 +381,24 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
       margin-top:6px;padding-top:6px;border-top:1px dashed ${D.colorBorde}40;">
 
       <!-- Frase motivacional -->
-      <div style="flex:1;font-size:${D.sizeMotivac}px;font-weight:600;color:${D.colorMotivac};
+      <div style="flex:1;font-size:${px(D.sizeMotivac)}px;font-weight:600;color:${D.colorMotivac};
         font-style:italic;line-height:1.2;padding-right:10px;max-width:55%;">
         ${D.motivacionalText}
       </div>
 
       <!-- BOLETO valor -->
       <div style="text-align:right;line-height:1;">
-        <div style="font-size:${D.sizeBoleto}px;font-weight:900;color:${D.colorBoleto};
+        <div style="font-size:${px(D.sizeBoleto)}px;font-weight:900;color:${D.colorBoleto};
           letter-spacing:1px;text-shadow:1.5px 1.5px 0 ${D.colorBorde}40;">
           ${D.boletoLabel}
         </div>
         <div style="display:flex;align-items:baseline;gap:6px;justify-content:flex-end;">
-          <span style="font-size:${D.sizeValor}px;font-weight:900;color:${D.colorValor};
+          <span style="font-size:${px(D.sizeValor)}px;font-weight:900;color:${D.colorValor};
             font-style:italic;line-height:1;
             text-shadow:2px 2px 0 ${D.colorBorde}40;">
             ${valorTxt}
           </span>
-          <span style="font-size:${D.sizePesos}px;font-weight:900;color:${D.colorPesos};
+          <span style="font-size:${px(D.sizePesos)}px;font-weight:900;color:${D.colorPesos};
             letter-spacing:.5px;text-shadow:1.5px 1.5px 0 ${D.colorBorde}40;">
             ${D.valorSufijo}
           </span>
@@ -362,7 +408,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
     <!-- Footer pequeño -->
     ${D.footerText ? `
-    <div style="font-size:${D.sizeFooter}px;color:#999;text-align:center;margin-top:4px;
+    <div style="font-size:${px(D.sizeFooter)}px;color:#999;text-align:center;margin-top:4px;
       letter-spacing:.5px;">
       ${D.footerText}${nom ? ` · ${nom}` : ''}${vendedor ? ` · Vend: ${vendedor}` : ''}
     </div>` : ''}
@@ -380,7 +426,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
   const premioRaw = rifaData?.premio || '';
   const { numero: premioNum, texto: premioTxt } = splitPremio(premioRaw);
   const fecha     = fmtFechaLoteria(rifaData?.fecha_sorteo);
-  const hora      = extraerHora(rifaData?.fecha_sorteo, D.horaSort);
+  const hora      = extraerHora(rifaData?.fecha_sorteo, D.horaSort, rifaData?.hora_sorteo);
   const valorTxt  = fmtValorBoleto(rifaData?.precio || 0);
   const subPremio = rifaData?.premio_secundario ? fmtMilesPunto(rifaData.premio_secundario) : '';
   const nom       = comprador?.nombre || '';
@@ -408,26 +454,26 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
       }}>
         <div style={{
           border:`2px solid ${STROKE}`, padding:'6px 12px',
-          fontSize:D.sizeNumTalon, fontWeight:900, color:D.colorTalon,
+          fontSize:px(D.sizeNumTalon), fontWeight:900, color:D.colorTalon,
           letterSpacing:2, background:'#fff', marginBottom:14,
         }}>{num}</div>
 
         <div style={{
-          fontSize:D.sizeNombre, fontWeight:700, color:'#000',
+          fontSize:px(D.sizeNombre), fontWeight:700, color:'#000',
           alignSelf:'flex-start', marginLeft:2, marginTop:6,
         }}>NOMBRE:</div>
 
         <div style={{ flex:1, width:'100%' }}></div>
 
         <div style={{
-          fontSize:Math.max(8, D.sizeNombre - 3), color:'#666', alignSelf:'flex-start',
+          fontSize:px(Math.max(6, D.sizeNombre - 2)), color:'#666', alignSelf:'flex-start',
           marginLeft:2, marginBottom:4, letterSpacing:.5,
         }}>Tel:</div>
 
         <div style={{
           position:'absolute', right:-2, top:'50%',
           transform:'translateY(-50%) rotate(-90deg)', transformOrigin:'center',
-          fontSize:D.sizeBrand, fontWeight:900, color:D.colorTalon,
+          fontSize:px(D.sizeBrand), fontWeight:900, color:D.colorTalon,
           letterSpacing:4, whiteSpace:'nowrap', fontStyle:'italic',
         }}>{D.brandText}</div>
       </div>
@@ -439,7 +485,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
       }}>
         <div style={{
           transform:'rotate(-90deg)', whiteSpace:'nowrap',
-          fontSize:D.sizeTalonText, fontWeight:800, color:'#000', letterSpacing:2,
+          fontSize:px(D.sizeTalonText), fontWeight:800, color:'#000', letterSpacing:2,
         }}>{D.talonText}</div>
       </div>
 
@@ -453,19 +499,19 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
           <div style={{ flex:1 }}>
             <div style={{
-              fontSize:D.sizeSlogan, fontWeight:900, color:D.colorSlogan,
+              fontSize:px(D.sizeSlogan), fontWeight:900, color:D.colorSlogan,
               letterSpacing:1, textTransform:'uppercase', lineHeight:1,
               WebkitTextStroke:`.5px ${STROKE}`,
               textShadow:'1px 1px 0 rgba(0,0,0,.15)',
             }}>{D.sloganTop}</div>
             <div style={{
-              fontSize:D.sizeFecha, fontWeight:800, color:D.colorFecha,
+              fontSize:px(D.sizeFecha), fontWeight:800, color:D.colorFecha,
               fontStyle:'italic', letterSpacing:.5, marginTop:2, lineHeight:1,
             }}>{D.fechaPrefix} {fecha}</div>
           </div>
           <div style={{
             border:`2px solid ${STROKE}`, padding:'6px 14px',
-            fontSize:D.sizeNumDer, fontWeight:900, color:D.colorTalon,
+            fontSize:px(D.sizeNumDer), fontWeight:900, color:D.colorTalon,
             letterSpacing:2, background:'#fff', marginLeft:8, flexShrink:0,
           }}>{num}</div>
         </div>
@@ -478,14 +524,14 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
             alignItems:'flex-start', paddingLeft:10,
           }}>
             <div style={{
-              fontSize:D.sizePremioLabel, fontWeight:800, fontStyle:'italic',
+              fontSize:px(D.sizePremioLabel), fontWeight:800, fontStyle:'italic',
               color:D.colorPremio1, letterSpacing:.5, lineHeight:1,
               textShadow:`2px 2px 0 ${STROKE}`, marginLeft:30,
             }}>{D.premioLabel}</div>
 
             <div style={{
               fontFamily:"'Arial Black','Poppins',sans-serif", fontWeight:900,
-              fontSize:D.sizePremioNum, lineHeight:.85, letterSpacing:2,
+              fontSize:px(D.sizePremioNum), lineHeight:.85, letterSpacing:2,
               background:`linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2} 52%,${D.colorPremio2} 100%)`,
               WebkitBackgroundClip:'text', backgroundClip:'text',
               WebkitTextFillColor:'transparent',
@@ -496,7 +542,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
             {premioTxt && (
               <div style={{
                 fontFamily:"'Brush Script MT','Lucida Handwriting',cursive",
-                fontSize:D.sizePremioTxt, fontWeight:700, color:D.colorDolares,
+                fontSize:px(D.sizePremioTxt), fontWeight:700, color:D.colorDolares,
                 fontStyle:'italic', lineHeight:1, marginTop:-12,
                 marginLeft:'auto', marginRight:80,
                 textShadow:`2px 2px 0 ${STROKE}40`,
@@ -509,12 +555,12 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
                 marginTop:6, marginLeft:10,
               }}>
                 <span style={{
-                  fontSize:D.sizeSubPremio, fontWeight:900, color:D.colorSubPremio,
+                  fontSize:px(D.sizeSubPremio), fontWeight:900, color:D.colorSubPremio,
                   fontStyle:'italic', textShadow:`1.5px 1.5px 0 ${STROKE}40`,
                 }}>{D.subPremioPrefix} {subPremio}</span>
                 <span style={{
                   fontFamily:"'Brush Script MT','Lucida Handwriting',cursive",
-                  fontSize:D.sizeSubMoneda, fontWeight:700, color:D.colorPesosSub,
+                  fontSize:px(D.sizeSubMoneda), fontWeight:700, color:D.colorPesosSub,
                   fontStyle:'italic', textShadow:`1px 1px 0 ${STROKE}40`,
                 }}>{D.subPremioMoneda}</span>
               </div>
@@ -529,12 +575,12 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
           }}>
             <div style={{
               writingMode:'vertical-rl',
-              fontSize:D.sizeCaduca, fontWeight:700, color:D.colorCaduca,
+              fontSize:px(D.sizeCaduca), fontWeight:700, color:D.colorCaduca,
               letterSpacing:.5, alignSelf:'flex-end', fontStyle:'italic',
             }}>{D.caducaText}</div>
 
             <div style={{
-              textAlign:'right', fontSize:D.sizeLoteria, fontWeight:700,
+              textAlign:'right', fontSize:px(D.sizeLoteria), fontWeight:700,
               color:D.colorLoteria, lineHeight:1.15, fontStyle:'italic',
               marginTop:'auto',
             }}>{loteriaCompleta}</div>
@@ -547,23 +593,23 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
           marginTop:6, paddingTop:6, borderTop:`1px dashed ${STROKE}40`,
         }}>
           <div style={{
-            flex:1, fontSize:D.sizeMotivac, fontWeight:600, color:D.colorMotivac,
+            flex:1, fontSize:px(D.sizeMotivac), fontWeight:600, color:D.colorMotivac,
             fontStyle:'italic', lineHeight:1.2, paddingRight:10, maxWidth:'55%',
           }}>{D.motivacionalText}</div>
 
           <div style={{ textAlign:'right', lineHeight:1 }}>
             <div style={{
-              fontSize:D.sizeBoleto, fontWeight:900, color:D.colorBoleto,
+              fontSize:px(D.sizeBoleto), fontWeight:900, color:D.colorBoleto,
               letterSpacing:1, textShadow:`1.5px 1.5px 0 ${STROKE}40`,
             }}>{D.boletoLabel}</div>
             <div style={{ display:'flex', alignItems:'baseline', gap:6, justifyContent:'flex-end' }}>
               <span style={{
-                fontSize:D.sizeValor, fontWeight:900, color:D.colorValor,
+                fontSize:px(D.sizeValor), fontWeight:900, color:D.colorValor,
                 fontStyle:'italic', lineHeight:1,
                 textShadow:`2px 2px 0 ${STROKE}40`,
               }}>{valorTxt}</span>
               <span style={{
-                fontSize:D.sizePesos, fontWeight:900, color:D.colorPesos,
+                fontSize:px(D.sizePesos), fontWeight:900, color:D.colorPesos,
                 letterSpacing:.5, textShadow:`1.5px 1.5px 0 ${STROKE}40`,
               }}>{D.valorSufijo}</span>
             </div>
@@ -572,7 +618,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
 
         {D.footerText && (
           <div style={{
-            fontSize:D.sizeFooter, color:'#999', textAlign:'center',
+            fontSize:px(D.sizeFooter), color:'#999', textAlign:'center',
             marginTop:4, letterSpacing:.5,
           }}>
             {D.footerText}
