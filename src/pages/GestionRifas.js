@@ -54,11 +54,10 @@ const fileToBase64 = file => new Promise((res, rej) => {
 const parseFecha = (f) => {
   if (!f) return null;
   const s = String(f).replace(' ', 'T');
-  // Si es solo fecha (YYYY-MM-DD) la construimos con hora local para evitar
-  // que JavaScript la trate como UTC medianoche y la tire al día anterior
+  // Si viene como "YYYY-MM-DD" puro → construir en hora local
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, m, d] = s.split('-').map(Number);
-    return new Date(y, m - 1, d, 12, 0, 0); // mediodía local, sin riesgo de desfase
+    return new Date(y, m - 1, d, 12, 0, 0); // mediodía local, sin riesgo
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
