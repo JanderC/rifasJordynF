@@ -15,6 +15,7 @@ import NumeroGrid        from './pages/NumeroGrid';
 import Historial         from './pages/Historial';
 import Caja              from './pages/Caja';
 import DisenoTicket         from './pages/DisenoTicket';
+import Plantillas            from './pages/Plantillas';
 import GeneradorPDFTickets  from './pages/GeneradorPDFTickets';
 import ClientePublico       from './pages/ClientePublico';
 import GestionReservas   from './pages/GestionReservas';
@@ -60,7 +61,14 @@ function AppRoutes() {
 
       {/* PÚBLICA — sin autenticación */}
       <Route path="/comprar" element={<ClientePublico />} />
-      <Route path="/diseno-ticket" element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
+
+      {/* ── DISEÑO DE TICKETS (sistema de plantillas) ── */}
+      <Route path="/plantillas"        element={<PrivateRoute rol="dueno"><Plantillas /></PrivateRoute>} />
+      <Route path="/plantillas/nueva"  element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
+      <Route path="/plantillas/:id"    element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
+
+      {/* Compatibilidad: /diseno-ticket redirige a /plantillas */}
+      <Route path="/diseno-ticket" element={<Navigate to="/plantillas" replace />} />
 
       {/* ── VENDEDOR ── */}
       <Route path="/vender"        element={<PrivateRoute><BuscarNumero /></PrivateRoute>} />
