@@ -38,6 +38,7 @@ const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   premio_secundario: '', premio_secundario_display: '',
   fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
+  ticket_template_id: null,
   ofertas: [],
   categoria_seleccionada_id: null,
 };
@@ -1317,7 +1318,16 @@ export default function GestionRifas() {
   // Vendedores cargados desde la categoría seleccionada
   const [vendedoresCat,      setVendedoresCat]      = useState([]);
   const [selectedVendorIds,  setSelectedVendorIds]  = useState([]);
+  // Plantillas de ticket disponibles
+  const [plantillas, setPlantillas] = useState([]);
   const fileRef = useRef();
+
+  // Cargar plantillas al montar
+  useEffect(() => {
+    API.get('/ticket-templates')
+      .then(r => setPlantillas(r.data || []))
+      .catch(() => { /* silencioso: si no existe la tabla aún, no rompe */ });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -1372,6 +1382,7 @@ export default function GestionRifas() {
       loteria_ref:             r.loteria_ref  || '',
       tipo:                    r.tipo         || 'sencilla',
       imagen_base64:           r.imagen_url   || '',
+      ticket_template_id:      r.ticket_template_id || null,
       ofertas:                 Array.isArray(r.ofertas) ? r.ofertas : [],
       categoria_seleccionada_id: null,
     });
@@ -1403,6 +1414,7 @@ export default function GestionRifas() {
         loteria_ref:           form.loteria_ref  || null,
         tipo:                  form.tipo,
         imagen_url:            form.imagen_base64 || null,
+        ticket_template_id:    form.ticket_template_id || null,
         ofertas:               form.ofertas || [],
         vendedores_categorias: vendedoresSeleccionados,
         categoria_id:          form.categoria_seleccionada_id || null,
@@ -1805,6 +1817,56 @@ export default function GestionRifas() {
                     </optgroup>
                   ))}
                 </select>
+              </div>
+
+              {/* ══ PLANTILLA DEL TICKET ══ */}
+              <div className="col-12">
+                <div style={{
+                  background:'rgba(10,191,188,.05)',
+                  border:'1px solid rgba(10,191,188,.2)',
+                  borderRadius:10, padding:'14px 16px',
+                }}>
+                  <label className="jd-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span>
+                      <i className="bi bi-ticket-perforated-fill me-1" style={{ color:'var(--jordyn-primary)' }}></i>
+                      PLANTILLA DEL TICKET
+                    </span>
+                    <a href="/plantillas" target="_blank" rel="noopener noreferrer"
+                      style={{
+                        fontSize:'.65rem', color:'var(--jordyn-primary)',
+                        textDecoration:'none', fontWeight:700, letterSpacing:0,
+                        textTransform:'none',
+                      }}>
+                      <i className="bi bi-pencil-square me-1"></i>Gestionar plantillas
+                    </a>
+                  </label>
+
+                  {plantillas.length === 0 ? (
+                    <div style={{ fontSize:'.78rem', color:'var(--jordyn-muted)', padding:'8px 0' }}>
+                      <i className="bi bi-info-circle me-1"></i>
+                      No hay plantillas todavía. Crea una desde <a href="/plantillas" target="_blank" rel="noopener noreferrer" style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>Plantillas</a> y vuelve aquí para asignarla.
+                    </div>
+                  ) : (
+                    <>
+                      <select className="jd-select"
+                        value={form.ticket_template_id || ''}
+                        onChange={e => setForm(p => ({ ...p, ticket_template_id: e.target.value ? Number(e.target.value) : null }))}>
+                        <option value="">— Usar plantilla por defecto —</option>
+                        {plantillas.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre}{p.is_default ? ' ⭐ (default)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize:'.65rem', color:'var(--jordyn-muted)', marginTop:6 }}>
+                        {form.ticket_template_id
+                          ? <>Esta rifa usará: <b style={{ color:'var(--jordyn-text)' }}>{plantillas.find(p => p.id === form.ticket_template_id)?.nombre}</b></>
+                          : <>Si no eliges una, se usa la plantilla marcada como ⭐ default.</>
+                        }
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Descripción */}

@@ -188,21 +188,81 @@ const splitPremio = (premio) => {
 const mkSerial = (numero) =>
   `JDY-${numero || '000'}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
-// ── Hook: carga diseño desde BD ───────────────────────────
+// ── Hook: carga diseño global (compat con ticketDesign.js antiguo) ──
 export function useTicketDesign() {
   const [design,  setDesign]  = useState(DEFAULT_DESIGN);
   const [loading, setLoading] = useState(true);
 
   const reload = () => {
     setLoading(true);
-    API.get('/ticket-design')
-      .then(r => { if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(r.data.design) }); })
-      .catch(() => {})
+    // Intentamos primero la nueva tabla de plantillas (plantilla default)
+    API.get('/ticket-templates')
+      .then(r => {
+        const def = (r.data || []).find(t => t.is_default);
+        if (def?.design) {
+          setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(def.design) });
+        } else {
+          // Fallback: ticket_design_global de config_sistema
+          return API.get('/ticket-design').then(r2 => {
+            if (r2.data?.design) setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(r2.data.design) });
+          });
+        }
+      })
+      .catch(() => {
+        // Si el endpoint de plantillas no existe aún, intentamos el viejo
+        API.get('/ticket-design')
+          .then(r => { if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(r.data.design) }); })
+          .catch(() => {});
+      })
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { reload(); }, []);
   return { design, loading, reload };
+}
+
+// ── Hook: carga UNA plantilla específica por ID ──────────
+// Útil cuando una rifa tiene `ticket_template_id` asignado.
+// Si id es null/undefined → cae al diseño default global.
+export function useTicketTemplate(templateId) {
+  const [design,  setDesign]  = useState(DEFAULT_DESIGN);
+  const [loading, setLoading] = useState(true);
+  const [nombre,  setNombre]  = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    const cargarDefault = () => API.get('/ticket-templates')
+      .then(r => {
+        if (cancelled) return;
+        const def = (r.data || []).find(t => t.is_default);
+        if (def?.design) {
+          setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(def.design) });
+          setNombre(def.nombre);
+        }
+      })
+      .catch(() => {});
+
+    if (templateId) {
+      API.get(`/ticket-templates/${templateId}`)
+        .then(r => {
+          if (cancelled) return;
+          if (r.data?.design) {
+            setDesign({ ...DEFAULT_DESIGN, ...normalizaDesign(r.data.design) });
+            setNombre(r.data.nombre);
+          }
+        })
+        .catch(() => cargarDefault())
+        .finally(() => { if (!cancelled) setLoading(false); });
+    } else {
+      cargarDefault().finally(() => { if (!cancelled) setLoading(false); });
+    }
+
+    return () => { cancelled = true; };
+  }, [templateId]);
+
+  return { design, loading, nombre };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -698,14 +758,25 @@ export async function generarImagenTicket({ r, numero, comprador, vendedor, desi
 
 // ─────────────────────────────────────────────────────────────
 //   Ticket — default export
+//   Resuelve qué diseño usar según prioridad:
+//     1. rifa.ticket_design (override por boleto, si existe)
+//     2. rifa.ticket_template_id (plantilla asignada a la rifa)
+//     3. plantilla default global
 // ─────────────────────────────────────────────────────────────
 export default function Ticket({ rifa, numero, comprador, vendedor, onClose }) {
-  const rifasArr   = Array.isArray(rifa) ? rifa.filter(r => r.disponible !== false) : rifa ? [rifa] : [];
-  const { design } = useTicketDesign();
+  const rifasArr = Array.isArray(rifa) ? rifa.filter(r => r.disponible !== false) : rifa ? [rifa] : [];
 
-  const efectivo = rifasArr[0]?.ticket_design
-    ? { ...DEFAULT_DESIGN, ...rifasArr[0].ticket_design }
-    : design;
+  // Prioridad para elegir templateId
+  const primeraRifa = rifasArr[0];
+  const templateId  = primeraRifa?.ticket_template_id || null;
+
+  const { design: designGlobal } = useTicketDesign();
+  const { design: designTpl }    = useTicketTemplate(templateId);
+
+  // override directo en la rifa > plantilla por rifa > global
+  const efectivo = primeraRifa?.ticket_design
+    ? { ...DEFAULT_DESIGN, ...primeraRifa.ticket_design }
+    : (templateId ? designTpl : designGlobal);
 
   return (
     <div>
