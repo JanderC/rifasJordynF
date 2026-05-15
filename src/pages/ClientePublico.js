@@ -57,17 +57,17 @@ const fmtF = f => {
   });
 };
 
-const fmtHora = (hora) => {
-  if (!hora) return null;
-  const h = String(hora).trim();
-  if (!h || h === '00:00' || h === '00:00:00') return null;
-  const [hh, mm] = h.split(':').map(Number);
-  if (isNaN(hh) || isNaN(mm)) return null;
-  const d = new Date(2000, 0, 1, hh, mm, 0);
-  return d.toLocaleTimeString('es-CO', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
-};
+// const fmtHora = (hora) => {
+//   if (!hora) return null;
+//   const h = String(hora).trim();
+//   if (!h || h === '00:00' || h === '00:00:00') return null;
+//   const [hh, mm] = h.split(':').map(Number);
+//   if (isNaN(hh) || isNaN(mm)) return null;
+//   const d = new Date(2000, 0, 1, hh, mm, 0);
+//   return d.toLocaleTimeString('es-CO', {
+//     hour: '2-digit', minute: '2-digit', hour12: true,
+//   });
+// };
 
 /* ─── Códigos de país ─── */
 const PAISES = [
