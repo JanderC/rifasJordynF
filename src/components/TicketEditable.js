@@ -473,6 +473,7 @@ function ElementPanel({
   onUpdateDesign,    // (key, value)
   onUpdateCustom,    // (id, partialProps)
   onDeleteCustom,    // (id)
+  onHideBuiltin,     // (id) — oculta un built-in
   onClose,
 }) {
   if (!selection) return null;
@@ -768,8 +769,8 @@ function ElementPanel({
           ))}
         </div>
 
-        {/* Borrar (solo custom) */}
-        {isCustom && (
+        {/* Borrar custom / Ocultar built-in */}
+        {isCustom ? (
           <button
             onClick={() => onDeleteCustom(selection.id)}
             style={{
@@ -779,6 +780,18 @@ function ElementPanel({
               cursor: 'pointer', fontSize: 13, fontWeight: 700,
               fontFamily: 'inherit', marginTop: 4,
             }}>🗑 Eliminar este texto</button>
+        ) : (
+          <button
+            onClick={() => onHideBuiltin(selection.id)}
+            style={{
+              width: '100%', padding: '10px',
+              background: '#fff', color: '#d92626',
+              border: '1.5px solid #d92626', borderRadius: 6,
+              cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              fontFamily: 'inherit', marginTop: 4,
+            }}
+            title="Lo ocultas del ticket. Podrás restaurarlo desde la barra superior."
+          >🙈 Ocultar este texto</button>
         )}
       </div>
     </div>
@@ -871,6 +884,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
 
   const positions = baseDesign.positions || {};
   const customTexts = baseDesign.customTexts || [];
+  const hiddenFields = baseDesign.hiddenFields || [];
 
   // ── Defaults de la rifa ──
   const { numero: premioNumRifa, texto: premioTxtRifa } = splitPremio(r?.premio);
@@ -911,6 +925,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
   // selection = { kind: 'builtin'|'custom', id, data? }
   const [selection, setSelection] = useState(null);
   const [showPaletas, setShowPaletas] = useState(false);
+  const [showHiddenMenu, setShowHiddenMenu] = useState(false);
 
   // ── Recalcula selection.data cuando design cambia (para mantener el panel sincronizado) ──
   useEffect(() => {
@@ -985,6 +1000,23 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
     if (selection?.id === id) setSelection(null);
   };
 
+  // ── Ocultar built-in ──
+  const handleHideBuiltin = (id) => {
+    if (hiddenFields.includes(id)) return;
+    onUpdate('hiddenFields', [...hiddenFields, id]);
+    if (selection?.id === id) setSelection(null);
+  };
+
+  // ── Restaurar built-in oculto ──
+  const handleRestoreBuiltin = (id) => {
+    onUpdate('hiddenFields', hiddenFields.filter(f => f !== id));
+  };
+
+  // ── Restaurar TODOS los ocultos ──
+  const handleRestoreAll = () => {
+    onUpdate('hiddenFields', []);
+  };
+
   // ── Reset posiciones ──
   const handleResetPositions = () => {
     if (window.confirm('¿Restaurar las posiciones al diseño original? (los textos custom no se borran)')) {
@@ -1004,6 +1036,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
     if (e.target === e.currentTarget) {
       setSelection(null);
       setShowPaletas(false);
+      setShowHiddenMenu(false);
     }
   };
 
@@ -1030,24 +1063,27 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
 
   const STROKE = D.colorBorde;
 
-  // Helper para built-in
-  const F = (campo, value, onChangeKey, textStyle, opts = {}) => (
-    <DraggableEditable
-      key={campo}
-      id={campo}
-      position={getPos(positions, campo)}
-      rotation={getRotation(campo)}
-      onMove={handleMoveBuiltin}
-      value={value}
-      onChange={v => onUpdate(onChangeKey, v)}
-      textStyle={textStyle}
-      scale={ticketScale}
-      multiline={opts.multiline}
-      placeholder={opts.placeholder}
-      selected={selection?.id === campo}
-      onSelect={handleSelect}
-    />
-  );
+  // Helper para built-in (null si está oculto)
+  const F = (campo, value, onChangeKey, textStyle, opts = {}) => {
+    if (hiddenFields.includes(campo)) return null;
+    return (
+      <DraggableEditable
+        key={campo}
+        id={campo}
+        position={getPos(positions, campo)}
+        rotation={getRotation(campo)}
+        onMove={handleMoveBuiltin}
+        value={value}
+        onChange={v => onUpdate(onChangeKey, v)}
+        textStyle={textStyle}
+        scale={ticketScale}
+        multiline={opts.multiline}
+        placeholder={opts.placeholder}
+        selected={selection?.id === campo}
+        onSelect={handleSelect}
+      />
+    );
+  };
 
   return (
     <div style={{ width: '100%' }} ref={containerRef}>
@@ -1085,6 +1121,99 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 12 }} />
+
+        {/* Botón "Ocultos" con dropdown — solo si hay alguno */}
+        {hiddenFields.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowHiddenMenu(v => !v)}
+              style={{
+                padding: '7px 14px',
+                background: showHiddenMenu ? '#7c3aed' : '#fff',
+                color: showHiddenMenu ? '#fff' : '#7c3aed',
+                border: '1.5px solid #7c3aed', borderRadius: 6,
+                cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+              title="Elementos ocultos del ticket"
+            >
+              🙈 Ocultos
+              <span style={{
+                background: showHiddenMenu ? '#fff' : '#7c3aed',
+                color: showHiddenMenu ? '#7c3aed' : '#fff',
+                borderRadius: 10, padding: '1px 7px',
+                fontSize: 11, fontWeight: 800,
+                minWidth: 18, textAlign: 'center',
+              }}>{hiddenFields.length}</span>
+            </button>
+
+            {showHiddenMenu && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                width: 260,
+                background: '#fff',
+                border: '1px solid #e0e0e0',
+                borderRadius: 8,
+                boxShadow: '0 6px 24px rgba(0,0,0,.12)',
+                zIndex: 5000,
+                padding: 10,
+                fontFamily: 'system-ui, sans-serif',
+              }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', marginBottom: 8,
+                  paddingBottom: 8, borderBottom: '1px solid #eee',
+                }}>
+                  <strong style={{ fontSize: 12, color: '#333' }}>
+                    Restaurar elementos
+                  </strong>
+                  <button
+                    onClick={() => { handleRestoreAll(); setShowHiddenMenu(false); }}
+                    style={{
+                      background: 'transparent', border: 'none',
+                      color: '#0abfbc', cursor: 'pointer',
+                      fontSize: 11, fontWeight: 700,
+                      fontFamily: 'inherit', padding: 0,
+                    }}
+                    title="Restaurar todos">Restaurar todos</button>
+                </div>
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {hiddenFields.map(id => {
+                    const meta = FIELD_META[id];
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => handleRestoreBuiltin(id)}
+                        style={{
+                          display: 'flex', width: '100%',
+                          alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 10px',
+                          background: '#fff', border: '1px solid #eee',
+                          borderRadius: 5, marginBottom: 4,
+                          cursor: 'pointer', fontSize: 12,
+                          fontFamily: 'inherit', textAlign: 'left',
+                          color: '#333',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = '#f0fbfb';
+                          e.currentTarget.style.borderColor = '#0abfbc';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = '#fff';
+                          e.currentTarget.style.borderColor = '#eee';
+                        }}
+                      >
+                        <span>{meta?.label || id}</span>
+                        <span style={{ color: '#0abfbc', fontWeight: 700 }}>↶ Mostrar</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={() => { setShowPaletas(true); setSelection(null); }}
@@ -1313,6 +1442,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
               onUpdateDesign={onUpdate}
               onUpdateCustom={handleUpdateCustomProps}
               onDeleteCustom={handleDeleteCustom}
+              onHideBuiltin={handleHideBuiltin}
               onClose={() => setSelection(null)}
             />
           ) : (
