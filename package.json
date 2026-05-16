@@ -29,5 +29,8 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://rifasjordynb-production.up.railway.app"
+  "proxy": "https://rifasjordynb-production.up.railway.app",
+  "devDependencies": {
+    "eslint-plugin-react-hooks": "^7.1.1"
+  }
 }

@@ -922,7 +922,6 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
         setSelection(null); // se borró
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customTexts]);
 
   // ── Mover built-in ──
