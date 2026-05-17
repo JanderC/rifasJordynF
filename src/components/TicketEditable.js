@@ -448,12 +448,14 @@ function DraggableEditable({
       style={wrapperStyle}
     >
       <span style={{
+        // El hover usa backgroundColor (no shorthand) para no pisar
+        // el backgroundImage que pueda venir en textStyle (ej. gradiente del 500).
+        backgroundColor: hover && !dragging ? 'rgba(10,191,188,.06)' : 'transparent',
+        borderRadius: 2,
+        padding: '0 2px',
         ...textStyle,
         display: 'inline-block',
         opacity: isEmpty ? 0.45 : 1,
-        background: hover && !dragging ? 'rgba(10,191,188,.06)' : 'transparent',
-        borderRadius: 2,
-        padding: '0 2px',
         pointerEvents: 'none',
       }}>
         {value || placeholder}
@@ -1374,11 +1376,14 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
               fontFamily: "'Arial Black','Poppins',sans-serif",
               fontWeight: 900, fontSize: pxScaled(D.sizePremioNum),
               lineHeight: .85, letterSpacing: 2,
-              background: D.colorPremio1 === D.colorPremio2
-                ? D.colorPremio1
-                : `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2} 52%,${D.colorPremio2} 100%)`,
-              WebkitBackgroundClip: 'text', backgroundClip: 'text',
+              // Siempre usamos gradiente (con paradas iguales si es sólido).
+              // Si pusiéramos solo un color plano, algunos navegadores no aplican
+              // backgroundClip:text y el número queda hueco.
+              backgroundImage: `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2 || D.colorPremio1} 52%,${D.colorPremio2 || D.colorPremio1} 100%)`,
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
+              color: 'transparent',
               WebkitTextStroke: `1px ${D.colorPremioStroke || STROKE}`,
               filter: `drop-shadow(3px 3px 0 ${STROKE}30)`,
             })}
