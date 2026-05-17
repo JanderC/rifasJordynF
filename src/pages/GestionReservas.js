@@ -11,6 +11,7 @@ import { toast } from 'react-toastify';
 import { TicketPreview, generarImagenTicket } from '../components/Ticket';
 import { fmtFecha, fmtTimestamp } from '../utils/dates';
 import { useAuth } from '../context/AuthContext';
+import VentaRapidaModal from './VentaRapidaModal';
 
 const COP = n =>
   new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n||0);
@@ -366,6 +367,7 @@ export default function GestionReservas() {
   const [selR,     setSelR]     = useState(null);
   const [selHerm,  setSelHerm]  = useState([]);
   const [tasas,    setTasas]    = useState({});
+  const [ventaRapidaOpen, setVentaRapidaOpen] = useState(false);
 
   // Cargar tasas para conversión
   useEffect(() => {
@@ -575,6 +577,53 @@ export default function GestionReservas() {
           tasas={tasas}
         />
       )}
+
+      {/* ═══ Botón flotante: + Vender rápido ═══ */}
+      {user?.rol === 'dueno' && (
+        <button
+          onClick={() => setVentaRapidaOpen(true)}
+          title="Crear venta directa por número"
+          style={{
+            position: 'fixed',
+            bottom: 28,
+            right: 28,
+            zIndex: 999,
+            background: 'linear-gradient(135deg, #0abfbc 0%, #089a98 100%)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 50,
+            padding: '14px 22px',
+            fontSize: '.92rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(10,191,188,.45), 0 2px 6px rgba(0,0,0,.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontFamily: 'inherit',
+            transition: 'transform .15s, box-shadow .15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 8px 24px rgba(10,191,188,.55), 0 3px 8px rgba(0,0,0,.18)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = '';
+            e.currentTarget.style.boxShadow = '0 6px 20px rgba(10,191,188,.45), 0 2px 6px rgba(0,0,0,.15)';
+          }}
+        >
+          <span style={{ fontSize: 18 }}>⚡</span>
+          <span>Vender rápido</span>
+        </button>
+      )}
+
+      {/* Modal de venta rápida */}
+      <VentaRapidaModal
+        open={ventaRapidaOpen}
+        onClose={() => setVentaRapidaOpen(false)}
+        onCreada={() => { load(); loadTodas(); }}
+        tasas={tasas}
+      />
     </Layout>
   );
 }
