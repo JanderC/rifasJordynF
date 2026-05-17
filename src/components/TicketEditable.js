@@ -302,6 +302,7 @@ function DraggableEditable({
   placeholder = '(click)',
   selected = false,
   onSelect,
+  printMode = false,
 }) {
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState(value || '');
@@ -392,21 +393,37 @@ function DraggableEditable({
     top: position.y,
     transform: rotation ? `rotate(${rotation}deg)` : 'none',
     transformOrigin: 'left top',
-    cursor: dragging ? 'grabbing' : (editing ? 'text' : 'grab'),
+    cursor: printMode ? 'default' : (dragging ? 'grabbing' : (editing ? 'text' : 'grab')),
     zIndex: dragging ? 1000 : (selected ? 100 : (hover ? 10 : 1)),
     userSelect: 'none',
     touchAction: 'none',
     transition: dragging ? 'none' : 'box-shadow .15s, outline .12s',
-    outline: editing || dragging || selected
-      ? '2px solid #0abfbc'
-      : hover
-        ? '1px dashed rgba(10,191,188,.85)'
-        : 'none',
+    outline: printMode ? 'none' : (
+      editing || dragging || selected
+        ? '2px solid #0abfbc'
+        : hover
+          ? '1px dashed rgba(10,191,188,.85)'
+          : 'none'
+    ),
     outlineOffset: 3,
     borderRadius: 3,
     boxShadow: dragging ? '0 8px 20px rgba(10,191,188,.35)' : 'none',
     whiteSpace: 'nowrap',
   };
+
+  // En printMode rendereamos un span estático, sin handlers ni input
+  if (printMode) {
+    return (
+      <div style={wrapperStyle}>
+        <span style={{
+          ...textStyle,
+          display: 'inline-block',
+        }}>
+          {value || ''}
+        </span>
+      </div>
+    );
+  }
 
   if (editing) {
     const Comp = multiline ? 'textarea' : 'input';
@@ -904,7 +921,9 @@ function PaletasPanel({ design, onApply, onClose }) {
 /* ════════════════════════════════════════════════════════════
    <TicketEditable>
 ═════════════════════════════════════════════════════════════ */
-export default function TicketEditable({ r, numero, design, onUpdate }) {
+export default function TicketEditable({ r, numero, design, onUpdate, printMode = false }) {
+  // En printMode, onUpdate puede no llegar — uso noop
+  if (!onUpdate) onUpdate = () => {};
   // Aplica factor global a los tamaños si está activo
   const globalSizeFactor = design?.globalSizeFactor || 1.0;
   const baseDesign = { ...DEFAULT_DESIGN, ...(design || {}) };
@@ -1118,6 +1137,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
         placeholder={opts.placeholder}
         selected={selection?.id === campo}
         onSelect={handleSelect}
+        printMode={printMode}
       />
     );
   };
@@ -1125,8 +1145,8 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
   return (
     <div style={{ width: '100%' }} ref={containerRef}>
 
-      {/* ═══ Barra superior: Tamaño global + Paletas + Agregar + Reset ═══ */}
-      <div style={{
+      {/* ═══ Barra superior (oculta en printMode) ═══ */}
+      {!printMode && <div style={{
         display: 'flex',
         gap: 10,
         flexWrap: 'wrap',
@@ -1280,7 +1300,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
             cursor: 'pointer', fontSize: 12, fontWeight: 600,
             fontFamily: 'inherit',
           }}>↺ Reset posiciones</button>
-      </div>
+      </div>}
 
       {/* ═══ Layout principal: ticket + panel ═══ */}
       <div style={{
@@ -1464,13 +1484,14 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
                 scale={ticketScale}
                 selected={selection?.id === t.id}
                 onSelect={handleSelect}
+                printMode={printMode}
               />
             ))}
           </div>
         </div>
 
-        {/* ── Panel lateral ── */}
-        <div style={{ flex: panelBelow ? 'none' : '0 0 auto', width: panelBelow ? '100%' : PANEL_W }}>
+        {/* ── Panel lateral (oculto en printMode) ── */}
+        {!printMode && <div style={{ flex: panelBelow ? 'none' : '0 0 auto', width: panelBelow ? '100%' : PANEL_W }}>
           {showPaletas ? (
             <PaletasPanel
               design={baseDesign}
@@ -1508,7 +1529,7 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
               </p>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

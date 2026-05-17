@@ -13,6 +13,8 @@ import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 import { TicketPreview, printTickets } from '../components/Ticket';
+import TicketEditable from '../components/TicketEditable';
+import { DEFAULT_DESIGN } from '../components/Ticket';
 import { useAuth } from '../context/AuthContext';
 
 /* ─── Loterías ─── */
@@ -1583,7 +1585,7 @@ export default function GestionRifas() {
           <div className="d-flex flex-wrap gap-2">
             <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
             <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Boletería</button>
-            <a href={`/diseno-ticket?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
+            <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
             <button onClick={() => handleToggle(r)} style={{ background: 'transparent', border: `1.5px solid ${r.activa ? 'rgba(230,57,70,0.4)' : 'rgba(6,214,160,0.4)'}`, color: r.activa ? 'var(--jordyn-red)' : 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', fontFamily: 'var(--jordyn-font)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>{r.activa ? 'Desactivar' : 'Activar'}</button>
             <button onClick={() => handleArchivar(r)} title="Archivar" style={{ background: 'transparent', border: '1.5px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', marginLeft: 'auto' }}><i className="bi bi-archive"></i></button>
             <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }} title="Eliminar rifa"><i className="bi bi-trash3"></i></button>
@@ -1847,24 +1849,11 @@ export default function GestionRifas() {
                       No hay plantillas todavía. Crea una desde <a href="/plantillas" target="_blank" rel="noopener noreferrer" style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>Plantillas</a> y vuelve aquí para asignarla.
                     </div>
                   ) : (
-                    <>
-                      <select className="jd-select"
-                        value={form.ticket_template_id || ''}
-                        onChange={e => setForm(p => ({ ...p, ticket_template_id: e.target.value ? Number(e.target.value) : null }))}>
-                        <option value="">— Usar plantilla por defecto —</option>
-                        {plantillas.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.nombre}{p.is_default ? ' ⭐ (default)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ fontSize:'.65rem', color:'var(--jordyn-muted)', marginTop:6 }}>
-                        {form.ticket_template_id
-                          ? <>Esta rifa usará: <b style={{ color:'var(--jordyn-text)' }}>{plantillas.find(p => p.id === form.ticket_template_id)?.nombre}</b></>
-                          : <>Si no eliges una, se usa la plantilla marcada como ⭐ default.</>
-                        }
-                      </div>
-                    </>
+                    <MiniaturasPlantillas
+                      plantillas={plantillas}
+                      seleccionadaId={form.ticket_template_id}
+                      onSelect={id => setForm(p => ({ ...p, ticket_template_id: id }))}
+                    />
                   )}
                 </div>
               </div>
@@ -2047,5 +2036,167 @@ export default function GestionRifas() {
         </div>
       )}
     </Layout>
+  );
+}
+
+function MiniaturasPlantillas({ plantillas, seleccionadaId, onSelect }) {
+  // Opción "Default automática" + plantillas reales
+  const opciones = [
+    { id: null, nombre: '⭐ Default (automática)', design: null, isAuto: true },
+    ...plantillas.map(p => ({ ...p, isAuto: false })),
+  ];
+
+  // Rifa fake para que el preview tenga datos plausibles
+  const rifaPreview = {
+    premio: '500 Dólares',
+    precio: 6000,
+    loteria_ref: 'Triple Táchira A',
+    hora_sorteo: '20:00',
+    fecha_sorteo: new Date().toISOString().split('T')[0],
+    premio_secundario: 2000000,
+  };
+
+  return (
+    <div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+        gap: 12,
+        marginTop: 8,
+      }}>
+        {opciones.map(p => {
+          const isSelected = String(p.id) === String(seleccionadaId)
+            || (p.isAuto && !seleccionadaId);
+
+          return (
+            <button
+              key={p.id || 'auto'}
+              type="button"
+              onClick={() => onSelect(p.id)}
+              style={{
+                position: 'relative',
+                background: isSelected ? '#e0f9f8' : '#fff',
+                border: `2px solid ${isSelected ? 'var(--jordyn-primary, #0abfbc)' : 'var(--jordyn-border, #e0e0e0)'}`,
+                borderRadius: 10,
+                padding: 10,
+                cursor: 'pointer',
+                textAlign: 'center',
+                fontFamily: 'inherit',
+                transition: 'all .15s',
+                boxShadow: isSelected
+                  ? '0 4px 14px rgba(10,191,188,.25)'
+                  : '0 1px 2px rgba(0,0,0,.04)',
+              }}
+            >
+              {/* Badge "Default" en plantilla real */}
+              {p.is_default && !p.isAuto && (
+                <span style={{
+                  position: 'absolute',
+                  top: 6, right: 6,
+                  background: 'var(--jordyn-gold, #f0a500)',
+                  color: '#fff',
+                  fontSize: 9,
+                  padding: '2px 6px',
+                  borderRadius: 3,
+                  fontWeight: 800,
+                  letterSpacing: .5,
+                  zIndex: 2,
+                }}>⭐ DEFAULT</span>
+              )}
+
+              {/* Check de seleccionada */}
+              {isSelected && (
+                <div style={{
+                  position: 'absolute',
+                  top: 6, left: 6,
+                  width: 22, height: 22,
+                  background: 'var(--jordyn-primary, #0abfbc)',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 13,
+                  fontWeight: 900,
+                  zIndex: 2,
+                  boxShadow: '0 1px 3px rgba(0,0,0,.2)',
+                }}>✓</div>
+              )}
+
+              {/* Miniatura */}
+              <div style={{
+                width: '100%',
+                height: 110,
+                background: '#fafafa',
+                border: '1px solid #eee',
+                borderRadius: 6,
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                marginBottom: 8,
+              }}>
+                {p.isAuto ? (
+                  <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', gap: 4,
+                    color: '#aaa',
+                  }}>
+                    <div style={{ fontSize: 36, lineHeight: 1 }}>⭐</div>
+                    <div style={{ fontSize: 10, fontWeight: 600 }}>
+                      Plantilla del sistema
+                    </div>
+                  </div>
+                ) : p.design ? (
+                  <div style={{
+                    transform: 'scale(0.22)',
+                    transformOrigin: 'center center',
+                    pointerEvents: 'none',
+                    width: 'auto',
+                  }}>
+                    <TicketEditable
+                      r={rifaPreview}
+                      numero="000"
+                      design={{ ...DEFAULT_DESIGN, ...p.design }}
+                      printMode={true}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ color: '#aaa', fontSize: 12 }}>(sin preview)</div>
+                )}
+              </div>
+
+              {/* Nombre */}
+              <div style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: isSelected ? '#089a98' : 'var(--jordyn-text, #333)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {p.nombre}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Ayuda */}
+      <div style={{
+        fontSize: '.7rem',
+        color: 'var(--jordyn-muted, #888)',
+        marginTop: 10,
+        fontStyle: 'italic',
+      }}>
+        {seleccionadaId
+          ? <>Esta rifa usará: <b style={{ color: 'var(--jordyn-text, #222)' }}>
+              {plantillas.find(p => String(p.id) === String(seleccionadaId))?.nombre}
+            </b></>
+          : <>Sin elegir → al imprimir se usa la marcada como ⭐ default del sistema.</>
+        }
+      </div>
+    </div>
   );
 }
