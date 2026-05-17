@@ -20,8 +20,8 @@ import { createRoot } from 'react-dom/client';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import API from '../services/api';
-import TicketEditable from './TicketEditable';
-import { DEFAULT_DESIGN } from './Ticket';
+import TicketEditable from '../components/TicketEditable';
+import { DEFAULT_DESIGN } from '../components/Ticket';
 
 // ── Dimensiones del PDF ───────────────────────────────────────
 const PAGE_W_MM = 297;   // A4 horizontal
