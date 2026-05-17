@@ -24,18 +24,50 @@ import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN } from '../components/Ticket';
 
 // ── Dimensiones del PDF ───────────────────────────────────────
-const PAGE_W_MM = 297;   // A4 horizontal
-const PAGE_H_MM = 210;
-const TICKET_W_MM = 110;
-const TICKET_H_MM = 65;
-const COLS = 2;
-const ROWS = 3;
-const PER_PAGE = COLS * ROWS;
-// márgenes calculados para centrar 2 cols × 3 filas con gaps pequeños
-const GAP_X_MM = 5;
-const GAP_Y_MM = 2;
-const MARGIN_X_MM = (PAGE_W_MM - (COLS * TICKET_W_MM + (COLS - 1) * GAP_X_MM)) / 2;
-const MARGIN_Y_MM = (PAGE_H_MM - (ROWS * TICKET_H_MM + (ROWS - 1) * GAP_Y_MM)) / 2;
+// A4: 297×210 mm. Se rota según orientación.
+const A4_LARGO_MM = 297;
+const A4_CORTO_MM = 210;
+// Gaps mínimos entre boletos (mm)
+const GAP_MM = 3;
+
+// Calcula layout dado boleto (cm) y orientación.
+// Devuelve { pageW, pageH, ticketW, ticketH, cols, rows, perPage, marginX, marginY, ok, error }
+function calcularLayout(ticketAnchoCm, ticketAltoCm, orientacion) {
+  const pageW = orientacion === 'horizontal' ? A4_LARGO_MM : A4_CORTO_MM;
+  const pageH = orientacion === 'horizontal' ? A4_CORTO_MM : A4_LARGO_MM;
+  const ticketW = Math.max(1, ticketAnchoCm * 10);
+  const ticketH = Math.max(1, ticketAltoCm * 10);
+
+  if (ticketW > pageW || ticketH > pageH) {
+    return {
+      pageW, pageH, ticketW, ticketH,
+      cols: 0, rows: 0, perPage: 0,
+      marginX: 0, marginY: 0,
+      ok: false,
+      error: `El boleto (${ticketAnchoCm}×${ticketAltoCm} cm) es más grande que la hoja A4 ${orientacion}.`,
+    };
+  }
+
+  // Cuántas columnas/filas caben con gap GAP_MM entre boletos
+  // n*W + (n-1)*gap ≤ page → n ≤ (page+gap)/(W+gap)
+  const cols = Math.max(1, Math.floor((pageW + GAP_MM) / (ticketW + GAP_MM)));
+  const rows = Math.max(1, Math.floor((pageH + GAP_MM) / (ticketH + GAP_MM)));
+  const perPage = cols * rows;
+
+  // Márgenes para centrar
+  const usadoX = cols * ticketW + (cols - 1) * GAP_MM;
+  const usadoY = rows * ticketH + (rows - 1) * GAP_MM;
+  const marginX = Math.max(0, (pageW - usadoX) / 2);
+  const marginY = Math.max(0, (pageH - usadoY) / 2);
+
+  return {
+    pageW, pageH, ticketW, ticketH,
+    cols, rows, perPage,
+    marginX, marginY,
+    ok: true,
+    error: null,
+  };
+}
 
 // ── Deduplica números por valor (ignora serie) ───────────────
 function dedupNumeros(numerosFijos) {
@@ -106,6 +138,17 @@ export default function ImprimirBoletos() {
   // PDF
   const [generando, setGenerando]     = useState(false);
   const [progreso, setProgreso]       = useState(0);
+
+  // Configuración de impresión
+  const [orientacion, setOrientacion]       = useState('horizontal'); // 'horizontal' | 'vertical'
+  const [ticketAnchoCm, setTicketAnchoCm]   = useState(11);
+  const [ticketAltoCm, setTicketAltoCm]     = useState(6.5);
+
+  // Layout calculado en vivo
+  const layout = useMemo(
+    () => calcularLayout(ticketAnchoCm, ticketAltoCm, orientacion),
+    [ticketAnchoCm, ticketAltoCm, orientacion]
+  );
 
   // ── Carga inicial ──
   useEffect(() => {
@@ -180,18 +223,24 @@ export default function ImprimirBoletos() {
     return { ...DEFAULT_DESIGN, ...extraido };
   }, [plantilla]);
 
-  // Total de páginas
-  const totalPaginas = Math.ceil(numerosImprimir.length / PER_PAGE);
+  // Total de páginas (depende del layout actual)
+  const totalPaginas = layout.ok && layout.perPage > 0
+    ? Math.ceil(numerosImprimir.length / layout.perPage)
+    : 0;
 
   // ── Generar PDF ──
   async function handleGenerarPDF() {
     if (!vendedorActual || numerosImprimir.length === 0) return;
+    if (!layout.ok) {
+      alert(layout.error || 'Configuración de impresión inválida');
+      return;
+    }
 
     setGenerando(true);
     setProgreso(0);
 
     const pdf = new jsPDF({
-      orientation: 'landscape',
+      orientation: orientacion === 'horizontal' ? 'landscape' : 'portrait',
       unit: 'mm',
       format: 'a4',
     });
@@ -203,8 +252,8 @@ export default function ImprimirBoletos() {
 
     for (let i = 0; i < totalNumeros; i++) {
       const numero = numerosImprimir[i];
-      const indexEnPagina = i % PER_PAGE;
-      const pagina = Math.floor(i / PER_PAGE);
+      const indexEnPagina = i % layout.perPage;
+      const pagina = Math.floor(i / layout.perPage);
 
       // Si arrancamos una página nueva (excepto la primera)
       if (indexEnPagina === 0 && pagina > 0) {
@@ -260,14 +309,14 @@ export default function ImprimirBoletos() {
       root.unmount();
       document.body.removeChild(div);
 
-      // Calcular posición en la hoja
-      const col = indexEnPagina % COLS;
-      const row = Math.floor(indexEnPagina / COLS);
-      const x = MARGIN_X_MM + col * (TICKET_W_MM + GAP_X_MM);
-      const y = MARGIN_Y_MM + row * (TICKET_H_MM + GAP_Y_MM);
+      // Calcular posición en la hoja usando el layout dinámico
+      const col = indexEnPagina % layout.cols;
+      const row = Math.floor(indexEnPagina / layout.cols);
+      const x = layout.marginX + col * (layout.ticketW + GAP_MM);
+      const y = layout.marginY + row * (layout.ticketH + GAP_MM);
 
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      pdf.addImage(imgData, 'JPEG', x, y, TICKET_W_MM, TICKET_H_MM);
+      pdf.addImage(imgData, 'JPEG', x, y, layout.ticketW, layout.ticketH);
 
       setProgreso(Math.round(((i + 1) / totalNumeros) * 100));
     }
@@ -419,6 +468,131 @@ export default function ImprimirBoletos() {
             </div>
           ) : (
             <>
+              {/* ═══ Panel de configuración de impresión ═══ */}
+              <div style={S.configBox}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', marginBottom: 12,
+                }}>
+                  <strong style={{ fontSize: 12, color: '#0abfbc',
+                    textTransform: 'uppercase', letterSpacing: 1.2 }}>
+                    ⚙️ Configuración de impresión
+                  </strong>
+                  <button
+                    onClick={() => {
+                      // Auto-encajar: prueba reducir tamaño hasta sacar 9, 8 o 12
+                      // por hoja según orientación. Mantiene proporción.
+                      const propor = ticketAnchoCm / ticketAltoCm;
+                      // Para horizontal busca 3×3 = 9; vertical busca 2×4 = 8
+                      let mejor = null;
+                      for (let w = 13; w >= 6; w -= 0.5) {
+                        const h = +(w / propor).toFixed(1);
+                        const l = calcularLayout(w, h, orientacion);
+                        if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
+                          mejor = { w, h, perPage: l.perPage };
+                        }
+                      }
+                      if (mejor) {
+                        setTicketAnchoCm(mejor.w);
+                        setTicketAltoCm(mejor.h);
+                      }
+                    }}
+                    style={S.btnAutoFit}
+                    title="Sugiere el tamaño que aprovecha mejor la hoja manteniendo la proporción"
+                  >
+                    ✨ Auto-encajar
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  {/* Orientación */}
+                  <div>
+                    <div style={S.infoLabel}>Orientación de hoja</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                      <button
+                        onClick={() => setOrientacion('horizontal')}
+                        style={{
+                          ...S.btnToggle,
+                          background: orientacion === 'horizontal' ? '#0abfbc' : '#fff',
+                          color: orientacion === 'horizontal' ? '#fff' : '#666',
+                          borderColor: orientacion === 'horizontal' ? '#0abfbc' : '#ddd',
+                        }}
+                      >📄 Horizontal</button>
+                      <button
+                        onClick={() => setOrientacion('vertical')}
+                        style={{
+                          ...S.btnToggle,
+                          background: orientacion === 'vertical' ? '#0abfbc' : '#fff',
+                          color: orientacion === 'vertical' ? '#fff' : '#666',
+                          borderColor: orientacion === 'vertical' ? '#0abfbc' : '#ddd',
+                        }}
+                      >📃 Vertical</button>
+                    </div>
+                  </div>
+
+                  {/* Ancho */}
+                  <div>
+                    <div style={S.infoLabel}>Ancho boleto (cm)</div>
+                    <input
+                      type="number"
+                      step={0.1}
+                      min={1}
+                      max={30}
+                      value={ticketAnchoCm}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setTicketAnchoCm(v);
+                      }}
+                      style={S.numInput}
+                    />
+                  </div>
+
+                  {/* Alto */}
+                  <div>
+                    <div style={S.infoLabel}>Alto boleto (cm)</div>
+                    <input
+                      type="number"
+                      step={0.1}
+                      min={1}
+                      max={30}
+                      value={ticketAltoCm}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value);
+                        if (!isNaN(v)) setTicketAltoCm(v);
+                      }}
+                      style={S.numInput}
+                    />
+                  </div>
+
+                  {/* Resumen del layout en vivo */}
+                  <div style={{
+                    flex: 1, minWidth: 180,
+                    padding: '8px 12px',
+                    background: layout.ok ? '#e6faf9' : '#ffe5e5',
+                    border: `1px solid ${layout.ok ? '#9ae3e0' : '#f5a5a5'}`,
+                    borderRadius: 6,
+                  }}>
+                    {layout.ok ? (
+                      <>
+                        <div style={{ fontSize: 11, color: '#666', fontWeight: 600 }}>
+                          Hoja A4 {orientacion}: {layout.pageW}×{layout.pageH} mm
+                        </div>
+                        <div style={{
+                          fontSize: 14, fontWeight: 800, color: '#0abfbc',
+                          marginTop: 2,
+                        }}>
+                          {layout.cols} cols × {layout.rows} filas = <span style={{ fontSize: 18 }}>{layout.perPage}</span> boletos/hoja
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#a02020', fontWeight: 600 }}>
+                        ⚠️ {layout.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Info bar */}
               <div style={S.infoBar}>
                 <div>
@@ -431,15 +605,17 @@ export default function ImprimirBoletos() {
                 </div>
                 <div>
                   <div style={S.infoLabel}>Hojas PDF</div>
-                  <div style={S.infoValue}>{totalPaginas} (6 por hoja)</div>
+                  <div style={S.infoValue}>
+                    {totalPaginas} ({layout.perPage} por hoja)
+                  </div>
                 </div>
                 <button
                   onClick={handleGenerarPDF}
-                  disabled={generando || numerosImprimir.length === 0}
+                  disabled={generando || numerosImprimir.length === 0 || !layout.ok}
                   style={{
                     ...S.btnGenerar,
-                    opacity: (generando || numerosImprimir.length === 0) ? 0.5 : 1,
-                    cursor:  (generando || numerosImprimir.length === 0) ? 'not-allowed' : 'pointer',
+                    opacity: (generando || numerosImprimir.length === 0 || !layout.ok) ? 0.5 : 1,
+                    cursor:  (generando || numerosImprimir.length === 0 || !layout.ok) ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {generando
@@ -721,6 +897,46 @@ const S = {
     fontFamily: 'inherit',
     boxShadow: '0 2px 8px rgba(10,191,188,.3)',
     transition: 'transform .1s',
+  },
+  configBox: {
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: '14px 18px',
+  },
+  btnToggle: {
+    padding: '7px 14px',
+    border: '1.5px solid #ddd',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'all .15s',
+  },
+  numInput: {
+    width: 80,
+    padding: '7px 10px',
+    border: '1px solid #ddd',
+    borderRadius: 6,
+    fontSize: 14,
+    fontWeight: 700,
+    fontFamily: 'inherit',
+    color: C.text,
+    marginTop: 4,
+    boxSizing: 'border-box',
+    textAlign: 'center',
+  },
+  btnAutoFit: {
+    padding: '5px 12px',
+    background: '#fff8e6',
+    border: '1.5px solid #f0a500',
+    color: '#a87600',
+    borderRadius: 5,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   progressBar: {
     height: 6,
