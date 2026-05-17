@@ -289,6 +289,79 @@ const getPos = (positions, campo) => {
 /* ════════════════════════════════════════════════════════════
    <DraggableEditable> — átomo arrastrable + editable
 ═════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════
+   <PremioNumeroSVG> — versión SVG del número grande del premio
+   Usada SOLO en printMode (html2canvas no soporta bien el
+   background-clip:text del CSS, por eso lo hacemos en SVG).
+═════════════════════════════════════════════════════════════ */
+function PremioNumeroSVG({ value, position, rotation, fontSize, color1, color2, stroke, dropShadowColor }) {
+  // Estimación del ancho del texto en SVG: 0.62 × fontSize por carácter
+  // para Arial Black. Suficiente para que el SVG envuelva el contenido.
+  const text = value || '';
+  const charW = fontSize * 0.62;
+  const w = Math.max(60, text.length * charW + 20);
+  const h = Math.max(fontSize * 1.2, 40);
+  const gradId = `grad_${Math.random().toString(36).slice(2, 9)}`;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: position.x,
+      top: position.y,
+      transform: rotation ? `rotate(${rotation}deg)` : 'none',
+      transformOrigin: 'left top',
+      pointerEvents: 'none',
+    }}>
+      <svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ overflow: 'visible' }}
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={color1} />
+            <stop offset="48%"  stopColor={color1} />
+            <stop offset="52%"  stopColor={color2 || color1} />
+            <stop offset="100%" stopColor={color2 || color1} />
+          </linearGradient>
+        </defs>
+        {/* Sombra (drop-shadow) */}
+        <text
+          x={3}
+          y={fontSize * 0.85 + 3}
+          fontFamily="'Arial Black', 'Poppins', sans-serif"
+          fontWeight={900}
+          fontSize={fontSize}
+          letterSpacing={2}
+          fill={dropShadowColor || 'rgba(0,0,0,.18)'}
+        >
+          {text}
+        </text>
+        {/* Relleno con gradiente */}
+        <text
+          x={0}
+          y={fontSize * 0.85}
+          fontFamily="'Arial Black', 'Poppins', sans-serif"
+          fontWeight={900}
+          fontSize={fontSize}
+          letterSpacing={2}
+          fill={`url(#${gradId})`}
+          stroke={stroke}
+          strokeWidth={1}
+          paintOrder="stroke fill"
+        >
+          {text}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   <DraggableEditable> — átomo arrastrable + editable
+═════════════════════════════════════════════════════════════ */
 function DraggableEditable({
   id,
   position,
@@ -1319,6 +1392,7 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
         }}>
           {/* CANVAS */}
           <div
+            data-ticket-canvas="true"
             onMouseDown={handleCanvasMouseDown}
             style={{
               width: D.ticketWidth,
@@ -1392,13 +1466,25 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               letterSpacing: .5, lineHeight: 1,
               textShadow: `2px 2px 0 ${STROKE}`,
             })}
-            {F('premioNum', premioNum, 'premioNum', {
+            {/* premioNum: en printMode usamos SVG (html2canvas no captura
+                bien background-clip:text). En modo edición sigue siendo el
+                CSS gradient clipeado con outline y cursor. */}
+            {!hiddenFields.includes('premioNum') && printMode ? (
+              <PremioNumeroSVG
+                key="premioNum"
+                value={premioNum}
+                position={getPos(positions, 'premioNum')}
+                rotation={getRotation('premioNum')}
+                fontSize={pxScaled(D.sizePremioNum)}
+                color1={D.colorPremio1}
+                color2={D.colorPremio2}
+                stroke={D.colorPremioStroke || STROKE}
+                dropShadowColor={`${STROKE}30`}
+              />
+            ) : F('premioNum', premioNum, 'premioNum', {
               fontFamily: "'Arial Black','Poppins',sans-serif",
               fontWeight: 900, fontSize: pxScaled(D.sizePremioNum),
               lineHeight: .85, letterSpacing: 2,
-              // Siempre usamos gradiente (con paradas iguales si es sólido).
-              // Si pusiéramos solo un color plano, algunos navegadores no aplican
-              // backgroundClip:text y el número queda hueco.
               backgroundImage: `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2 || D.colorPremio1} 52%,${D.colorPremio2 || D.colorPremio1} 100%)`,
               WebkitBackgroundClip: 'text',
               backgroundClip: 'text',

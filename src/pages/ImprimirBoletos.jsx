@@ -215,9 +215,10 @@ export default function ImprimirBoletos() {
       const div = document.createElement('div');
       div.style.cssText = `
         position: fixed; left: -10000px; top: 0;
-        width: ${design.ticketWidth}px;
-        height: ${design.ticketHeight}px;
+        width: ${design.ticketWidth + 10}px;
+        height: ${design.ticketHeight + 10}px;
         z-index: -1;
+        background: ${design.bgPaper || '#ffffff'};
       `;
       document.body.appendChild(div);
 
@@ -236,12 +237,16 @@ export default function ImprimirBoletos() {
             printMode={true}
           />
         );
-        // Damos un frame para que se pinte
-        setTimeout(resolve, 250);
+        // Damos tiempo a que SVG y fuentes se pinten (más que con CSS plano)
+        setTimeout(resolve, 400);
       });
 
+      // Localizar el canvas REAL del ticket (no el wrapper externo).
+      // Se identifica por el data-attribute que pusimos en TicketEditable.
+      const canvasNode = div.querySelector('[data-ticket-canvas="true"]') || div.firstChild;
+
       // Capturar con html2canvas
-      const canvas = await html2canvas(div.firstChild, {
+      const canvas = await html2canvas(canvasNode, {
         scale: 3,                  // alta resolución
         useCORS: true,
         backgroundColor: design.bgPaper || '#ffffff',
@@ -249,6 +254,7 @@ export default function ImprimirBoletos() {
         height: design.ticketHeight,
         windowWidth: design.ticketWidth,
         windowHeight: design.ticketHeight,
+        logging: false,
       });
 
       root.unmount();
