@@ -632,7 +632,9 @@ function ElementPanel({
         {showColor && (
           <>
             <label style={labelStyle}>
-              🎨 {showColor2 ? 'Color superior (gradiente)' : 'Color'}
+              🎨 {showColor2
+                ? (get('color') === get('color2') ? 'Color' : 'Color superior')
+                : 'Color'}
             </label>
             <div style={{ display: 'flex', gap: 6, marginBottom: showColor2 ? 8 : 12 }}>
               <input
@@ -659,7 +661,22 @@ function ElementPanel({
         {/* Color 2 (solo gradiente premioNum) */}
         {showColor2 && (
           <>
-            <label style={labelStyle}>🎨 Color inferior (gradiente)</label>
+            {/* Botón "Hacer sólido" si los colores difieren */}
+            {get('color') !== get('color2') && (
+              <button
+                onClick={() => set('color2', get('color'))}
+                style={{
+                  width: '100%', padding: '7px',
+                  background: '#f8fafa', color: '#0abfbc',
+                  border: '1px dashed #0abfbc', borderRadius: 5,
+                  cursor: 'pointer', fontSize: 11, fontWeight: 700,
+                  fontFamily: 'inherit', marginBottom: 10,
+                }}
+                title="Iguala los dos colores para tener un color sólido"
+              >⬇ Hacer color sólido (copiar arriba)</button>
+            )}
+
+            <label style={labelStyle}>🎨 Color inferior</label>
             <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
               <input
                 type="color"
@@ -672,6 +689,24 @@ function ElementPanel({
                 type="text"
                 value={get('color2') || ''}
                 onChange={e => set('color2', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            {/* Color del contorno (stroke) — solo premioNum */}
+            <label style={labelStyle}>✏️ Color del contorno</label>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              <input
+                type="color"
+                value={design.colorPremioStroke || design.colorBorde || '#000000'}
+                onChange={e => onUpdateDesign('colorPremioStroke', e.target.value)}
+                style={{ width: 44, height: 34, border: '1px solid #ddd',
+                  borderRadius: 5, cursor: 'pointer', padding: 2, flexShrink: 0 }}
+              />
+              <input
+                type="text"
+                value={design.colorPremioStroke || design.colorBorde || '#000000'}
+                onChange={e => onUpdateDesign('colorPremioStroke', e.target.value)}
                 style={inputStyle}
               />
             </div>
@@ -1339,10 +1374,12 @@ export default function TicketEditable({ r, numero, design, onUpdate }) {
               fontFamily: "'Arial Black','Poppins',sans-serif",
               fontWeight: 900, fontSize: pxScaled(D.sizePremioNum),
               lineHeight: .85, letterSpacing: 2,
-              background: `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2} 52%,${D.colorPremio2} 100%)`,
+              background: D.colorPremio1 === D.colorPremio2
+                ? D.colorPremio1
+                : `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2} 52%,${D.colorPremio2} 100%)`,
               WebkitBackgroundClip: 'text', backgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              WebkitTextStroke: `2.5px ${STROKE}`,
+              WebkitTextStroke: `1px ${D.colorPremioStroke || STROKE}`,
               filter: `drop-shadow(3px 3px 0 ${STROKE}30)`,
             })}
             {F('premioTexto', premioTexto, 'premioTexto', {
