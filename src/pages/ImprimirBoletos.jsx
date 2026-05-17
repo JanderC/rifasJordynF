@@ -52,6 +52,38 @@ function dedupNumeros(numerosFijos) {
   return result.sort((a, b) => a.localeCompare(b));
 }
 
+// ── Normaliza el design de una plantilla ─────────────────────
+// El backend a veces devuelve `design` como string JSON, o lo
+// guarda en otras claves. Esta función intenta extraerlo bien.
+function extraerDesign(plantilla) {
+  if (!plantilla) return null;
+
+  // Candidatos posibles en orden de prioridad
+  const candidatos = [
+    plantilla.design,
+    plantilla.ticket_design,
+    plantilla.config,
+    plantilla.diseno,
+  ];
+
+  for (const cand of candidatos) {
+    if (!cand) continue;
+    // Si viene como string JSON, parsear
+    if (typeof cand === 'string') {
+      try {
+        const parsed = JSON.parse(cand);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (e) {
+        console.warn('No se pudo parsear design como JSON:', e);
+      }
+    } else if (typeof cand === 'object') {
+      return cand;
+    }
+  }
+
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Componente principal
 // ─────────────────────────────────────────────────────────────
@@ -64,6 +96,7 @@ export default function ImprimirBoletos() {
   const [rifa, setRifa]               = useState(null);
   const [vendedores, setVendedores]   = useState([]);
   const [plantilla, setPlantilla]     = useState(null);
+  const [todasPlantillas, setTodasPlantillas] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
 
@@ -100,9 +133,14 @@ export default function ImprimirBoletos() {
         // 3) Si no hay default, usar la primera
         // 4) Si no hay ninguna, usar DEFAULT_DESIGN
         const todas = tplRes.data || [];
+        setTodasPlantillas(todas);
+        console.log('[ImprimirBoletos] Rifa:', rifaData.nombre, 'ticket_template_id:', rifaData.ticket_template_id);
+        console.log('[ImprimirBoletos] Plantillas disponibles:', todas.map(p => ({ id: p.id, nombre: p.nombre, is_default: p.is_default || p.es_default })));
+
         let tpl = null;
         if (rifaData.ticket_template_id) {
           tpl = todas.find(p => String(p.id) === String(rifaData.ticket_template_id));
+          if (!tpl) console.warn('[ImprimirBoletos] La rifa tiene ticket_template_id', rifaData.ticket_template_id, 'pero NO se encontró esa plantilla');
         }
         if (!tpl) tpl = todas.find(p => p.es_default || p.is_default);
         if (!tpl && todas.length > 0) tpl = todas[0];
@@ -128,10 +166,19 @@ export default function ImprimirBoletos() {
   );
 
   // Design de la plantilla (o default si no hay)
-  const design = useMemo(
-    () => plantilla?.design ? { ...DEFAULT_DESIGN, ...plantilla.design } : DEFAULT_DESIGN,
-    [plantilla]
-  );
+  // IMPORTANTE: preservamos positions, customTexts, hiddenFields,
+  // globalSizeFactor — TODO el contenido de la plantilla.
+  const design = useMemo(() => {
+    const extraido = extraerDesign(plantilla);
+    if (!extraido) return { ...DEFAULT_DESIGN };
+    // Log en consola para debugging
+    console.log('[ImprimirBoletos] Plantilla cargada:', plantilla?.nombre);
+    console.log('[ImprimirBoletos] Design extraído:', extraido);
+    console.log('[ImprimirBoletos] Tiene positions:', !!extraido.positions);
+    console.log('[ImprimirBoletos] Tiene customTexts:', !!extraido.customTexts, extraido.customTexts?.length);
+    console.log('[ImprimirBoletos] Tiene hiddenFields:', extraido.hiddenFields?.length);
+    return { ...DEFAULT_DESIGN, ...extraido };
+  }, [plantilla]);
 
   // Total de páginas
   const totalPaginas = Math.ceil(numerosImprimir.length / PER_PAGE);
@@ -242,7 +289,7 @@ export default function ImprimirBoletos() {
       <div style={{ ...S.errorBox, fontFamily: 'system-ui, sans-serif' }}>
         <h2 style={{ color: '#f05a5a', margin: '0 0 12px' }}>⚠️ Error</h2>
         <p style={{ color: '#666', margin: 0 }}>{error}</p>
-        <a href="/gestion-rifas" style={S.linkBack}>← Volver a Gestión de Rifas</a>
+        <a href="/rifas" style={S.linkBack}>← Volver a Gestión de Rifas</a>
       </div>
     </div>
   );
@@ -253,7 +300,7 @@ export default function ImprimirBoletos() {
       {/* HEADER */}
       <header style={S.header}>
         <div style={S.headerInner}>
-          <a href="/gestion-rifas" style={S.backBtn}>← Rifas</a>
+          <a href="/rifas" style={S.backBtn}>← Rifas</a>
           <div style={{ flex: 1 }}>
             <h1 style={S.title}>🎟 Imprimir boletos</h1>
             <p style={S.subtitle}>
@@ -263,6 +310,39 @@ export default function ImprimirBoletos() {
               }
             </p>
           </div>
+
+          {/* Selector manual de plantilla */}
+          {todasPlantillas.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                Cambiar plantilla
+              </label>
+              <select
+                value={plantilla?.id || ''}
+                onChange={e => {
+                  const id = e.target.value;
+                  const sel = todasPlantillas.find(p => String(p.id) === String(id));
+                  setPlantilla(sel || null);
+                }}
+                style={{
+                  padding: '7px 10px',
+                  border: '1px solid #ccc',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  minWidth: 220,
+                  cursor: 'pointer',
+                  background: '#fff',
+                }}
+              >
+                {todasPlantillas.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}{(p.is_default || p.es_default) ? ' ⭐' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </header>
 
@@ -391,6 +471,49 @@ export default function ImprimirBoletos() {
                   <h3 style={S.sectionTitle}>
                     Vista previa — boleto #{numerosImprimir[0]}
                   </h3>
+
+                  {/* Panel de diagnóstico de la plantilla */}
+                  <details style={{
+                    marginBottom: 10,
+                    background: '#fffbe6',
+                    border: '1px solid #f0d970',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                    fontSize: 11,
+                    fontFamily: 'system-ui, sans-serif',
+                  }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#8a6d00' }}>
+                      🔍 Diagnóstico de la plantilla cargada
+                    </summary>
+                    <div style={{ marginTop: 8, color: '#5a4500', lineHeight: 1.6 }}>
+                      <div>📄 <b>Plantilla:</b> {plantilla?.nombre || '(ninguna)'}</div>
+                      <div>🆔 <b>ID:</b> {plantilla?.id || '—'}</div>
+                      <div>📐 <b>Posiciones custom:</b> {Object.keys(design.positions || {}).length} campos</div>
+                      <div>✨ <b>Textos custom:</b> {(design.customTexts || []).length}
+                        {design.customTexts && design.customTexts.length > 0 && (
+                          <span style={{ marginLeft: 8, color: '#8a6d00' }}>
+                            ({design.customTexts.map(t => `"${t.value}"`).join(', ')})
+                          </span>
+                        )}
+                      </div>
+                      <div>🙈 <b>Campos ocultos:</b> {(design.hiddenFields || []).length}</div>
+                      <div>📏 <b>Factor global:</b> {design.globalSizeFactor || 1.0}</div>
+                      <div>🎨 <b>colorPremio1/2:</b> {design.colorPremio1} / {design.colorPremio2}</div>
+                      <div>📍 <b>Rifa.ticket_template_id:</b> {rifa?.ticket_template_id || '(null)'}</div>
+                      {(design.customTexts || []).length === 0 && Object.keys(design.positions || {}).length === 0 && (
+                        <div style={{
+                          marginTop: 8, padding: '6px 10px',
+                          background: '#ffe0e0', borderRadius: 4,
+                          color: '#a02020', fontWeight: 700,
+                        }}>
+                          ⚠️ Esta plantilla NO tiene positions ni customTexts.
+                          Probable causa: el backend no los está guardando o devolviendo.
+                          Revisa la consola para ver qué llega del API.
+                        </div>
+                      )}
+                    </div>
+                  </details>
+
                   <div style={S.previewWrapper}>
                     <TicketEditable
                       r={rifa}
