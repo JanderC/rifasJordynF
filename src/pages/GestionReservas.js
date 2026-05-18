@@ -8,10 +8,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
-import { TicketPreview, generarImagenTicket } from '../components/Ticket';
+import { TicketPreview } from '../components/Ticket';
+import TicketEditable from '../components/TicketEditable';
+import {
+  resolverPlantillaParaRifa,
+  extraerDesign,
+  generarImagenTicketTemplate,
+} from '../utils/ticketImageHelper';
+import { DEFAULT_DESIGN } from '../components/Ticket';
 import { fmtFecha, fmtTimestamp } from '../utils/dates';
 import { useAuth } from '../context/AuthContext';
-import VentaRapidaModal from './VentaRapidaModal';
 
 const COP = n =>
   new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(n||0);
@@ -70,6 +76,14 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   const [reserva,      setReserva]     = useState(inicial);
   const [nota,         setNota]        = useState(inicial.nota_admin || '');
   const [generandoWA,  setGenerandoWA] = useState(false);
+
+  // NUEVO: estados para preview pre-aprobación
+  const [mostrandoPreview, setMostrandoPreview] = useState(false);
+  const [previewIndex,     setPreviewIndex]     = useState(0);
+  const [plantilla,        setPlantilla]        = useState(null);
+  const [rifaCompleta,     setRifaCompleta]     = useState(null);
+  const [cargandoTpl,      setCargandoTpl]      = useState(false);
+
   const est     = EST[reserva.estado] || EST.pendiente;
   const pendiente = reserva.estado === 'pendiente';
 
@@ -81,11 +95,62 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   const copUsd   = tasas?.COP_POR_USD?.valor || 0;
   const totalUSD = copUsd > 0 ? `$${(totalPrecio / copUsd).toFixed(2)} USD` : null;
 
+  // Cargar rifa completa + plantilla al abrir modal
   useEffect(() => {
-    const fn = e => { if (e.key === 'Escape') onClose(); };
+    let cancelado = false;
+    (async () => {
+      setCargandoTpl(true);
+      try {
+        const [rifaR] = await Promise.all([
+          API.get(`/rifas/${reserva.rifa_id}`).catch(() => ({ data: null })),
+        ]);
+        if (cancelado) return;
+        const rifaData = rifaR.data || {
+          // fallback con lo que ya tenemos en la reserva
+          id: reserva.rifa_id,
+          nombre: reserva.rifa_nombre,
+          premio: reserva.premio,
+          precio: reserva.precio,
+          fecha_sorteo: reserva.fecha_sorteo,
+        };
+        setRifaCompleta(rifaData);
+
+        const tpl = await resolverPlantillaParaRifa(rifaData);
+        if (!cancelado) setPlantilla(tpl);
+      } catch (e) {
+        console.warn('No se pudo cargar plantilla/rifa:', e);
+      } finally {
+        if (!cancelado) setCargandoTpl(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [reserva.rifa_id, reserva.rifa_nombre, reserva.premio, reserva.precio, reserva.fecha_sorteo]);
+
+  // Design final para el preview
+  const designPreview = React.useMemo(() => {
+    const extraido = extraerDesign(plantilla);
+    return extraido
+      ? { ...DEFAULT_DESIGN, ...extraido }
+      : { ...DEFAULT_DESIGN };
+  }, [plantilla]);
+
+  useEffect(() => {
+    const fn = e => {
+      if (e.key === 'Escape') {
+        if (mostrandoPreview) setMostrandoPreview(false);
+        else onClose();
+      }
+    };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
-  }, [onClose]);
+  }, [onClose, mostrandoPreview]);
+
+  // Cuando el usuario hace click "Aprobar", primero abre el preview.
+  // El preview tiene su propio botón "Confirmar y enviar" que llama a esta función.
+  const handleAprobarPrevio = () => {
+    setPreviewIndex(0);
+    setMostrandoPreview(true);
+  };
 
   const handleAccion = async (estado) => {
     // Si hay hermanas pendientes y estamos aprobando/rechazando,
@@ -103,6 +168,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
 
     if (ok) {
       setReserva(p => ({ ...p, estado, nota_admin: nota }));
+      setMostrandoPreview(false);
       if (estado === 'aprobado') {
         await enviarWAConTicket();
       }
@@ -119,30 +185,51 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
 
     setGenerandoWA(true);
     try {
-      // 1. Intentar generar imagen del ticket
-      const imgDataUrl = await generarImagenTicket({
-        r:          { ...reserva, rifa_nombre: reserva.rifa_nombre },
-        numero:     todosNumeros.join(' · '),
-        comprador:  { nombre: reserva.nombre_cliente, telefono: reserva.telefono },
-        vendedor:   'Rifas Jordyn',
-      });
+      // Datos de rifa para el ticket (lo cargado al abrir el modal o fallback)
+      const rifaPara = rifaCompleta || {
+        id: reserva.rifa_id,
+        nombre: reserva.rifa_nombre,
+        premio: reserva.premio,
+        precio: reserva.precio,
+        fecha_sorteo: reserva.fecha_sorteo,
+        loteria_ref: reserva.loteria_ref,
+        hora_sorteo: reserva.hora_sorteo,
+      };
 
-      // 2. Construir mensaje
-      const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas);
-
-      // 3. Si hay imagen generada, ofrecer descargarla primero
-      if (imgDataUrl) {
-        // Descargar la imagen automáticamente (el cliente la adjunta manualmente en WA)
-        const a = document.createElement('a');
-        a.href     = imgDataUrl;
-        a.download = `ticket-${reserva.id?.slice(0,8)}-${todosNumeros.join('-')}.png`;
-        a.click();
-        toast.info('📸 Ticket descargado — adjúntalo en WhatsApp al enviarlo', { autoClose: 5000 });
+      // 1. Generar UNA imagen por cada número, descargar todas
+      let imagenesGeneradas = 0;
+      for (let i = 0; i < todosNumeros.length; i++) {
+        const num = todosNumeros[i];
+        const imgDataUrl = await generarImagenTicketTemplate({
+          rifa:      rifaPara,
+          numero:    num,
+          plantilla,
+        });
+        if (imgDataUrl) {
+          const a = document.createElement('a');
+          a.href     = imgDataUrl;
+          a.download = `ticket-${reserva.id?.slice(0,8)}-${num}.png`;
+          a.click();
+          imagenesGeneradas++;
+          // Pequeña pausa entre descargas para que el navegador no las bloquee
+          if (i < todosNumeros.length - 1) {
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
       }
 
-      // 4. Abrir WhatsApp con el texto
+      if (imagenesGeneradas > 0) {
+        toast.info(
+          `📸 ${imagenesGeneradas} ticket${imagenesGeneradas > 1 ? 's' : ''} descargado${imagenesGeneradas > 1 ? 's' : ''} — adjúnta${imagenesGeneradas > 1 ? 'los' : 'lo'} en WhatsApp al enviar`,
+          { autoClose: 6000 }
+        );
+      }
+
+      // 2. Abrir WhatsApp con el mensaje
+      const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas);
       abrirWA(reserva.telefono, msg);
-    } catch {
+    } catch (e) {
+      console.error('Error enviando WA con ticket:', e);
       // Fallback: solo texto
       abrirWA(reserva.telefono, buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas));
     } finally {
@@ -158,7 +245,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(10,30,30,.55)', backdropFilter:'blur(5px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
-      <div style={{ width:'100%', maxWidth:640, maxHeight:'92vh', background:'var(--jordyn-bg,#fff)', borderRadius:16, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(10,191,188,.20)' }}>
+      <div style={{ position:'relative', width:'100%', maxWidth:640, maxHeight:'92vh', background:'var(--jordyn-bg,#fff)', borderRadius:16, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(10,191,188,.20)' }}>
 
         {/* Header */}
         <div style={{ background:'linear-gradient(135deg,var(--jordyn-primary),var(--jordyn-primary-d))', padding:'1.1rem 1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
@@ -223,21 +310,63 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
             </div>
           )}
 
-          {/* Preview del ticket */}
+          {/* Preview del ticket — usa la plantilla asignada a la rifa */}
           <div style={{ marginBottom:'1.25rem' }}>
-            <div style={{ fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:10 }}>
-              <i className="bi bi-ticket-perforated-fill me-1" style={{ color:'var(--jordyn-primary)' }}></i>
-              Vista previa del ticket
+            <div style={{ fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:10, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <span>
+                <i className="bi bi-ticket-perforated-fill me-1" style={{ color:'var(--jordyn-primary)' }}></i>
+                Vista previa del ticket
+              </span>
+              {plantilla && (
+                <span style={{
+                  background: 'rgba(10,191,188,.1)',
+                  color: 'var(--jordyn-primary)',
+                  border: '1px solid rgba(10,191,188,.25)',
+                  borderRadius: 4,
+                  padding: '1px 8px',
+                  fontSize: '.6rem',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  letterSpacing: 0,
+                }}>
+                  📄 {plantilla.nombre}
+                </span>
+              )}
             </div>
-            <div style={{ display:'flex', justifyContent:'center', overflow:'hidden' }}>
-              <TicketPreview
-                r={{ ...reserva, rifa_nombre: reserva.rifa_nombre }}
-                numero={todosNumeros.join(' · ')}
-                comprador={{ nombre: reserva.nombre_cliente, telefono: reserva.telefono }}
-                vendedor="Rifas Jordyn"
-                size="small"
-              />
+            <div style={{
+              display:'flex', justifyContent:'center',
+              overflow:'hidden',
+              background:'#fafafa', borderRadius:8, padding:10,
+              border:'1px dashed #d0d0d0',
+            }}>
+              {cargandoTpl ? (
+                <div style={{ padding:30, color:'#999', fontSize:13 }}>
+                  ⏳ Cargando plantilla…
+                </div>
+              ) : (
+                <div style={{
+                  transform: 'scale(0.55)',
+                  transformOrigin: 'center center',
+                  width: designPreview.ticketWidth,
+                  height: designPreview.ticketHeight * 0.55,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center',
+                }}>
+                  <TicketEditable
+                    r={rifaCompleta || reserva}
+                    numero={todosNumeros[0]}
+                    design={{ ...designPreview, numBoleto: todosNumeros[0] }}
+                    printMode={true}
+                  />
+                </div>
+              )}
             </div>
+            {todosNumeros.length > 1 && (
+              <div style={{ fontSize:'.7rem', color:'var(--jordyn-muted)', textAlign:'center', marginTop:6, fontStyle:'italic' }}>
+                Mostrando el primero de {todosNumeros.length} boletos. Al confirmar se generarán todos.
+              </div>
+            )}
           </div>
 
           {/* Comprobante */}
@@ -312,15 +441,227 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
                 style={{ background:'rgba(230,57,70,.08)', border:'1.5px solid rgba(230,57,70,.3)', color:'#e63946', borderRadius:9, padding:'9px 16px', cursor:'pointer', fontSize:'.82rem', fontWeight:700, display:'flex', alignItems:'center', gap:6 }}>
                 <i className="bi bi-x-circle-fill"></i> Rechazar
               </button>
-              <button onClick={() => handleAccion('aprobado')} disabled={saving || generandoWA}
+              <button onClick={handleAprobarPrevio} disabled={saving || generandoWA || cargandoTpl}
                 style={{ background:'linear-gradient(135deg,var(--jordyn-primary),var(--jordyn-primary-d))', border:'none', color:'#fff', borderRadius:9, padding:'9px 20px', cursor:'pointer', fontSize:'.82rem', fontWeight:700, display:'flex', alignItems:'center', gap:6 }}>
                 {saving
                   ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Guardando...</>
-                  : <><i className="bi bi-check-circle-fill"></i> Aprobar + enviar WA</>}
+                  : <><i className="bi bi-eye-fill"></i> Revisar y aprobar</>}
               </button>
             </>
           )}
         </div>
+
+        {/* ═══ Overlay de PREVIEW antes de aprobar ═══ */}
+        {mostrandoPreview && (
+          <div
+            onClick={e => e.target === e.currentTarget && setMostrandoPreview(false)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0,0,0,.5)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              zIndex: 10,
+            }}
+          >
+            <div style={{
+              background: '#fff',
+              borderRadius: 14,
+              boxShadow: '0 20px 60px rgba(0,0,0,.3)',
+              width: '100%',
+              maxWidth: 720,
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}>
+              {/* Header del preview */}
+              <div style={{
+                background: 'linear-gradient(135deg, #f0a500, #d68f00)',
+                padding: '14px 20px',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>
+                    🎫 Revisar antes de enviar
+                  </div>
+                  <div style={{ fontSize: 11, opacity: .9, marginTop: 2 }}>
+                    Verifica que el ticket esté correcto. Luego se enviará al cliente por WhatsApp.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMostrandoPreview(false)}
+                  style={{
+                    background: 'rgba(255,255,255,.2)',
+                    border: 'none', color: '#fff',
+                    width: 28, height: 28, borderRadius: 6,
+                    cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0,
+                  }}
+                >×</button>
+              </div>
+
+              {/* Body con preview a tamaño grande */}
+              <div style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: 20,
+                background: '#f7f7f7',
+              }}>
+                {/* Selector de boleto si hay varios */}
+                {todosNumeros.length > 1 && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 12,
+                    marginBottom: 14,
+                    fontSize: 13,
+                  }}>
+                    <button
+                      onClick={() => setPreviewIndex(i => Math.max(0, i - 1))}
+                      disabled={previewIndex === 0}
+                      style={{
+                        background: '#fff',
+                        border: '1.5px solid #ddd',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: previewIndex === 0 ? 'not-allowed' : 'pointer',
+                        opacity: previewIndex === 0 ? 0.4 : 1,
+                        fontFamily: 'inherit',
+                      }}
+                    >← Anterior</button>
+                    <span style={{ fontWeight: 700, color: '#333' }}>
+                      Boleto {previewIndex + 1} de {todosNumeros.length}
+                      <span style={{ marginLeft: 8, color: 'var(--jordyn-primary, #0abfbc)', fontFamily: 'monospace', fontSize: 16 }}>
+                        #{todosNumeros[previewIndex]}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => setPreviewIndex(i => Math.min(todosNumeros.length - 1, i + 1))}
+                      disabled={previewIndex >= todosNumeros.length - 1}
+                      style={{
+                        background: '#fff',
+                        border: '1.5px solid #ddd',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: previewIndex >= todosNumeros.length - 1 ? 'not-allowed' : 'pointer',
+                        opacity: previewIndex >= todosNumeros.length - 1 ? 0.4 : 1,
+                        fontFamily: 'inherit',
+                      }}
+                    >Siguiente →</button>
+                  </div>
+                )}
+
+                {/* Ticket a tamaño completo */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  overflowX: 'auto',
+                }}>
+                  {cargandoTpl ? (
+                    <div style={{ padding: 60, color: '#999' }}>
+                      ⏳ Cargando plantilla…
+                    </div>
+                  ) : (
+                    <div style={{
+                      transform: 'scale(0.8)',
+                      transformOrigin: 'top center',
+                    }}>
+                      <TicketEditable
+                        r={rifaCompleta || reserva}
+                        numero={todosNumeros[previewIndex]}
+                        design={{ ...designPreview, numBoleto: todosNumeros[previewIndex] }}
+                        printMode={true}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Resumen + check antes de confirmar */}
+                <div style={{
+                  marginTop: 20,
+                  padding: 14,
+                  background: '#fff',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 8,
+                  fontSize: 13,
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Cliente</div>
+                      <div style={{ fontWeight: 700 }}>{reserva.nombre_cliente}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Teléfono</div>
+                      <div style={{ fontWeight: 700, color: reserva.telefono ? '#25d366' : '#888' }}>
+                        {reserva.telefono || '(sin teléfono)'}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Números</div>
+                      <div style={{ fontWeight: 700, fontFamily: 'monospace' }}>{todosNumeros.join(' · ')}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: '#888', fontWeight: 700, textTransform: 'uppercase' }}>Total</div>
+                      <div style={{ fontWeight: 700, color: '#059669' }}>{COP(totalPrecio)}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer con acciones */}
+              <div style={{
+                padding: 14,
+                background: '#f0f0f0',
+                borderTop: '1px solid #ddd',
+                display: 'flex',
+                gap: 10,
+                justifyContent: 'flex-end',
+              }}>
+                <button
+                  onClick={() => setMostrandoPreview(false)}
+                  disabled={saving || generandoWA}
+                  style={{
+                    padding: '10px 18px',
+                    background: '#fff',
+                    color: '#666',
+                    border: '1.5px solid #ccc',
+                    borderRadius: 8,
+                    fontSize: 13, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >← Volver</button>
+                <button
+                  onClick={() => handleAccion('aprobado')}
+                  disabled={saving || generandoWA}
+                  style={{
+                    padding: '10px 22px',
+                    background: 'linear-gradient(135deg, #25d366, #128c7e)',
+                    color: '#fff', border: 'none', borderRadius: 8,
+                    fontSize: 13, fontWeight: 800,
+                    cursor: (saving || generandoWA) ? 'not-allowed' : 'pointer',
+                    opacity: (saving || generandoWA) ? 0.6 : 1,
+                    fontFamily: 'inherit',
+                    boxShadow: '0 3px 10px rgba(37,211,102,.4)',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  {saving
+                    ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Aprobando…</>
+                    : generandoWA
+                      ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Generando ticket…</>
+                      : <><WaIcon size={14}/> Confirmar y enviar por WhatsApp</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -367,7 +708,6 @@ export default function GestionReservas() {
   const [selR,     setSelR]     = useState(null);
   const [selHerm,  setSelHerm]  = useState([]);
   const [tasas,    setTasas]    = useState({});
-  const [ventaRapidaOpen, setVentaRapidaOpen] = useState(false);
 
   // Cargar tasas para conversión
   useEffect(() => {
@@ -577,53 +917,6 @@ export default function GestionReservas() {
           tasas={tasas}
         />
       )}
-
-      {/* ═══ Botón flotante: + Vender rápido ═══ */}
-      {user?.rol === 'dueno' && (
-        <button
-          onClick={() => setVentaRapidaOpen(true)}
-          title="Crear venta directa por número"
-          style={{
-            position: 'fixed',
-            bottom: 28,
-            right: 28,
-            zIndex: 999,
-            background: 'linear-gradient(135deg, #0abfbc 0%, #089a98 100%)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 50,
-            padding: '14px 22px',
-            fontSize: '.92rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(10,191,188,.45), 0 2px 6px rgba(0,0,0,.15)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontFamily: 'inherit',
-            transition: 'transform .15s, box-shadow .15s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(10,191,188,.55), 0 3px 8px rgba(0,0,0,.18)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.transform = '';
-            e.currentTarget.style.boxShadow = '0 6px 20px rgba(10,191,188,.45), 0 2px 6px rgba(0,0,0,.15)';
-          }}
-        >
-          <span style={{ fontSize: 18 }}>⚡</span>
-          <span>Vender rápido</span>
-        </button>
-      )}
-
-      {/* Modal de venta rápida */}
-      <VentaRapidaModal
-        open={ventaRapidaOpen}
-        onClose={() => setVentaRapidaOpen(false)}
-        onCreada={() => { load(); loadTodas(); }}
-        tasas={tasas}
-      />
     </Layout>
   );
 }
