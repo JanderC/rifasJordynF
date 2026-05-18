@@ -711,6 +711,10 @@ function ModalBoleteria({ rifa, onClose }) {
   const [saving,        setSaving]        = useState(false);
   const [busquedaVend,  setBusquedaVend]  = useState('');
 
+  // NUEVO: búsqueda por número
+  const [modoBusqueda, setModoBusqueda] = useState('vendedor'); // 'vendedor' | 'numero'
+  const [busquedaNum,  setBusquedaNum]  = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -773,25 +777,94 @@ function ModalBoleteria({ rifa, onClose }) {
           </button>
         </div>
 
-        {/* Buscador de vendedores */}
+        {/* Buscador (vendedor o número) */}
         {!loading && data && data.vendedores.length > 0 && (
           <div style={{ padding:'.75rem 1.25rem', borderBottom:'1px solid var(--jordyn-border)', background:'var(--jordyn-bg2)', flexShrink:0 }}>
-            <div style={{ position:'relative' }}>
-              <i className="bi bi-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem', pointerEvents:'none' }}></i>
-              <input
-                className="jd-input"
-                value={busquedaVend}
-                onChange={e => { setBusquedaVend(e.target.value); setVendedorAbierto(null); }}
-                placeholder="Buscar vendedor por nombre o cédula..."
-                style={{ paddingLeft:36, paddingRight: busquedaVend ? 36 : 12 }}
-              />
-              {busquedaVend && (
-                <button onClick={() => setBusquedaVend('')}
-                  style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--jordyn-muted)', fontSize:'.85rem', lineHeight:1, padding:2 }}>
-                  <i className="bi bi-x-lg"></i>
-                </button>
-              )}
+
+            {/* Toggle modo de búsqueda */}
+            <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+              <button
+                type="button"
+                onClick={() => { setModoBusqueda('vendedor'); setBusquedaNum(''); }}
+                style={{
+                  flex:1, padding:'6px 10px',
+                  background: modoBusqueda === 'vendedor' ? 'var(--jordyn-primary,#0abfbc)' : '#fff',
+                  color:      modoBusqueda === 'vendedor' ? '#fff' : 'var(--jordyn-text)',
+                  border: `1.5px solid ${modoBusqueda === 'vendedor' ? 'var(--jordyn-primary,#0abfbc)' : 'var(--jordyn-border)'}`,
+                  borderRadius:6, cursor:'pointer',
+                  fontSize:'.78rem', fontWeight:700,
+                  fontFamily:'inherit',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                }}>
+                <i className="bi bi-person-fill"></i> Por vendedor
+              </button>
+              <button
+                type="button"
+                onClick={() => { setModoBusqueda('numero'); setBusquedaVend(''); }}
+                style={{
+                  flex:1, padding:'6px 10px',
+                  background: modoBusqueda === 'numero' ? '#7c3aed' : '#fff',
+                  color:      modoBusqueda === 'numero' ? '#fff' : 'var(--jordyn-text)',
+                  border: `1.5px solid ${modoBusqueda === 'numero' ? '#7c3aed' : 'var(--jordyn-border)'}`,
+                  borderRadius:6, cursor:'pointer',
+                  fontSize:'.78rem', fontWeight:700,
+                  fontFamily:'inherit',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                }}>
+                <i className="bi bi-hash"></i> Por número
+              </button>
             </div>
+
+            {/* Input según modo */}
+            {modoBusqueda === 'vendedor' ? (
+              <div style={{ position:'relative' }}>
+                <i className="bi bi-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem', pointerEvents:'none' }}></i>
+                <input
+                  className="jd-input"
+                  value={busquedaVend}
+                  onChange={e => { setBusquedaVend(e.target.value); setVendedorAbierto(null); }}
+                  placeholder="Buscar vendedor por nombre o cédula..."
+                  style={{ paddingLeft:36, paddingRight: busquedaVend ? 36 : 12 }}
+                />
+                {busquedaVend && (
+                  <button onClick={() => setBusquedaVend('')}
+                    style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--jordyn-muted)', fontSize:'.85rem', lineHeight:1, padding:2 }}>
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ position:'relative' }}>
+                <i className="bi bi-hash" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'1rem', pointerEvents:'none' }}></i>
+                <input
+                  className="jd-input"
+                  value={busquedaNum}
+                  onChange={e => setBusquedaNum(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Escribe el número (ej. 123) para ver qué vendedor lo tiene…"
+                  inputMode="numeric"
+                  style={{
+                    paddingLeft:36,
+                    paddingRight: busquedaNum ? 36 : 12,
+                    fontFamily:'monospace',
+                    fontSize:'1rem',
+                    letterSpacing: '3px',
+                    fontWeight: 700,
+                  }}
+                />
+                {busquedaNum && (
+                  <button onClick={() => setBusquedaNum('')}
+                    style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--jordyn-muted)', fontSize:'.85rem', lineHeight:1, padding:2 }}>
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {modoBusqueda === 'numero' && (
+              <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:6, fontStyle:'italic' }}>
+                🔍 Solo consulta — no modifica nada
+              </div>
+            )}
           </div>
         )}
 
@@ -807,6 +880,17 @@ function ModalBoleteria({ rifa, onClose }) {
               <div style={{ fontWeight:700, marginBottom:6 }}>Sin vendedores asignados</div>
               <div style={{ fontSize:'.82rem' }}>Esta rifa no tiene vendedores. Edita la rifa para agregar una categoría con vendedores.</div>
             </div>
+          ) : modoBusqueda === 'numero' ? (
+            <ResultadoBusquedaNumero
+              numero={busquedaNum}
+              vendedores={data.vendedores}
+              esSimultanea={esSimultanea}
+              onAbrirVendedor={(vid) => {
+                setModoBusqueda('vendedor');
+                setBusquedaVend('');
+                setVendedorAbierto(vid);
+              }}
+            />
           ) : (() => {
             const q = busquedaVend.trim().toLowerCase();
             const filtrados = q
@@ -847,6 +931,219 @@ function ModalBoleteria({ rifa, onClose }) {
             );
           })()}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Sub-componente: resultado de búsqueda de número en boletería ──
+   SOLO LECTURA: muestra qué vendedor(es) tienen ese número, en qué
+   serie (A/B) y de qué origen (categoría global vs extra de esta rifa).
+   No toca la BD, no modifica nada. */
+function ResultadoBusquedaNumero({ numero, vendedores, esSimultanea, onAbrirVendedor }) {
+  // Sin texto → mensaje guía
+  if (!numero || !numero.trim()) {
+    return (
+      <div style={{ textAlign:'center', padding:'3rem 1rem', color:'var(--jordyn-muted)' }}>
+        <div style={{ fontSize:'2.5rem', marginBottom:12 }}>🔢</div>
+        <div style={{ fontWeight:700, marginBottom:6, color:'var(--jordyn-text)' }}>
+          Buscar número
+        </div>
+        <div style={{ fontSize:'.82rem', maxWidth:360, margin:'0 auto' }}>
+          Escribe un número arriba para ver qué vendedor(es) lo tienen asignado en esta rifa.
+        </div>
+      </div>
+    );
+  }
+
+  // Normalizar el número buscado a 3 dígitos (000–999)
+  const numNorm = /^\d+$/.test(numero.trim()) ? numero.trim().padStart(3, '0') : numero.trim();
+
+  // Buscar en todos los vendedores. Cada hit incluye el vendedor + la entrada de numeros_fijos
+  const hits = [];
+  for (const v of vendedores) {
+    for (const n of (v.numeros_fijos || [])) {
+      if (String(n.numero).padStart(3, '0') === numNorm) {
+        hits.push({ vendedor: v, asignacion: n });
+      }
+    }
+  }
+
+  // Sin resultado
+  if (hits.length === 0) {
+    return (
+      <div style={{ textAlign:'center', padding:'2.5rem 1rem', color:'var(--jordyn-muted)' }}>
+        <div style={{ fontSize:'2.5rem', marginBottom:12 }}>🔍</div>
+        <div style={{ fontWeight:800, marginBottom:6, color:'var(--jordyn-text)', fontSize:'1rem' }}>
+          Número {numNorm} no asignado
+        </div>
+        <div style={{ fontSize:'.82rem', maxWidth:380, margin:'0 auto' }}>
+          Este número no está asignado a ningún vendedor en esta rifa.
+          Podría estar disponible o haber sido vendido a un cliente directo.
+        </div>
+      </div>
+    );
+  }
+
+  // Estilos de badges
+  const badgeSerie = (serie) => ({
+    background: serie === 'A' ? '#0abfbc' : '#7c3aed',
+    color: '#fff',
+    padding: '2px 9px',
+    borderRadius: 4,
+    fontSize: '.7rem',
+    fontWeight: 800,
+    letterSpacing: 1,
+    fontFamily: 'monospace',
+  });
+
+  const badgeOrigen = (origen) => ({
+    background: origen === 'extra' ? 'rgba(59,130,246,.12)' : 'rgba(124,58,237,.08)',
+    color:      origen === 'extra' ? '#2563eb' : '#7c3aed',
+    border:    `1px solid ${origen === 'extra' ? 'rgba(59,130,246,.3)' : 'rgba(124,58,237,.2)'}`,
+    padding: '2px 8px',
+    borderRadius: 4,
+    fontSize: '.65rem',
+    fontWeight: 700,
+    letterSpacing: .5,
+    textTransform: 'uppercase',
+  });
+
+  return (
+    <div>
+      {/* Encabezado del resultado */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(124,58,237,.08), rgba(124,58,237,.03))',
+        border: '1.5px solid rgba(124,58,237,.25)',
+        borderRadius: 10,
+        padding: '12px 16px',
+        marginBottom: 14,
+        display: 'flex', alignItems: 'center', gap: 14,
+      }}>
+        <div style={{
+          fontSize: '1.8rem',
+          fontFamily: 'monospace',
+          fontWeight: 900,
+          color: '#7c3aed',
+          letterSpacing: 4,
+          background: '#fff',
+          border: '2px solid #7c3aed',
+          padding: '4px 14px',
+          borderRadius: 8,
+          lineHeight: 1,
+        }}>
+          {numNorm}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '.72rem', color: '#7c3aed', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+            Resultado de búsqueda
+          </div>
+          <div style={{ fontSize: '.92rem', fontWeight: 700, color: 'var(--jordyn-text)', marginTop: 2 }}>
+            {hits.length === 1
+              ? `1 asignación encontrada`
+              : `${hits.length} asignaciones encontradas`}
+            {esSimultanea && hits.length > 1 && <span style={{ color: 'var(--jordyn-muted)', fontWeight: 500 }}> (Series A y B)</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Cards de cada vendedor que lo tiene */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {hits.map(({ vendedor: v, asignacion: a }, idx) => (
+          <div key={`${v.vendedor_id}-${a.serie}-${a.origen}-${idx}`} style={{
+            background: '#fff',
+            border: '1.5px solid var(--jordyn-border)',
+            borderRadius: 10,
+            padding: '12px 16px',
+            display: 'flex', alignItems: 'center', gap: 14,
+            transition: 'box-shadow .15s, border-color .15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = '#7c3aed';
+            e.currentTarget.style.boxShadow = '0 3px 12px rgba(124,58,237,.12)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'var(--jordyn-border)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}>
+
+            {/* Avatar con inicial */}
+            <div style={{
+              width: 42, height: 42, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+              color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 900, fontSize: '1.05rem',
+              flexShrink: 0,
+            }}>
+              {v.vendedor_nombre?.charAt(0).toUpperCase() || '?'}
+            </div>
+
+            {/* Info del vendedor */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontWeight: 700,
+                fontSize: '.92rem',
+                color: 'var(--jordyn-text)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {v.vendedor_nombre}
+              </div>
+              <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
+                {v.cedula ? `C.I: ${v.cedula}` : 'Sin cédula'}
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                {esSimultanea && <span style={badgeSerie(a.serie)}>Serie {a.serie}</span>}
+                <span style={badgeOrigen(a.origen)}>
+                  {a.origen === 'extra' ? '➕ Extra de esta rifa' : '📂 Categoría global'}
+                </span>
+              </div>
+            </div>
+
+            {/* Botón ver panel completo */}
+            <button
+              onClick={() => onAbrirVendedor(v.vendedor_id)}
+              title="Abrir el panel del vendedor"
+              style={{
+                background: '#fff',
+                border: '1.5px solid #7c3aed',
+                color: '#7c3aed',
+                borderRadius: 7,
+                padding: '7px 12px',
+                cursor: 'pointer',
+                fontSize: '.72rem',
+                fontWeight: 700,
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                flexShrink: 0,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#7c3aed'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#fff';    e.currentTarget.style.color = '#7c3aed'; }}
+            >
+              <i className="bi bi-eye"></i> Ver panel
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Aviso de solo lectura */}
+      <div style={{
+        marginTop: 16,
+        padding: '8px 12px',
+        background: 'rgba(124,58,237,.04)',
+        border: '1px dashed rgba(124,58,237,.25)',
+        borderRadius: 6,
+        fontSize: '.7rem',
+        color: 'var(--jordyn-muted)',
+        textAlign: 'center',
+        fontStyle: 'italic',
+      }}>
+        ℹ️ Esta es solo una consulta. Para modificar la asignación, abre el panel del vendedor.
       </div>
     </div>
   );
