@@ -175,7 +175,14 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
     }
   };
 
-  /* ── Enviar WA con imagen del ticket ── */
+  /* ── Enviar WA con imagen del ticket ──
+     Estrategia adaptativa:
+     - En MÓVIL con navigator.share + files: dispara el share sheet
+       nativo que sí permite mandar IMAGEN + TEXTO juntos a WhatsApp
+       en una sola acción.
+     - En DESKTOP (sin soporte): descarga las imágenes y abre
+       WhatsApp Web con el texto; el usuario adjunta a mano.
+  */
   const enviarWAConTicket = async () => {
     if (!reserva.telefono) {
       // Sin teléfono: solo abrir WA con el texto
@@ -196,8 +203,9 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
         hora_sorteo: reserva.hora_sorteo,
       };
 
-      // 1. Generar UNA imagen por cada número, descargar todas
-      let imagenesGeneradas = 0;
+      // 1. Generar TODAS las imágenes en memoria
+      const archivos = [];
+      const dataUrls = [];
       for (let i = 0; i < todosNumeros.length; i++) {
         const num = todosNumeros[i];
         const imgDataUrl = await generarImagenTicketTemplate({
@@ -206,31 +214,72 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
           plantilla,
         });
         if (imgDataUrl) {
-          const a = document.createElement('a');
-          a.href     = imgDataUrl;
-          a.download = `ticket-${reserva.id?.slice(0,8)}-${num}.png`;
-          a.click();
-          imagenesGeneradas++;
-          // Pequeña pausa entre descargas para que el navegador no las bloquee
-          if (i < todosNumeros.length - 1) {
-            await new Promise(r => setTimeout(r, 300));
+          dataUrls.push({ num, url: imgDataUrl });
+          // Convertir dataURL → Blob → File para el share API
+          try {
+            const blob = await (await fetch(imgDataUrl)).blob();
+            const file = new File(
+              [blob],
+              `ticket-${reserva.id?.slice(0,8)}-${num}.png`,
+              { type: 'image/png' }
+            );
+            archivos.push(file);
+          } catch (e) {
+            console.warn('No se pudo convertir imagen a File:', e);
           }
         }
       }
 
-      if (imagenesGeneradas > 0) {
+      const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas);
+
+      // 2. Detectar si el navegador soporta compartir archivos (típico en móvil)
+      const puedeCompartirFiles =
+        typeof navigator !== 'undefined' &&
+        navigator.canShare &&
+        archivos.length > 0 &&
+        navigator.canShare({ files: archivos });
+
+      if (puedeCompartirFiles) {
+        // ✅ MÓVIL: usa el share sheet nativo que sí pasa imagen + texto a WhatsApp
+        try {
+          await navigator.share({
+            files: archivos,
+            text: msg,
+            title: `Ticket Rifas Jordyn #${reserva.id?.slice(0,8).toUpperCase()}`,
+          });
+          toast.success('✅ Compartido. El cliente recibirá imagen + texto juntos.');
+          return; // ya está, no abrimos WA Web
+        } catch (e) {
+          // Usuario canceló el share o falló → caemos al modo desktop
+          if (e.name !== 'AbortError') {
+            console.warn('share falló, usando fallback:', e);
+          }
+        }
+      }
+
+      // ⏬ DESKTOP fallback: descargar las imágenes + abrir WA Web con el texto
+      for (let i = 0; i < dataUrls.length; i++) {
+        const { num, url } = dataUrls[i];
+        const a = document.createElement('a');
+        a.href     = url;
+        a.download = `ticket-${reserva.id?.slice(0,8)}-${num}.png`;
+        a.click();
+        if (i < dataUrls.length - 1) {
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+
+      if (dataUrls.length > 0) {
         toast.info(
-          `📸 ${imagenesGeneradas} ticket${imagenesGeneradas > 1 ? 's' : ''} descargado${imagenesGeneradas > 1 ? 's' : ''} — adjúnta${imagenesGeneradas > 1 ? 'los' : 'lo'} en WhatsApp al enviar`,
+          `📸 ${dataUrls.length} ticket${dataUrls.length > 1 ? 's' : ''} descargado${dataUrls.length > 1 ? 's' : ''} — adjúnta${dataUrls.length > 1 ? 'los' : 'lo'} en WhatsApp`,
           { autoClose: 6000 }
         );
       }
 
-      // 2. Abrir WhatsApp con el mensaje
-      const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas);
       abrirWA(reserva.telefono, msg);
     } catch (e) {
       console.error('Error enviando WA con ticket:', e);
-      // Fallback: solo texto
+      // Fallback final: solo texto
       abrirWA(reserva.telefono, buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas));
     } finally {
       setGenerandoWA(false);
