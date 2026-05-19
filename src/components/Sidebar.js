@@ -30,7 +30,7 @@ export default function Sidebar() {
       } catch {}
     };
     fetchPendientes();
-    const interval = setInterval(fetchPendientes, 60_000); // actualizar cada minuto
+    const interval = setInterval(fetchPendientes, 60_000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -49,6 +49,8 @@ export default function Sidebar() {
     { to: '/diseno-ticket',   icon: 'bi-ticket-perforated-fill', label: 'Diseño boleto' },
     { to: '/caja',            icon: 'bi-cash-coin',              label: 'Caja' },
     { to: '/tasas',           icon: 'bi-currency-exchange',      label: 'Tasas' },
+    // ── NUEVO: WhatsApp Business ──
+    { to: '/whatsapp',        icon: 'bi-whatsapp',               label: 'WhatsApp Bot', waColor: true },
   ];
 
   const navsVendedor = [
@@ -69,7 +71,10 @@ export default function Sidebar() {
       className={({ isActive }) => `jd-nav-item${isActive ? ' active' : ''}`}
       style={{ position: 'relative' }}
     >
-      <i className={`bi ${n.icon}`}></i>
+      <i
+        className={`bi ${n.icon}`}
+        style={n.waColor ? { color: '#25D366' } : undefined}
+      ></i>
       <span style={{ flex: 1 }}>{n.label}</span>
       {n.badge > 0 && (
         <span style={{
@@ -154,13 +159,17 @@ export default function Sidebar() {
             </div>
           )}
 
+          {/* Separador antes del módulo WhatsApp */}
+          {user?.rol === 'dueno' && (
+            <div style={{ margin: '4px 12px', borderTop: '1px solid var(--jordyn-border)' }} />
+          )}
+
           {navs.map(n => <NavItem key={n.to} n={n} />)}
         </div>
 
         {/* Separador + usuario + logout */}
         <div style={{ borderTop: '1px solid var(--jordyn-border)', padding: '0.9rem 1.1rem', flexShrink: 0 }}>
           <div style={{ marginBottom: '0.7rem' }}>
-            {/* Avatar inicial */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
@@ -196,7 +205,7 @@ export default function Sidebar() {
               className={({ isActive }) => `jd-bottom-nav-item${isActive ? ' active' : ''}`}
               style={{ position: 'relative' }}
             >
-              <i className={`bi ${n.icon}`}></i>
+              <i className={`bi ${n.icon}`} style={n.waColor ? { color: '#25D366' } : undefined}></i>
               <span>{n.label.split(' ')[0]}</span>
               {n.badge > 0 && (
                 <span style={{
@@ -218,7 +227,6 @@ export default function Sidebar() {
         @media (max-width: 768px) {
           #sidebar-close { display: block !important; }
 
-          /* El sidebar ocupa exactamente la pantalla visible, sin depender del padre */
           .jd-sidebar {
             display: flex !important;
             flex-direction: column !important;
@@ -231,12 +239,10 @@ export default function Sidebar() {
             overflow: hidden !important;
           }
 
-          /* Brand no se encoge */
           .jd-sidebar-brand {
             flex-shrink: 0 !important;
           }
 
-          /* El área de links ocupa el espacio restante y hace scroll si hay muchos items */
           .jd-sidebar > div[style*="flex: 1"],
           .jd-sidebar > div[style*="flex:1"] {
             flex: 1 1 0 !important;
@@ -245,7 +251,6 @@ export default function Sidebar() {
             -webkit-overflow-scrolling: touch;
           }
 
-          /* Footer de usuario nunca se encoge ni se sale */
           .jd-sidebar > div[style*="flexShrink: 0"],
           .jd-sidebar > div[style*="flex-shrink: 0"] {
             flex-shrink: 0 !important;

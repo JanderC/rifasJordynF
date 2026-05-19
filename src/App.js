@@ -21,6 +21,7 @@ import ImprimirBoletos     from './pages/ImprimirBoletos';
 import ClientePublico       from './pages/ClientePublico';
 import GestionReservas   from './pages/GestionReservas';
 import Tasas             from './pages/Tasas';
+import WhatsApp          from './pages/WhatsApp';   // ← NUEVO
 
 function PrivateRoute({ children, rol }) {
   const { user, loading } = useAuth();
@@ -60,6 +61,9 @@ function AppRoutes() {
       <Route path="/tasas"         element={<PrivateRoute rol="dueno"><Tasas /></PrivateRoute>} />
       <Route path="/generador-pdf" element={<PrivateRoute rol="dueno"><GeneradorPDFTickets /></PrivateRoute>} />
       <Route path="/imprimir-boletos" element={<PrivateRoute rol="dueno"><ImprimirBoletos /></PrivateRoute>} />
+
+      {/* ── WHATSAPP BUSINESS (nuevo módulo) ── */}
+      <Route path="/whatsapp"      element={<PrivateRoute rol="dueno"><WhatsApp /></PrivateRoute>} />
 
       {/* PÚBLICA — sin autenticación */}
       <Route path="/comprar" element={<ClientePublico />} />
