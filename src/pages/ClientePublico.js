@@ -119,7 +119,6 @@ const METODOS_PAGO = {
     campos: [
       { label: 'Correo',         valor: 'angelespinosag00@gmail.com' },
       { label: 'Nombre',         valor: 'Angel Espinosa'             },
-      { label: 'Tasa de cambio', valor: '$1 USD = $3.380'            },
       { label: 'Mínimo',         valor: 'Desde $10 USD'              },
     ],
     nota: '⚠️ No colocar descripción ni concepto',
