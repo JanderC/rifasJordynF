@@ -766,7 +766,7 @@ function ModalBoleteria({ rifa, onClose }) {
           <div>
             <div style={{ color:'#fff', fontWeight:800, fontSize:'1.05rem', display:'flex', alignItems:'center', gap:8 }}>
               <i className="bi bi-ticket-perforated-fill"></i>
-              BOLETERÍA — {rifa.nombre}
+              ADMINISTRACION DE TICKETS DE LA RIFA — {rifa.nombre}
             </div>
             <div style={{ color:'rgba(255,255,255,.75)', fontSize:'.7rem', marginTop:2 }}>
               {esSimultanea ? '⚡ Rifa Simultánea · Series A y B' : '🎯 Rifa Parcial · Serie A'}
