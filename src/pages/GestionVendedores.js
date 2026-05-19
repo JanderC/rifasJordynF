@@ -901,6 +901,7 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
   const confirmar = async () => {
     if (modo==='nuevo'&&!form.nombre.trim()) return toast.error('El nombre es requerido');
     if (modo==='existente'&&!vendedorSel) return toast.error('Selecciona un vendedor');
+    // v8: numeros puede estar vacío — el vendedor se agrega sin números todavía
     setSaving(true);
     try {
       const creds = modo==='nuevo' ? generarCredenciales(form.nombre.trim()) : null;
@@ -1015,7 +1016,10 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
 
           {/* Panel números */}
           <div style={{background:'var(--jordyn-bg2)',border:`2px solid ${accent}25`,borderRadius:14,padding:'1rem',marginBottom:'1rem'}}>
-            <div style={{fontWeight:700,fontSize:'0.85rem',color:accent,marginBottom:'0.75rem'}}><i className="bi bi-hash me-1"></i>Números a asignar</div>
+            <div style={{fontWeight:700,fontSize:'0.85rem',color:accent,marginBottom:'0.75rem',display:'flex',alignItems:'center',gap:8}}>
+              <i className="bi bi-hash me-1"></i>Números a asignar
+              <span style={{fontSize:'0.65rem',fontWeight:600,color:'var(--jordyn-muted)',background:'var(--jordyn-bg2)',border:'1px solid var(--jordyn-border)',borderRadius:20,padding:'1px 8px',fontStyle:'italic'}}>Opcional</span>
+            </div>
             <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1.5px solid var(--jordyn-border)',marginBottom:'0.75rem'}}>
               {[['manual','Manual'],['rango','Rango']].map(([k,l],i)=>(
                 <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:'7px 6px',border:'none',cursor:'pointer',fontSize:'0.75rem',fontWeight:600,background:tab===k?accent:'transparent',color:tab===k?'#fff':'var(--jordyn-muted)',borderRight:i===0?'1.5px solid var(--jordyn-border)':'none'}}>{l}</button>
@@ -1122,10 +1126,10 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
 
           <div className="d-flex gap-2">
             <button className="btn-jordyn w-100" onClick={confirmar} disabled={saving} style={{background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
-              {saving?<><span className="jd-spinner" style={{width:15,height:15}}></span> Creando...</>
+              {saving?<><span className="jd-spinner" style={{width:15,height:15}}></span> {modo==='nuevo'?'Creando...':'Vinculando...'}</>
                 :<><i className="bi bi-person-check-fill me-1"></i>
                   {modo==='nuevo'?'Crear vendedor':'Vincular vendedor'}
-                  {numeros.length>0?` + ${numeros.length} número${numeros.length!==1?'s':''}`:''}</>
+                  {numeros.length>0?` + ${numeros.length} número${numeros.length!==1?'s':''}`:' sin números'}</>
               }
             </button>
             <button className="btn-jordyn-outline" onClick={onClose} style={{flexShrink:0,padding:'0 18px'}}>Cancelar</button>
@@ -1268,7 +1272,14 @@ function ModalGestionarCategoria({ categoria, onClose, onSaved }) {
                     </div>
                     <div style={{padding:'0.65rem 1rem'}}>
                       {!vdata.numeros?.length?(
-                        <div style={{fontSize:'0.72rem',color:'var(--jordyn-muted)',fontStyle:'italic'}}>Sin números.</div>
+                        <div style={{display:'flex',alignItems:'center',gap:8,fontSize:'0.72rem',color:'var(--jordyn-muted)'}}>
+                          <span style={{fontStyle:'italic'}}>Sin números asignados.</span>
+                          <span
+                            style={{background:'rgba(240,165,0,0.1)',border:'1px solid rgba(240,165,0,0.3)',color:'#b37700',borderRadius:20,padding:'1px 8px',fontSize:'0.62rem',fontWeight:700,fontStyle:'normal',cursor:'pointer'}}
+                            onClick={()=>setModalNums({id:vdata.vendedor_id,nombre:vdata.vendedor_nombre})}>
+                            <i className="bi bi-plus-circle me-1"></i>Agregar números
+                          </span>
+                        </div>
                       ):esSim?(
                         [null,'A','B'].map(serie=>{
                           const nums=vdata.numeros.filter(n=>n.serie===serie);
