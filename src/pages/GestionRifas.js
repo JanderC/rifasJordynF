@@ -156,7 +156,7 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
                   {desc && <div style={{ fontSize: '.62rem', color: 'var(--jordyn-muted)' }}>Ahorra {fmtCOP(desc.ahorras)} · <span style={{ color: '#059669', fontWeight: 700 }}>−{desc.pct}%</span></div>}
                   {precioBase > 0 && <div style={{ fontSize: '.58rem', color: 'var(--jordyn-muted)', textDecoration: 'line-through' }}>Normal: {fmtCOP(precioBase * o.cantidad)}</div>}
                 </div>
-                <button onClick={() => eliminarOferta(o.cantidad)} style={{ background: 'rgba(230,57,70,.08)', border: '1px solid rgba(230,57,70,.3)', color: '#e63946', borderRadius: 7, padding: '4px 8px', cursor: 'pointer', fontSize: '.75rem', flexShrink: 0 }}>
+                <button type="button" onClick={() => eliminarOferta(o.cantidad)} style={{ background: 'rgba(230,57,70,.08)', border: '1px solid rgba(230,57,70,.3)', color: '#e63946', borderRadius: 7, padding: '4px 8px', cursor: 'pointer', fontSize: '.75rem', flexShrink: 0 }}>
                   <i className="bi bi-trash3"></i>
                 </button>
               </div>
@@ -172,20 +172,21 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
           <div>
             <label className="jd-label" style={{ fontSize: '.6rem' }}>CANT. MÍNIMA</label>
-            <input className="jd-input" type="number" min="2" max="50" value={nuevaCant} onChange={e => setNuevaCant(e.target.value)} placeholder="3" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem' }} />
+            <input className="jd-input" type="number" min="2" max="50" value={nuevaCant} onChange={e => setNuevaCant(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarOferta())} placeholder="3" style={{ textAlign: 'center', fontWeight: 800, fontSize: '1rem' }} />
           </div>
           <div>
             <label className="jd-label" style={{ fontSize: '.6rem' }}>PRECIO TOTAL</label>
             <input className="jd-input" value={nuevoPrecio} onChange={e => setNuevoPrecio(e.target.value)}
               onFocus={() => setNuevoPrecio(nuevoPrecio.replace(/\D/g, ''))}
               onBlur={() => nuevoPrecio && setNuevoPrecio(fmtCOP(parseCOP(nuevoPrecio)))}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarOferta())}
               placeholder="$25.000" style={{ fontWeight: 700 }} />
           </div>
           <div>
             <label className="jd-label" style={{ fontSize: '.6rem' }}>NOMBRE (opc.)</label>
-            <input className="jd-input" value={nuevaEtiq} onChange={e => setNuevaEtiq(e.target.value)} placeholder="Pack Ahorro" />
+            <input className="jd-input" value={nuevaEtiq} onChange={e => setNuevaEtiq(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarOferta())} placeholder="Pack Ahorro" />
           </div>
-          <button onClick={agregarOferta} className="btn-jordyn" style={{ padding: '10px 14px', fontSize: '.8rem', height: 44, alignSelf: 'end' }}>
+          <button type="button" onClick={agregarOferta} className="btn-jordyn" style={{ padding: '10px 14px', fontSize: '.8rem', height: 44, alignSelf: 'end' }}>
             <i className="bi bi-plus-lg"></i>
           </button>
         </div>
