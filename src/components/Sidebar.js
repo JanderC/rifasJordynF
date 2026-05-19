@@ -41,7 +41,7 @@ export default function Sidebar() {
   };
 
   const navsDueno = [
-    { to: '/dashboard',       icon: 'bi-grid-1x2-fill',          label: 'Dashboard' },
+    { to: '/dashboard',       icon: 'bi-grid-1x2-fill',          label: 'Pantalla Principal' },
     { to: '/rifas',           icon: 'bi-trophy-fill',            label: 'Rifas' },
     { to: '/vendedores',      icon: 'bi-people-fill',            label: 'Numeros Fijos' },
     { to: '/reservas',        icon: 'bi-bookmark-check-fill',    label: 'Reservas', badge: pendientes },
