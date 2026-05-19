@@ -1598,6 +1598,183 @@ function ModalNumeros({ rifa, onClose, user }) {
 /* ════════════════════════════════════════════════════════════
    PÁGINA PRINCIPAL — GestionRifas
 ════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════
+   MODAL — Programar desactivación automática
+════════════════════════════════════════════════════════════ */
+function ModalProgramarDesactivacion({ rifa, onClose, onSaved }) {
+  const pad  = n => String(n).padStart(2, '0');
+  const tz   = 'America/Caracas'; // UTC-4 fijo, sin DST
+
+  // Construye el string "YYYY-MM-DDTHH:MM" en hora Caracas
+  const toInputVal = (dateObj) => {
+    const d = new Date(dateObj.toLocaleString('en-US', { timeZone: tz }));
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Valor inicial: si ya tiene programación → esa fecha; si no → hoy a las 23:59
+  const initVal = () => {
+    if (rifa.desactivar_en) return toInputVal(new Date(rifa.desactivar_en));
+    const hoy = new Date();
+    hoy.setHours(23, 59, 0, 0);
+    return toInputVal(hoy);
+  };
+
+  // Mínimo: 5 minutos desde ahora en Caracas
+  const minVal = () => {
+    const d = new Date(Date.now() + 5 * 60 * 1000);
+    return toInputVal(d);
+  };
+
+  const [fechaHora,  setFechaHora]  = useState(initVal);
+  const [saving,     setSaving]     = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+
+  const yaProgr = rifa.desactivar_en ? new Date(rifa.desactivar_en) : null;
+
+  // Preview legible del valor seleccionado
+  const preview = (() => {
+    if (!fechaHora) return null;
+    try {
+      const [date, time] = fechaHora.split('T');
+      const [y, m, d] = date.split('-').map(Number);
+      const [hh, mm]  = time.split(':').map(Number);
+      // Caracas = UTC-4, convertir a UTC sumando 4 horas
+      const utcDate = new Date(Date.UTC(y, m-1, d, hh + 4, mm));
+      return utcDate.toLocaleString('es-CO', {
+        weekday:'long', day:'2-digit', month:'long',
+        year:'numeric', hour:'2-digit', minute:'2-digit',
+        hour12:true, timeZone: tz,
+      });
+    } catch { return null; }
+  })();
+
+  // Convierte el valor del input (hora Caracas) a ISO UTC
+  const toISO = val => {
+    const [date, time] = val.split('T');
+    const [y, m, d] = date.split('-').map(Number);
+    const [hh, mm]  = time.split(':').map(Number);
+    return new Date(Date.UTC(y, m-1, d, hh + 4, mm)).toISOString();
+  };
+
+  const handleGuardar = async () => {
+    if (!fechaHora) return toast.error('Selecciona una fecha y hora');
+    setSaving(true);
+    try {
+      await API.put(`/rifas/${rifa.id}/programar-desactivacion`, { desactivar_en: toISO(fechaHora) });
+      toast.success('✅ Desactivación programada');
+      onSaved(); onClose();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error al programar'); }
+    finally { setSaving(false); }
+  };
+
+  const handleCancelar = async () => {
+    setCancelando(true);
+    try {
+      await API.put(`/rifas/${rifa.id}/programar-desactivacion`, { desactivar_en: null });
+      toast.info('Programación cancelada');
+      onSaved(); onClose();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
+    finally { setCancelando(false); }
+  };
+
+  return (
+    <div
+      onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed',inset:0,zIndex:10600,background:'rgba(8,22,22,0.8)',backdropFilter:'blur(7px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem' }}
+    >
+      <div style={{ width:'100%',maxWidth:460,background:'var(--jordyn-surface)',border:'1px solid var(--jordyn-border)',borderRadius:18,overflow:'hidden',boxShadow:'0 32px 80px rgba(230,57,70,0.2)' }}>
+
+        {/* Header */}
+        <div style={{ background:'linear-gradient(135deg,#7c0a14,#e63946)',padding:'1rem 1.5rem',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+          <div>
+            <div style={{ fontWeight:800,fontSize:'1rem',color:'#fff',display:'flex',alignItems:'center',gap:8 }}>
+              <i className="bi bi-clock-fill"></i>Programar desactivación
+            </div>
+            <div style={{ fontSize:'0.72rem',color:'rgba(255,255,255,0.75)',marginTop:2 }}>{rifa.nombre}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:'0.95rem' }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'1.5rem' }}>
+
+          {/* Programación vigente */}
+          {yaProgr && (
+            <div style={{ background:'rgba(240,165,0,0.08)',border:'1px solid rgba(240,165,0,0.3)',borderRadius:10,padding:'0.75rem 1rem',marginBottom:'1.2rem',fontSize:'0.78rem',color:'#b37700',display:'flex',alignItems:'center',gap:10 }}>
+              <i className="bi bi-clock-history" style={{ fontSize:'1.1rem',flexShrink:0 }}></i>
+              <div>
+                <div style={{ fontWeight:700,marginBottom:2 }}>Programación activa</div>
+                <div style={{ fontSize:'0.72rem' }}>
+                  {yaProgr.toLocaleString('es-CO',{ weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:tz })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Info */}
+          <div style={{ background:'rgba(10,191,188,0.06)',border:'1px solid rgba(10,191,188,0.18)',borderRadius:10,padding:'0.75rem 1rem',marginBottom:'1.25rem',fontSize:'0.76rem',color:'var(--jordyn-muted)',lineHeight:1.65 }}>
+            <i className="bi bi-info-circle-fill me-2" style={{ color:'var(--jordyn-primary)' }}></i>
+            La rifa se <strong>desactivará automáticamente</strong> en la fecha y hora elegida.
+            Quedará inactiva y dejará de mostrarse a los clientes. Puedes volver a activarla manualmente en cualquier momento.
+          </div>
+
+          {/* Input */}
+          <div style={{ marginBottom:'1.25rem' }}>
+            <label style={{ display:'block',fontSize:'0.72rem',fontWeight:700,color:'var(--jordyn-muted)',textTransform:'uppercase',letterSpacing:1,marginBottom:6 }}>
+              Fecha y hora de desactivación
+            </label>
+            <input
+              type="datetime-local"
+              className="jd-input"
+              value={fechaHora}
+              min={minVal()}
+              onChange={e => setFechaHora(e.target.value)}
+              style={{ width:'100%',boxSizing:'border-box',fontWeight:700,fontSize:'1rem' }}
+            />
+            {preview && (
+              <div style={{ marginTop:8,padding:'8px 12px',background:'rgba(230,57,70,0.06)',border:'1px solid rgba(230,57,70,0.2)',borderRadius:8,fontSize:'0.78rem',color:'#c0303a',fontWeight:600,display:'flex',alignItems:'center',gap:8 }}>
+                <i className="bi bi-calendar-x-fill" style={{ flexShrink:0 }}></i>
+                Se desactivará el <strong style={{ marginLeft:4 }}>{preview}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* Botones */}
+          <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
+            <button
+              className="btn-jordyn"
+              onClick={handleGuardar}
+              disabled={saving || !fechaHora}
+              style={{ background:'linear-gradient(135deg,#7c0a14,#e63946)',fontSize:'0.88rem' }}
+            >
+              {saving
+                ? <><span className="jd-spinner" style={{ width:16,height:16,borderWidth:2 }}></span> Programando...</>
+                : <><i className="bi bi-clock-fill me-1"></i>Confirmar programación</>}
+            </button>
+
+            {yaProgr && (
+              <button
+                className="btn-jordyn-outline"
+                onClick={handleCancelar}
+                disabled={cancelando}
+                style={{ fontSize:'0.82rem',color:'#b37700',borderColor:'rgba(240,165,0,0.4)' }}
+              >
+                {cancelando ? 'Cancelando...' : <><i className="bi bi-x-circle me-1"></i>Cancelar programación</>}
+              </button>
+            )}
+
+            <button className="btn-jordyn-outline" onClick={onClose} style={{ fontSize:'0.82rem' }}>
+              Cerrar sin cambios
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GestionRifas() {
   const { user } = useAuth();
   const [rifas,           setRifas]           = useState([]);
@@ -1620,6 +1797,7 @@ export default function GestionRifas() {
   const [selectedVendorIds,  setSelectedVendorIds]  = useState([]);
   // Plantillas de ticket disponibles
   const [plantillas, setPlantillas] = useState([]);
+  const [modalDesactivar, setModalDesactivar] = useState(null);
   const fileRef = useRef();
 
   // Cargar plantillas al montar
@@ -1792,6 +1970,13 @@ export default function GestionRifas() {
           <div className="d-flex flex-column align-items-end gap-1" style={{ flexShrink: 0 }}>
             <span className={r.activa ? 'badge-disponible' : 'badge-agotado'} style={{ fontSize: '0.68rem' }}>{archivada ? 'ARCHIVADA' : r.activa ? 'ACTIVA' : 'INACTIVA'}</span>
             {r.tipo && <span className={r.tipo === 'simultanea' ? 'badge-simultanea' : 'badge-sencilla'} style={{ fontSize: '0.64rem' }}>{r.tipo === 'simultanea' ? '⚡ SIMULTÁNEA' : '🎯 SENCILLA'}</span>}
+            {r.desactivar_en && r.activa && (
+              <span title={`Se desactiva: ${new Date(r.desactivar_en).toLocaleString('es-CO',{timeZone:'America/Caracas'})}`}
+                style={{ fontSize:'0.6rem',fontWeight:700,background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',color:'#e63946',borderRadius:20,padding:'1px 7px',display:'inline-flex',alignItems:'center',gap:4,whiteSpace:'nowrap' }}>
+                <i className="bi bi-clock-fill" style={{ fontSize:'0.55rem' }}></i>
+                {new Date(r.desactivar_en).toLocaleString('es-CO',{ day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'America/Caracas' })}
+              </span>
+            )}
           </div>
         </div>
 
@@ -1884,7 +2069,17 @@ export default function GestionRifas() {
             <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
             <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
             <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
-            <button onClick={() => handleToggle(r)} style={{ background: 'transparent', border: `1.5px solid ${r.activa ? 'rgba(230,57,70,0.4)' : 'rgba(6,214,160,0.4)'}`, color: r.activa ? 'var(--jordyn-red)' : 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', fontFamily: 'var(--jordyn-font)', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer' }}>{r.activa ? 'Desactivar' : 'Activar'}</button>
+            {/* Activar (si inactiva) — comportamiento directo */}
+            {!r.activa && (
+              <button onClick={() => handleToggle(r)} style={{ background:'transparent',border:'1.5px solid rgba(6,214,160,0.4)',color:'var(--jordyn-green)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer' }}>Activar</button>
+            )}
+            {/* Desactivar (si activa) — abre modal de programación */}
+            {r.activa && (
+              <button onClick={() => setModalDesactivar(r)} style={{ background:'transparent',border:`1.5px solid ${r.desactivar_en?'rgba(230,57,70,0.7)':'rgba(230,57,70,0.4)'}`,color:'var(--jordyn-red)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}>
+                <i className="bi bi-clock-fill" style={{ fontSize:'0.65rem' }}></i>
+                {r.desactivar_en ? 'Reprogramar' : 'Desactivar'}
+              </button>
+            )}
             <button onClick={() => handleArchivar(r)} title="Archivar" style={{ background: 'transparent', border: '1.5px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', marginLeft: 'auto' }}><i className="bi bi-archive"></i></button>
             <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }} title="Eliminar rifa"><i className="bi bi-trash3"></i></button>
           </div>
@@ -2332,6 +2527,14 @@ export default function GestionRifas() {
             </div>
           </div>
         </div>
+      )}
+      {/* Modal programar desactivación */}
+      {modalDesactivar && (
+        <ModalProgramarDesactivacion
+          rifa={modalDesactivar}
+          onClose={() => setModalDesactivar(null)}
+          onSaved={load}
+        />
       )}
     </Layout>
   );
