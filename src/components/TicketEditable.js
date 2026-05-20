@@ -1,23 +1,27 @@
 // ════════════════════════════════════════════════════════════════
-//   components/TicketEditable.js
-//   RIFAS JORDYN — Editor estilo Canva (sistema unificado)
+//   components/TicketEditable.js  (v2 MONSTRUOSO)
+//   RIFAS JORDYN — Editor estilo Canva
 //
-//   ▸ Click corto = seleccionar + editar texto · Drag = mover
-//   ▸ Shift+drag = snap a grid de 10px
-//   ▸ Cualquier elemento seleccionado abre el MISMO panel lateral:
-//     color, tamaño, peso, fuente, itálica, rotación
-//   ▸ Built-in: las propiedades se guardan en design.colorX, sizeX...
-//     Custom: dentro de design.customTexts[i]
-//   ▸ Botón "+ Agregar texto" para crear elementos custom
-//   ▸ Selector "Tamaño global" (factor que multiplica TODO size*)
-//   ▸ Botón "🎨 Paletas" para abrir paletas predefinidas
-//   ▸ Botón "↺ Reset posiciones"
-//
-//   El panel lateral REEMPLAZA las secciones de tipografía/colores
-//   del panel padre. Eso lo decides en tu componente contenedor.
+//   NUEVAS CAPACIDADES:
+//   ▸ Botón "+ Forma"     → flechas, estrellas, círculos, rayos,
+//                            sellos, ribbons, corazones, etc.
+//   ▸ Botón "+ Imagen"    → URL de imagen / blend modes / filtros
+//   ▸ Botón "🖼 Marco"     → 7 estilos de marco del ticket
+//   ▸ Botón "💧 Watermark" → marca de agua central editable
+//   ▸ Botón "📜 Textura"   → papel envejecido, dots, lines, grid
+//   ▸ Botón "🎭 Presets"   → diseños predefinidos espectaculares
+//   ▸ Por texto: textStroke (contorno/margen), textGlow, sombra 3D,
+//                gradiente de letra
 // ════════════════════════════════════════════════════════════════
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { DEFAULT_DESIGN } from './Ticket';
+import {
+  DEFAULT_DESIGN,
+  DecorativeShape,
+  DecorativeImage,
+  WatermarkLayer,
+  FrameLayer,
+  getPaperBgStyle,
+} from './Ticket';
 
 // ── Constantes ──────────────────────────────────────────
 const PT_TO_PX = 96 / 72;
@@ -45,6 +49,10 @@ const PALETAS = [
     colors: { colorSlogan:'#1a1a1a', colorFecha:'#333', colorPremio1:'#1a1a1a', colorPremio2:'#666', colorDolares:'#1a1a1a', colorSubPremio:'#333', colorPesosSub:'#666', colorBoleto:'#1a1a1a', colorValor:'#1a1a1a', colorPesos:'#666', colorTalon:'#1a1a1a' } },
   { id: 'esmeralda', label: '💚 Esmeralda',
     colors: { colorSlogan:'#0d6e3a', colorFecha:'#1a4d2e', colorPremio1:'#d4af37', colorPremio2:'#0d6e3a', colorDolares:'#0d6e3a', colorSubPremio:'#1a4d2e', colorPesosSub:'#d4af37', colorBoleto:'#1a4d2e', colorValor:'#0d6e3a', colorPesos:'#d4af37', colorTalon:'#1a4d2e' } },
+  { id: 'rubi', label: '❤️ Rubí & Oro',
+    colors: { colorSlogan:'#8b0000', colorFecha:'#5a0010', colorPremio1:'#ffd700', colorPremio2:'#b8860b', colorDolares:'#8b0000', colorSubPremio:'#5a0010', colorPesosSub:'#ffd700', colorBoleto:'#5a0010', colorValor:'#8b0000', colorPesos:'#ffd700', colorTalon:'#5a0010' } },
+  { id: 'neon', label: '⚡ Neón Eléctrico',
+    colors: { colorSlogan:'#ff006e', colorFecha:'#3a0ca3', colorPremio1:'#fb5607', colorPremio2:'#3a0ca3', colorDolares:'#ff006e', colorSubPremio:'#3a0ca3', colorPesosSub:'#06ffa5', colorBoleto:'#3a0ca3', colorValor:'#ff006e', colorPesos:'#06ffa5', colorTalon:'#3a0ca3' } },
 ];
 
 const TAMANOS_GLOBALES = [
@@ -52,6 +60,242 @@ const TAMANOS_GLOBALES = [
   { label: 'Normal',  factor: 1.0 },
   { label: 'Grande',  factor: 1.2 },
   { label: 'X-Grande',factor: 1.4 },
+];
+
+// ── Tipos de forma disponibles ──
+const TIPOS_FORMA = [
+  { type: 'arrow',    label: 'Flecha',     icon: '➜' },
+  { type: 'star',     label: 'Estrella',   icon: '★' },
+  { type: 'burst',    label: 'Estallido',  icon: '✺' },
+  { type: 'sparkle',  label: 'Destello',   icon: '✦' },
+  { type: 'circle',   label: 'Círculo',    icon: '●' },
+  { type: 'ring',     label: 'Anillo',     icon: '◯' },
+  { type: 'rect',     label: 'Rectángulo', icon: '▭' },
+  { type: 'triangle', label: 'Triángulo',  icon: '▲' },
+  { type: 'diamond',  label: 'Rombo',      icon: '◆' },
+  { type: 'heart',    label: 'Corazón',    icon: '♥' },
+  { type: 'lightning',label: 'Rayo',       icon: '⚡' },
+  { type: 'polygon',  label: 'Hexágono',   icon: '⬢' },
+  { type: 'ribbon',   label: 'Listón',     icon: '🎀' },
+  { type: 'banner',   label: 'Banner',     icon: '🏷' },
+  { type: 'stamp',    label: 'Sello',      icon: '🔖' },
+  { type: 'line',     label: 'Línea',      icon: '━' },
+];
+
+// ── Estilos de marco ──
+const FRAMES = [
+  { id: 'classic',    label: 'Clásico (solo borde)' },
+  { id: 'doubleline', label: 'Doble línea' },
+  { id: 'dashed',     label: 'Punteado' },
+  { id: 'rounded',    label: 'Redondeado' },
+  { id: 'corners',    label: 'Esquinas' },
+  { id: 'ornate',     label: 'Ornamentado' },
+  { id: 'greca',      label: 'Greca / Cenefa' },
+  { id: 'none',       label: 'Sin borde' },
+];
+
+// ── Texturas de papel ──
+const TEXTURAS = [
+  { id: 'none',  label: 'Sin textura' },
+  { id: 'dots',  label: 'Puntitos' },
+  { id: 'lines', label: 'Rayitas' },
+  { id: 'grid',  label: 'Cuadrícula' },
+  { id: 'noise', label: 'Ruido' },
+  { id: 'aged',  label: '📜 Papel envejecido' },
+];
+
+// ── Modos de mezcla para imágenes ──
+const BLEND_MODES = [
+  'normal','multiply','screen','overlay','darken','lighten',
+  'color-dodge','color-burn','hard-light','soft-light','difference',
+  'exclusion','hue','saturation','color','luminosity',
+];
+
+// ── Presets monstruosos ────────────────────────────────────
+// Cada preset es un patch sobre el design; se aplica con spread.
+const PRESETS = [
+  {
+    id: 'fuego',
+    label: '🔥 Fuego & Llamas',
+    patch: {
+      bgPaper: '#fff7e6',
+      paperGlow: true,
+      paperGlowColor: '#ffe4a8',
+      paperTexture: 'aged',
+      paperTextureOpacity: 0.12,
+      frameStyle: 'corners',
+      frameColor: '#7a2200',
+      frameWidth: 3,
+      colorBorde: '#7a2200',
+      watermarkEnabled: true,
+      watermarkText: 'JACKPOT',
+      watermarkColor: '#d92626',
+      watermarkOpacity: 0.07,
+      watermarkSize: 120,
+      watermarkRotation: -18,
+      colorSlogan: '#d92626',
+      colorPremio1: '#ffb800',
+      colorPremio2: '#d92626',
+      customShapes: [
+        { id: 'p1_burst1', type: 'burst', x: 540, y: 30, width: 90, height: 90, color: '#ffb800', color2: '#d92626', rotation: 15, opacity: 0.85, layer: 'back', strokeColor: '#7a2200', strokeWidth: 1.5 },
+        { id: 'p1_star1',  type: 'star',  x: 460, y: 8,  width: 55, height: 55, color: '#ffd700', color2: '#ff8c00', rotation: 0, opacity: 0.9, layer: 'back', strokeColor: '#7a2200', strokeWidth: 1.2, points: 6 },
+        { id: 'p1_light1', type: 'lightning', x: 130, y: 245, width: 35, height: 60, color: '#ffb800', color2: '#d92626', rotation: -10, opacity: 0.9, layer: 'front', strokeColor: '#7a2200', strokeWidth: 1.2 },
+        { id: 'p1_spark1', type: 'sparkle', x: 695, y: 145, width: 40, height: 40, color: '#ffd700', color2: '#ffd700', rotation: 0, opacity: 0.95, layer: 'front', strokeColor: '#7a2200', strokeWidth: 1 },
+        { id: 'p1_arr1',   type: 'arrow', x: 145, y: 305, width: 70, height: 20, color: '#d92626', color2: '#d92626', rotation: 0, opacity: 0.7, layer: 'back' },
+      ],
+    },
+  },
+  {
+    id: 'oro',
+    label: '👑 Oro Real',
+    patch: {
+      bgPaper: '#fff9e6',
+      paperGlow: true,
+      paperGlowColor: '#fff2c0',
+      paperTexture: 'none',
+      frameStyle: 'ornate',
+      frameColor: '#8b6914',
+      frameWidth: 3,
+      colorBorde: '#8b6914',
+      watermarkEnabled: true,
+      watermarkText: '★ GANA ★',
+      watermarkColor: '#b8860b',
+      watermarkOpacity: 0.08,
+      watermarkSize: 90,
+      watermarkRotation: -15,
+      colorSlogan: '#8b0000',
+      colorPremio1: '#d4af37',
+      colorPremio2: '#8b6914',
+      colorDolares: '#8b0000',
+      customShapes: [
+        { id: 'p2_ring1',  type: 'ring', x: 480, y: 30, width: 110, height: 110, color: '#d4af37', color2: '#8b6914', rotation: 0, opacity: 0.18, layer: 'back', innerRadius: 38 },
+        { id: 'p2_star1',  type: 'star', x: 360, y: 35, width: 50, height: 50, color: '#d4af37', color2: '#b8860b', rotation: 15, opacity: 0.9, layer: 'front', strokeColor: '#5a4500', strokeWidth: 1.5, points: 5 },
+        { id: 'p2_star2',  type: 'star', x: 595, y: 200, width: 38, height: 38, color: '#d4af37', color2: '#b8860b', rotation: -10, opacity: 0.85, layer: 'front', strokeColor: '#5a4500', strokeWidth: 1.2, points: 5 },
+        { id: 'p2_diam1',  type: 'diamond', x: 140, y: 12, width: 28, height: 28, color: '#d4af37', color2: '#fff', rotation: 0, opacity: 0.75, layer: 'front', strokeColor: '#8b6914', strokeWidth: 1 },
+      ],
+    },
+  },
+  {
+    id: 'tropical',
+    label: '🌴 Tropical',
+    patch: {
+      bgPaper: '#e8fdf5',
+      paperGlow: true,
+      paperGlowColor: '#ffd4a8',
+      paperTexture: 'dots',
+      paperTextureOpacity: 0.06,
+      frameStyle: 'greca',
+      frameColor: '#0d6e3a',
+      colorBorde: '#0d6e3a',
+      watermarkEnabled: false,
+      colorSlogan: '#ff6b35',
+      colorPremio1: '#ffd700',
+      colorPremio2: '#0d6e3a',
+      customShapes: [
+        { id: 'p3_circ1',  type: 'circle', x: 480, y: -25, width: 110, height: 110, color: '#ffd700', color2: '#ff6b35', rotation: 0, opacity: 0.35, layer: 'back' },
+        { id: 'p3_circ2',  type: 'circle', x: 580, y: 250, width: 70, height: 70, color: '#06ffa5', color2: '#0d6e3a', rotation: 0, opacity: 0.3, layer: 'back' },
+        { id: 'p3_tri1',   type: 'triangle', x: 670, y: 35, width: 45, height: 45, color: '#ff6b35', color2: '#ff006e', rotation: 25, opacity: 0.85, layer: 'front' },
+        { id: 'p3_heart',  type: 'heart', x: 700, y: 150, width: 30, height: 30, color: '#ff006e', color2: '#ff006e', rotation: 0, opacity: 0.9, layer: 'front' },
+      ],
+    },
+  },
+  {
+    id: 'cyber',
+    label: '⚡ Cyberpunk',
+    patch: {
+      bgPaper: '#0a0a14',
+      paperGlow: true,
+      paperGlowColor: '#1a0a3a',
+      paperTexture: 'grid',
+      paperTextureOpacity: 0.15,
+      frameStyle: 'corners',
+      frameColor: '#06ffa5',
+      frameWidth: 3,
+      colorBorde: '#06ffa5',
+      colorSlogan: '#ff006e',
+      colorFecha: '#06ffa5',
+      colorPremio1: '#fb5607',
+      colorPremio2: '#ff006e',
+      colorDolares: '#06ffa5',
+      colorBoleto: '#06ffa5',
+      colorValor: '#ff006e',
+      colorPesos: '#06ffa5',
+      colorMotivac: '#06ffa5',
+      colorTalon: '#06ffa5',
+      colorCaduca: '#fb5607',
+      colorLoteria: '#06ffa5',
+      watermarkEnabled: true,
+      watermarkText: 'CYBER',
+      watermarkColor: '#ff006e',
+      watermarkOpacity: 0.1,
+      watermarkSize: 130,
+      customShapes: [
+        { id: 'p4_lin1', type: 'line', x: 145, y: 50, width: 580, height: 4, color: '#06ffa5', rotation: 0, opacity: 0.8, layer: 'back', strokeWidth: 2 },
+        { id: 'p4_light1', type: 'lightning', x: 600, y: 25, width: 40, height: 70, color: '#fb5607', color2: '#ff006e', rotation: 0, opacity: 0.95, layer: 'front', strokeColor: '#06ffa5', strokeWidth: 1.5 },
+        { id: 'p4_light2', type: 'lightning', x: 145, y: 245, width: 30, height: 55, color: '#06ffa5', color2: '#06ffa5', rotation: -15, opacity: 0.9, layer: 'front', strokeColor: '#ff006e', strokeWidth: 1 },
+        { id: 'p4_poly1',  type: 'polygon', x: 660, y: 180, width: 70, height: 70, color: '#ff006e', color2: '#3a0ca3', rotation: 0, opacity: 0.4, layer: 'back', sides: 6 },
+      ],
+    },
+  },
+  {
+    id: 'vintage',
+    label: '📜 Vintage Sepia',
+    patch: {
+      bgPaper: '#f4e8d0',
+      paperGlow: false,
+      paperTexture: 'aged',
+      paperTextureOpacity: 0.18,
+      frameStyle: 'ornate',
+      frameColor: '#5c3a1e',
+      frameWidth: 2.5,
+      colorBorde: '#5c3a1e',
+      watermarkEnabled: true,
+      watermarkText: 'GRAN PREMIO',
+      watermarkColor: '#5c3a1e',
+      watermarkOpacity: 0.1,
+      watermarkSize: 80,
+      watermarkRotation: -22,
+      colorSlogan: '#8b1a1a',
+      colorPremio1: '#b8860b',
+      colorPremio2: '#5c3a1e',
+      colorDolares: '#8b1a1a',
+      colorBoleto: '#5c3a1e',
+      colorTalon: '#5c3a1e',
+      customShapes: [
+        { id: 'p5_stamp1', type: 'stamp', x: 605, y: 170, width: 110, height: 110, color: '#8b1a1a', color2: '#8b1a1a', rotation: -15, opacity: 0.55, layer: 'front', label: 'OFICIAL' },
+        { id: 'p5_star1',  type: 'star', x: 470, y: 20, width: 40, height: 40, color: '#b8860b', color2: '#5c3a1e', rotation: 0, opacity: 0.7, layer: 'back', strokeColor: '#5c3a1e', strokeWidth: 1, points: 5 },
+      ],
+    },
+  },
+  {
+    id: 'pastel',
+    label: '🌸 Pastel Suave',
+    patch: {
+      bgPaper: '#fff5fb',
+      paperGlow: true,
+      paperGlowColor: '#fce4ec',
+      paperTexture: 'dots',
+      paperTextureOpacity: 0.05,
+      frameStyle: 'rounded',
+      frameColor: '#e91e63',
+      frameWidth: 2,
+      colorBorde: '#e91e63',
+      colorSlogan: '#e91e63',
+      colorPremio1: '#ffb74d',
+      colorPremio2: '#9c27b0',
+      colorSubPremio: '#9c27b0',
+      colorPesosSub: '#06b6d4',
+      colorBoleto: '#9c27b0',
+      colorTalon: '#e91e63',
+      watermarkEnabled: false,
+      customShapes: [
+        { id: 'p6_h1', type: 'heart', x: 670, y: 25, width: 35, height: 35, color: '#e91e63', color2: '#ff80ab', rotation: -10, opacity: 0.85, layer: 'front' },
+        { id: 'p6_h2', type: 'heart', x: 720, y: 60, width: 22, height: 22, color: '#9c27b0', color2: '#e91e63', rotation: 15, opacity: 0.85, layer: 'front' },
+        { id: 'p6_spk', type: 'sparkle', x: 460, y: 25, width: 28, height: 28, color: '#ffb74d', color2: '#ffb74d', rotation: 0, opacity: 0.9, layer: 'front' },
+        { id: 'p6_spk2', type: 'sparkle', x: 580, y: 245, width: 22, height: 22, color: '#9c27b0', color2: '#9c27b0', rotation: 20, opacity: 0.85, layer: 'front' },
+      ],
+    },
+  },
 ];
 
 // ── Posiciones default ──────────────────────────────────
@@ -86,131 +330,32 @@ const DEFAULT_POSITIONS = {
 };
 
 /* ════════════════════════════════════════════════════════════
-   FIELD_META — define qué propiedades del design controla
-   cada elemento built-in y qué controles mostrar en el panel.
+   FIELD_META — define qué propiedades controla cada built-in
 ═════════════════════════════════════════════════════════════ */
 const FIELD_META = {
-  // Talón
-  numBoletoIzq: {
-    label: 'N° boleto (izquierda)',
-    sizeKey: 'sizeNumTalon', colorKey: 'colorTalon',
-    valueKey: 'numBoleto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  nombreLabel: {
-    label: 'Etiqueta "NOMBRE:"',
-    sizeKey: 'sizeNombre', colorKey: null, // negro fijo
-    valueKey: '_label_NOMBRE', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  telLabel: {
-    label: 'Etiqueta "Tel:"',
-    sizeKey: 'sizeNombre', colorKey: null,
-    valueKey: '_label_Tel', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  brandText: {
-    label: '"GRAN RIFA" (vertical)',
-    sizeKey: 'sizeBrand', colorKey: 'colorTalon',
-    valueKey: 'brandText', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  talonText: {
-    label: '"BOLETO SIN CANCELAR..."',
-    sizeKey: 'sizeTalonText', colorKey: null,
-    valueKey: 'talonText', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-
-  // Cabecera
-  sloganTop: {
-    label: 'Slogan superior',
-    sizeKey: 'sizeSlogan', colorKey: 'colorSlogan',
-    valueKey: 'sloganTop', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  fechaPrefix: {
-    label: 'Prefijo de fecha',
-    sizeKey: 'sizeFecha', colorKey: 'colorFecha',
-    valueKey: 'fechaPrefix', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  fechaTexto: {
-    label: 'Fecha',
-    sizeKey: 'sizeFecha', colorKey: 'colorFecha',
-    valueKey: 'fechaTexto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  numBoletoDer: {
-    label: 'N° boleto (derecha)',
-    sizeKey: 'sizeNumDer', colorKey: 'colorTalon',
-    valueKey: 'numBoleto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-
-  // Premio
-  premioLabel: {
-    label: 'Etiqueta "Premio"',
-    sizeKey: 'sizePremioLabel', colorKey: 'colorPremio1',
-    valueKey: 'premioLabel', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  premioNum: {
-    label: 'Número del premio',
-    sizeKey: 'sizePremioNum',
-    colorKey: 'colorPremio1', colorKey2: 'colorPremio2',  // gradiente
-    valueKey: 'premioNum', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  premioTexto: {
-    label: 'Tipo del premio ("Dólares")',
-    sizeKey: 'sizePremioTxt', colorKey: 'colorDolares',
-    valueKey: 'premioTexto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  subPremioPrefix: {
-    label: 'Prefijo sub-premio',
-    sizeKey: 'sizeSubPremio', colorKey: 'colorSubPremio',
-    valueKey: 'subPremioPrefix', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  subPremioNum: {
-    label: 'Monto sub-premio',
-    sizeKey: 'sizeSubPremio', colorKey: 'colorSubPremio',
-    valueKey: 'subPremioNum', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  subPremioMoneda: {
-    label: 'Moneda sub-premio',
-    sizeKey: 'sizeSubMoneda', colorKey: 'colorPesosSub',
-    valueKey: 'subPremioMoneda', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-
-  // Derecha
-  caducaText: {
-    label: '"Caduca a los X días"',
-    sizeKey: 'sizeCaduca', colorKey: 'colorCaduca',
-    valueKey: 'caducaText', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  loteriaTexto: {
-    label: 'Lotería + hora',
-    sizeKey: 'sizeLoteria', colorKey: 'colorLoteria',
-    valueKey: 'loteriaTexto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-
-  // Inferior
-  motivacionalText: {
-    label: 'Frase motivacional',
-    sizeKey: 'sizeMotivac', colorKey: 'colorMotivac',
-    valueKey: 'motivacionalText', hasFontFamily: false, hasWeight: false, hasItalic: false,
-    multiline: true,
-  },
-  boletoLabel: {
-    label: 'Etiqueta "BOLETO"',
-    sizeKey: 'sizeBoleto', colorKey: 'colorBoleto',
-    valueKey: 'boletoLabel', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  valorTexto: {
-    label: 'Valor del boleto',
-    sizeKey: 'sizeValor', colorKey: 'colorValor',
-    valueKey: 'valorTexto', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  valorSufijo: {
-    label: 'Sufijo del valor',
-    sizeKey: 'sizePesos', colorKey: 'colorPesos',
-    valueKey: 'valorSufijo', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
-  footerText: {
-    label: 'Pie de página',
-    sizeKey: 'sizeFooter', colorKey: null,
-    valueKey: 'footerText', hasFontFamily: false, hasWeight: false, hasItalic: false,
-  },
+  numBoletoIzq: { label: 'N° boleto (izquierda)', sizeKey: 'sizeNumTalon', colorKey: 'colorTalon', valueKey: 'numBoleto' },
+  nombreLabel:  { label: 'Etiqueta "NOMBRE:"',    sizeKey: 'sizeNombre',   colorKey: null,         valueKey: '_label_NOMBRE' },
+  telLabel:     { label: 'Etiqueta "Tel:"',       sizeKey: 'sizeNombre',   colorKey: null,         valueKey: '_label_Tel' },
+  brandText:    { label: '"GRAN RIFA" (vertical)',sizeKey: 'sizeBrand',    colorKey: 'colorTalon', valueKey: 'brandText' },
+  talonText:    { label: '"BOLETO SIN CANCELAR..."', sizeKey: 'sizeTalonText', colorKey: null,     valueKey: 'talonText' },
+  sloganTop:    { label: 'Slogan superior',       sizeKey: 'sizeSlogan',   colorKey: 'colorSlogan',valueKey: 'sloganTop' },
+  fechaPrefix:  { label: 'Prefijo de fecha',      sizeKey: 'sizeFecha',    colorKey: 'colorFecha', valueKey: 'fechaPrefix' },
+  fechaTexto:   { label: 'Fecha',                 sizeKey: 'sizeFecha',    colorKey: 'colorFecha', valueKey: 'fechaTexto' },
+  numBoletoDer: { label: 'N° boleto (derecha)',   sizeKey: 'sizeNumDer',   colorKey: 'colorTalon', valueKey: 'numBoleto' },
+  premioLabel:  { label: 'Etiqueta "Premio"',     sizeKey: 'sizePremioLabel', colorKey: 'colorPremio1', valueKey: 'premioLabel' },
+  premioNum:    { label: 'Número del premio',     sizeKey: 'sizePremioNum',
+                  colorKey: 'colorPremio1', colorKey2: 'colorPremio2',     valueKey: 'premioNum' },
+  premioTexto:  { label: 'Tipo del premio',       sizeKey: 'sizePremioTxt',colorKey: 'colorDolares', valueKey: 'premioTexto' },
+  subPremioPrefix: { label: 'Prefijo sub-premio', sizeKey: 'sizeSubPremio',colorKey: 'colorSubPremio', valueKey: 'subPremioPrefix' },
+  subPremioNum:    { label: 'Monto sub-premio',   sizeKey: 'sizeSubPremio',colorKey: 'colorSubPremio', valueKey: 'subPremioNum' },
+  subPremioMoneda: { label: 'Moneda sub-premio',  sizeKey: 'sizeSubMoneda',colorKey: 'colorPesosSub',  valueKey: 'subPremioMoneda' },
+  caducaText:   { label: '"Caduca..."',           sizeKey: 'sizeCaduca',   colorKey: 'colorCaduca',valueKey: 'caducaText' },
+  loteriaTexto: { label: 'Lotería + hora',        sizeKey: 'sizeLoteria',  colorKey: 'colorLoteria',valueKey: 'loteriaTexto' },
+  motivacionalText: { label: 'Frase motivacional',sizeKey: 'sizeMotivac',  colorKey: 'colorMotivac',valueKey: 'motivacionalText', multiline: true },
+  boletoLabel:  { label: 'Etiqueta "BOLETO"',     sizeKey: 'sizeBoleto',   colorKey: 'colorBoleto',valueKey: 'boletoLabel' },
+  valorTexto:   { label: 'Valor del boleto',      sizeKey: 'sizeValor',    colorKey: 'colorValor', valueKey: 'valorTexto' },
+  valorSufijo:  { label: 'Sufijo del valor',      sizeKey: 'sizePesos',    colorKey: 'colorPesos', valueKey: 'valorSufijo' },
+  footerText:   { label: 'Pie de página',         sizeKey: 'sizeFooter',   colorKey: null,         valueKey: 'footerText' },
 };
 
 // ── Helpers ─────────────────────────────────────────────
@@ -286,17 +431,41 @@ const getPos = (positions, campo) => {
   return { ...def, ...saved };
 };
 
+// Helper: construye textStyle con efectos avanzados (stroke, glow, 3D, gradient)
+function applyAdvancedTextEffects(baseStyle, extras = {}) {
+  const out = { ...baseStyle };
+  if (extras.textStroke && extras.textStroke.width > 0) {
+    out.WebkitTextStroke = `${extras.textStroke.width}px ${extras.textStroke.color || '#000'}`;
+  }
+  const shadows = [];
+  if (baseStyle.textShadow) shadows.push(baseStyle.textShadow);
+  if (extras.textGlow && extras.textGlow.blur > 0) {
+    const c = extras.textGlow.color || '#fff';
+    const b = extras.textGlow.blur;
+    shadows.push(`0 0 ${b * 0.5}px ${c}`, `0 0 ${b}px ${c}`, `0 0 ${b * 1.5}px ${c}`);
+  }
+  if (extras.textShadow3D && extras.textShadow3D.depth > 0) {
+    const c = extras.textShadow3D.color || '#000';
+    const d = Math.min(extras.textShadow3D.depth, 10);
+    for (let i = 1; i <= d; i++) shadows.push(`${i}px ${i}px 0 ${c}`);
+  }
+  if (shadows.length > 0) out.textShadow = shadows.join(', ');
+  if (extras.gradient && extras.gradient.from && extras.gradient.to) {
+    const dir = extras.gradient.direction || '180deg';
+    out.backgroundImage = `linear-gradient(${dir}, ${extras.gradient.from}, ${extras.gradient.to})`;
+    out.WebkitBackgroundClip = 'text';
+    out.backgroundClip = 'text';
+    out.WebkitTextFillColor = 'transparent';
+    out.color = 'transparent';
+  }
+  return out;
+}
+
+
 /* ════════════════════════════════════════════════════════════
-   <DraggableEditable> — átomo arrastrable + editable
-═════════════════════════════════════════════════════════════ */
-/* ════════════════════════════════════════════════════════════
-   <PremioNumeroSVG> — versión SVG del número grande del premio
-   Usada SOLO en printMode (html2canvas no soporta bien el
-   background-clip:text del CSS, por eso lo hacemos en SVG).
+   <PremioNumeroSVG> — versión SVG del número grande
 ═════════════════════════════════════════════════════════════ */
 function PremioNumeroSVG({ value, position, rotation, fontSize, color1, color2, stroke, dropShadowColor }) {
-  // Estimación del ancho del texto en SVG: 0.62 × fontSize por carácter
-  // para Arial Black. Suficiente para que el SVG envuelva el contenido.
   const text = value || '';
   const charW = fontSize * 0.62;
   const w = Math.max(60, text.length * charW + 20);
@@ -312,13 +481,7 @@ function PremioNumeroSVG({ value, position, rotation, fontSize, color1, color2, 
       transformOrigin: 'left top',
       pointerEvents: 'none',
     }}>
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${w} ${h}`}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ overflow: 'visible' }}
-      >
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible' }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stopColor={color1} />
@@ -327,31 +490,17 @@ function PremioNumeroSVG({ value, position, rotation, fontSize, color1, color2, 
             <stop offset="100%" stopColor={color2 || color1} />
           </linearGradient>
         </defs>
-        {/* Sombra (drop-shadow) */}
-        <text
-          x={3}
-          y={fontSize * 0.85 + 3}
+        <text x={3} y={fontSize * 0.85 + 3}
           fontFamily="'Arial Black', 'Poppins', sans-serif"
-          fontWeight={900}
-          fontSize={fontSize}
-          letterSpacing={2}
-          fill={dropShadowColor || 'rgba(0,0,0,.18)'}
-        >
+          fontWeight={900} fontSize={fontSize} letterSpacing={2}
+          fill={dropShadowColor || 'rgba(0,0,0,.18)'}>
           {text}
         </text>
-        {/* Relleno con gradiente */}
-        <text
-          x={0}
-          y={fontSize * 0.85}
+        <text x={0} y={fontSize * 0.85}
           fontFamily="'Arial Black', 'Poppins', sans-serif"
-          fontWeight={900}
-          fontSize={fontSize}
-          letterSpacing={2}
-          fill={`url(#${gradId})`}
-          stroke={stroke}
-          strokeWidth={1}
-          paintOrder="stroke fill"
-        >
+          fontWeight={900} fontSize={fontSize} letterSpacing={2}
+          fill={`url(#${gradId})`} stroke={stroke} strokeWidth={1}
+          paintOrder="stroke fill">
           {text}
         </text>
       </svg>
@@ -363,19 +512,9 @@ function PremioNumeroSVG({ value, position, rotation, fontSize, color1, color2, 
    <DraggableEditable> — átomo arrastrable + editable
 ═════════════════════════════════════════════════════════════ */
 function DraggableEditable({
-  id,
-  position,
-  rotation = 0,
-  onMove,
-  value,
-  onChange,
-  textStyle,
-  scale = 1,
-  multiline = false,
-  placeholder = '(click)',
-  selected = false,
-  onSelect,
-  printMode = false,
+  id, position, rotation = 0, onMove, value, onChange,
+  textStyle, scale = 1, multiline = false, placeholder = '(click)',
+  selected = false, onSelect, printMode = false,
 }) {
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState(value || '');
@@ -467,16 +606,14 @@ function DraggableEditable({
     transform: rotation ? `rotate(${rotation}deg)` : 'none',
     transformOrigin: 'left top',
     cursor: printMode ? 'default' : (dragging ? 'grabbing' : (editing ? 'text' : 'grab')),
-    zIndex: dragging ? 1000 : (selected ? 100 : (hover ? 10 : 1)),
+    zIndex: dragging ? 1000 : (selected ? 100 : (hover ? 10 : 3)),
     userSelect: 'none',
     touchAction: 'none',
     transition: dragging ? 'none' : 'box-shadow .15s, outline .12s',
     outline: printMode ? 'none' : (
       editing || dragging || selected
         ? '2px solid #0abfbc'
-        : hover
-          ? '1px dashed rgba(10,191,188,.85)'
-          : 'none'
+        : hover ? '1px dashed rgba(10,191,188,.85)' : 'none'
     ),
     outlineOffset: 3,
     borderRadius: 3,
@@ -484,16 +621,10 @@ function DraggableEditable({
     whiteSpace: 'nowrap',
   };
 
-  // En printMode rendereamos un span estático, sin handlers ni input
   if (printMode) {
     return (
       <div style={wrapperStyle}>
-        <span style={{
-          ...textStyle,
-          display: 'inline-block',
-        }}>
-          {value || ''}
-        </span>
+        <span style={{ ...textStyle, display: 'inline-block' }}>{value || ''}</span>
       </div>
     );
   }
@@ -502,9 +633,7 @@ function DraggableEditable({
     const Comp = multiline ? 'textarea' : 'input';
     return (
       <div style={wrapperStyle}>
-        <Comp
-          ref={inputRef}
-          value={draft}
+        <Comp ref={inputRef} value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={e => {
@@ -513,8 +642,7 @@ function DraggableEditable({
           }}
           rows={multiline ? 2 : undefined}
           style={{
-            ...textStyle,
-            background: 'rgba(10,191,188,.14)',
+            ...textStyle, background: 'rgba(10,191,188,.14)',
             outline: 'none', border: 'none',
             padding: '2px 4px', borderRadius: 3, minWidth: 60,
             fontFamily: textStyle?.fontFamily || 'inherit',
@@ -528,21 +656,16 @@ function DraggableEditable({
 
   const isEmpty = !value;
   return (
-    <div
-      data-field={id}
+    <div data-field={id}
       onMouseDown={handlePointerDown}
       onTouchStart={handlePointerDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       title="Click: editar · Arrastra: mover · Shift+arrastra: snap"
-      style={wrapperStyle}
-    >
+      style={wrapperStyle}>
       <span style={{
-        // El hover usa backgroundColor (no shorthand) para no pisar
-        // el backgroundImage que pueda venir en textStyle (ej. gradiente del 500).
         backgroundColor: hover && !dragging ? 'rgba(10,191,188,.06)' : 'transparent',
-        borderRadius: 2,
-        padding: '0 2px',
+        borderRadius: 2, padding: '0 2px',
         ...textStyle,
         display: 'inline-block',
         opacity: isEmpty ? 0.45 : 1,
@@ -554,26 +677,369 @@ function DraggableEditable({
   );
 }
 
+
 /* ════════════════════════════════════════════════════════════
-   <ElementPanel> — panel lateral unificado
-   Recibe el "elemento seleccionado" abstracto y muestra los
-   controles apropiados. Mismo panel para built-in y custom.
+   Componentes UI auxiliares para los paneles
+═════════════════════════════════════════════════════════════ */
+const labelStyle = {
+  display: 'block', fontSize: 11, color: '#666',
+  fontWeight: 600, marginBottom: 4, letterSpacing: .3,
+  textTransform: 'uppercase',
+};
+const inputStyle = {
+  width: '100%', padding: '7px 9px',
+  border: '1px solid #ddd', borderRadius: 5,
+  fontSize: 13, fontFamily: 'system-ui, sans-serif',
+  boxSizing: 'border-box',
+};
+const sectionStyle = {
+  borderTop: '1px solid #eee',
+  marginTop: 14, paddingTop: 12,
+};
+const collapsibleHeaderStyle = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  cursor: 'pointer', userSelect: 'none', marginBottom: 8,
+};
+
+function ColorRow({ value, onChange, label }) {
+  return (
+    <>
+      {label && <label style={labelStyle}>{label}</label>}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <input type="color" value={value || '#000'}
+          onChange={e => onChange(e.target.value)}
+          style={{ width: 44, height: 34, border: '1px solid #ddd',
+            borderRadius: 5, cursor: 'pointer', padding: 2, flexShrink: 0 }} />
+        <input type="text" value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          style={inputStyle} />
+      </div>
+    </>
+  );
+}
+
+function NumberSlider({ value, onChange, min, max, step = 1, label, suffix = '' }) {
+  return (
+    <>
+      <label style={labelStyle}>{label} ({value}{suffix})</label>
+      <input type="range" min={min} max={max} step={step}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: '100%', marginBottom: 4 }} />
+      <input type="number" min={min} max={max} step={step}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ ...inputStyle, marginBottom: 10 }} />
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   <ElementPanel> — panel lateral unificado (built-in + custom + shape + image)
 ═════════════════════════════════════════════════════════════ */
 function ElementPanel({
-  selection,         // { kind: 'builtin'|'custom', id, data }
-  design,
-  onUpdateDesign,    // (key, value)
-  onUpdateCustom,    // (id, partialProps)
-  onDeleteCustom,    // (id)
-  onHideBuiltin,     // (id) — oculta un built-in
-  onClose,
+  selection, design,
+  onUpdateDesign, onUpdateCustom, onUpdateShape, onUpdateImage,
+  onDeleteCustom, onDeleteShape, onDeleteImage,
+  onHideBuiltin, onLayerToggle, onClose,
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   if (!selection) return null;
 
-  const isCustom = selection.kind === 'custom';
-  const meta = !isCustom ? FIELD_META[selection.id] : null;
+  // ── Determinar tipo y meta ──
+  const isCustom  = selection.kind === 'custom';
+  const isShape   = selection.kind === 'shape';
+  const isImage   = selection.kind === 'image';
+  const isBuiltin = selection.kind === 'builtin';
+  const meta = isBuiltin ? FIELD_META[selection.id] : null;
 
-  // Lee/escribe propiedades en abstracto
+  // ═══════════════ PANEL DE FORMA ═══════════════
+  if (isShape) {
+    const shape = selection.data;
+    const tipoMeta = TIPOS_FORMA.find(t => t.type === shape.type) || { label: shape.type };
+    return (
+      <div style={{
+        width: 280, background: '#fff',
+        border: '1px solid #e0e0e0', borderRadius: 10,
+        boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+        fontFamily: 'system-ui, sans-serif',
+        overflow: 'hidden', alignSelf: 'flex-start',
+        maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '12px 14px',
+          background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+          color: '#fff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{tipoMeta.icon || '◆'}</span>
+            <strong style={{ fontSize: 13 }}>Forma: {tipoMeta.label}</strong>
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+              color: '#fff', cursor: 'pointer', width: 24, height: 24,
+              borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+        <div style={{ padding: 14, overflowY: 'auto' }}>
+          {/* Color principal */}
+          <ColorRow label="🎨 Color principal" value={shape.color}
+            onChange={v => onUpdateShape(shape.id, { color: v })} />
+          {/* Color 2 (gradiente) */}
+          <ColorRow label="🎨 Color secundario (gradiente)"
+            value={shape.color2 || shape.color}
+            onChange={v => onUpdateShape(shape.id, { color2: v })} />
+          {shape.color === shape.color2 && (
+            <p style={{ fontSize: 11, color: '#999', margin: '-6px 0 10px' }}>
+              Igualados = color sólido. Cámbialos para gradiente.
+            </p>
+          )}
+          {/* Contorno (stroke) */}
+          <ColorRow label="✏️ Color del contorno"
+            value={shape.strokeColor || '#000000'}
+            onChange={v => onUpdateShape(shape.id, { strokeColor: v })} />
+          <NumberSlider label="Grosor del contorno" suffix="px"
+            min={0} max={10} step={0.5}
+            value={shape.strokeWidth || 0}
+            onChange={v => onUpdateShape(shape.id, { strokeWidth: v })} />
+
+          {/* Tamaño */}
+          <NumberSlider label="↔ Ancho" suffix="px"
+            min={10} max={500}
+            value={shape.width}
+            onChange={v => onUpdateShape(shape.id, { width: v })} />
+          <NumberSlider label="↕ Alto" suffix="px"
+            min={10} max={500}
+            value={shape.height}
+            onChange={v => onUpdateShape(shape.id, { height: v })} />
+
+          {/* Rotación */}
+          <NumberSlider label="🔄 Rotación" suffix="°"
+            min={-180} max={180} step={5}
+            value={shape.rotation || 0}
+            onChange={v => onUpdateShape(shape.id, { rotation: v })} />
+
+          {/* Opacidad */}
+          <NumberSlider label="👻 Opacidad" suffix=""
+            min={0.05} max={1} step={0.05}
+            value={shape.opacity != null ? shape.opacity : 1}
+            onChange={v => onUpdateShape(shape.id, { opacity: v })} />
+
+          {/* Capa */}
+          <label style={labelStyle}>🥞 Capa</label>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            {['back', 'front'].map(l => (
+              <button key={l}
+                onClick={() => onUpdateShape(shape.id, { layer: l })}
+                style={{
+                  flex: 1, padding: '7px',
+                  background: (shape.layer || 'back') === l ? '#7c3aed' : '#fff',
+                  color: (shape.layer || 'back') === l ? '#fff' : '#666',
+                  border: '1px solid ' + ((shape.layer || 'back') === l ? '#7c3aed' : '#ddd'),
+                  borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  fontFamily: 'inherit',
+                }}>
+                {l === 'back' ? '↓ Detrás' : '↑ Encima'}
+              </button>
+            ))}
+          </div>
+
+          {/* Sides para polygon */}
+          {shape.type === 'polygon' && (
+            <NumberSlider label="Lados" min={3} max={12}
+              value={shape.sides || 6}
+              onChange={v => onUpdateShape(shape.id, { sides: v })} />
+          )}
+          {/* Points para star */}
+          {shape.type === 'star' && (
+            <NumberSlider label="Puntas" min={3} max={12}
+              value={shape.points || 5}
+              onChange={v => onUpdateShape(shape.id, { points: v })} />
+          )}
+          {/* InnerRadius para ring */}
+          {shape.type === 'ring' && (
+            <NumberSlider label="Radio interior" suffix="%" min={5} max={45}
+              value={shape.innerRadius || 32}
+              onChange={v => onUpdateShape(shape.id, { innerRadius: v })} />
+          )}
+          {/* BorderRadius para rect */}
+          {shape.type === 'rect' && (
+            <NumberSlider label="Esquinas redondeadas" suffix="%" min={0} max={50}
+              value={shape.borderRadius || 0}
+              onChange={v => onUpdateShape(shape.id, { borderRadius: v })} />
+          )}
+          {/* Label para stamp */}
+          {shape.type === 'stamp' && (
+            <>
+              <label style={labelStyle}>Texto del sello</label>
+              <input type="text" value={shape.label || ''}
+                onChange={e => onUpdateShape(shape.id, { label: e.target.value })}
+                style={{ ...inputStyle, marginBottom: 12 }} />
+            </>
+          )}
+          {/* Dashed para line */}
+          {shape.type === 'line' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <input type="checkbox" id="dashed" checked={!!shape.dashed}
+                onChange={e => onUpdateShape(shape.id, { dashed: e.target.checked })} />
+              <label htmlFor="dashed" style={{ fontSize: 12, color: '#666' }}>
+                Línea punteada
+              </label>
+            </div>
+          )}
+
+          <button onClick={() => onDeleteShape(shape.id)}
+            style={{
+              width: '100%', padding: '10px',
+              background: '#fff', color: '#d92626',
+              border: '1.5px solid #d92626', borderRadius: 6,
+              cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              fontFamily: 'inherit', marginTop: 4,
+            }}>🗑 Eliminar forma</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════ PANEL DE IMAGEN ═══════════════
+  if (isImage) {
+    const img = selection.data;
+    return (
+      <div style={{
+        width: 280, background: '#fff',
+        border: '1px solid #e0e0e0', borderRadius: 10,
+        boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+        fontFamily: 'system-ui, sans-serif',
+        overflow: 'hidden', alignSelf: 'flex-start',
+        maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '12px 14px',
+          background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+          color: '#fff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🖼</span>
+            <strong style={{ fontSize: 13 }}>Imagen</strong>
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+              color: '#fff', cursor: 'pointer', width: 24, height: 24,
+              borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+        <div style={{ padding: 14, overflowY: 'auto' }}>
+          {/* URL */}
+          <label style={labelStyle}>🔗 URL de la imagen</label>
+          <input type="text" value={img.src || ''}
+            onChange={e => onUpdateImage(img.id, { src: e.target.value })}
+            placeholder="https://..."
+            style={{ ...inputStyle, marginBottom: 12 }} />
+          <p style={{ fontSize: 11, color: '#999', margin: '-6px 0 12px' }}>
+            Usa URLs públicas (Imgur, Cloudinary, etc.)
+          </p>
+
+          {/* Tamaño */}
+          <NumberSlider label="↔ Ancho" suffix="px" min={20} max={600}
+            value={img.width}
+            onChange={v => onUpdateImage(img.id, { width: v })} />
+          <NumberSlider label="↕ Alto" suffix="px" min={20} max={400}
+            value={img.height}
+            onChange={v => onUpdateImage(img.id, { height: v })} />
+
+          {/* Rotación */}
+          <NumberSlider label="🔄 Rotación" suffix="°" min={-180} max={180} step={5}
+            value={img.rotation || 0}
+            onChange={v => onUpdateImage(img.id, { rotation: v })} />
+
+          {/* Opacidad */}
+          <NumberSlider label="👻 Opacidad" min={0.05} max={1} step={0.05}
+            value={img.opacity != null ? img.opacity : 1}
+            onChange={v => onUpdateImage(img.id, { opacity: v })} />
+
+          {/* Border-radius */}
+          <NumberSlider label="◯ Esquinas redondeadas" suffix="px" min={0} max={200}
+            value={img.borderRadius || 0}
+            onChange={v => onUpdateImage(img.id, { borderRadius: v })} />
+
+          {/* Capa */}
+          <label style={labelStyle}>🥞 Capa</label>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            {['back', 'front'].map(l => (
+              <button key={l}
+                onClick={() => onUpdateImage(img.id, { layer: l })}
+                style={{
+                  flex: 1, padding: '7px',
+                  background: (img.layer || 'back') === l ? '#06b6d4' : '#fff',
+                  color: (img.layer || 'back') === l ? '#fff' : '#666',
+                  border: '1px solid ' + ((img.layer || 'back') === l ? '#06b6d4' : '#ddd'),
+                  borderRadius: 5, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                  fontFamily: 'inherit',
+                }}>
+                {l === 'back' ? '↓ Detrás' : '↑ Encima'}
+              </button>
+            ))}
+          </div>
+
+          {/* Blend mode */}
+          <label style={labelStyle}>🎭 Modo de mezcla</label>
+          <select value={img.blendMode || 'normal'}
+            onChange={e => onUpdateImage(img.id, { blendMode: e.target.value })}
+            style={{ ...inputStyle, marginBottom: 12 }}>
+            {BLEND_MODES.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
+          {/* Object fit */}
+          <label style={labelStyle}>🖼 Ajuste</label>
+          <select value={img.objectFit || 'cover'}
+            onChange={e => onUpdateImage(img.id, { objectFit: e.target.value })}
+            style={{ ...inputStyle, marginBottom: 12 }}>
+            <option value="cover">Cubrir (cover)</option>
+            <option value="contain">Contener (contain)</option>
+            <option value="fill">Estirar (fill)</option>
+            <option value="none">Original (none)</option>
+          </select>
+
+          {/* Filtros */}
+          <div style={sectionStyle}>
+            <div style={collapsibleHeaderStyle} onClick={() => setShowAdvanced(v => !v)}>
+              <strong style={{ fontSize: 12, color: '#333' }}>🎨 Filtros visuales</strong>
+              <span style={{ fontSize: 11, color: '#06b6d4' }}>{showAdvanced ? '▼' : '▶'}</span>
+            </div>
+            {showAdvanced && (
+              <>
+                <NumberSlider label="Escala de grises" min={0} max={1} step={0.05}
+                  value={img.grayscale || 0}
+                  onChange={v => onUpdateImage(img.id, { grayscale: v })} />
+                <NumberSlider label="Sepia" min={0} max={1} step={0.05}
+                  value={img.sepia || 0}
+                  onChange={v => onUpdateImage(img.id, { sepia: v })} />
+                <NumberSlider label="Desenfoque" suffix="px" min={0} max={20} step={0.5}
+                  value={img.blur || 0}
+                  onChange={v => onUpdateImage(img.id, { blur: v })} />
+                <NumberSlider label="Brillo" min={0.1} max={2} step={0.05}
+                  value={img.brightness != null ? img.brightness : 1}
+                  onChange={v => onUpdateImage(img.id, { brightness: v })} />
+              </>
+            )}
+          </div>
+
+          <button onClick={() => onDeleteImage(img.id)}
+            style={{
+              width: '100%', padding: '10px',
+              background: '#fff', color: '#d92626',
+              border: '1.5px solid #d92626', borderRadius: 6,
+              cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              fontFamily: 'inherit', marginTop: 12,
+            }}>🗑 Eliminar imagen</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════ PANEL DE TEXTO (built-in o custom) ═══════════════
   const get = (prop) => {
     if (isCustom) return selection.data[prop];
     switch (prop) {
@@ -612,44 +1078,53 @@ function ElementPanel({
     }
   };
 
-  // Configuración de qué controles mostrar
+  // Get/set para efectos avanzados de texto (built-in usa keys textEffects.{fieldId}.{prop})
+  const getFx = (prop) => {
+    if (isCustom) return selection.data.fx?.[prop];
+    return design.textEffects?.[selection.id]?.[prop];
+  };
+  const setFx = (prop, val) => {
+    if (isCustom) {
+      const fx = { ...(selection.data.fx || {}) };
+      if (val === null || val === undefined) delete fx[prop];
+      else fx[prop] = val;
+      onUpdateCustom(selection.id, { fx });
+    } else {
+      const all = { ...(design.textEffects || {}) };
+      const cur = { ...(all[selection.id] || {}) };
+      if (val === null || val === undefined) delete cur[prop];
+      else cur[prop] = val;
+      all[selection.id] = cur;
+      onUpdateDesign('textEffects', all);
+    }
+  };
+
   const showColor    = isCustom ? true  : meta.colorKey !== null;
   const showColor2   = !isCustom && meta.colorKey2;
-  const showFontFam  = isCustom ? true  : false; // built-in tiene fuentes fijas
-  const showWeight   = isCustom ? true  : false;
-  const showItalic   = isCustom ? true  : false;
+  const showFontFam  = isCustom;
+  const showWeight   = isCustom;
+  const showItalic   = isCustom;
   const isMultiline  = isCustom ? false : meta.multiline;
 
   const title = isCustom ? 'Texto personalizado' : meta.label;
 
-  // ── Estilos ──
-  const labelStyle = {
-    display: 'block', fontSize: 11, color: '#666',
-    fontWeight: 600, marginBottom: 4, letterSpacing: .3,
-    textTransform: 'uppercase',
-  };
-  const inputStyle = {
-    width: '100%', padding: '7px 9px',
-    border: '1px solid #ddd', borderRadius: 5,
-    fontSize: 13, fontFamily: 'system-ui, sans-serif',
-    boxSizing: 'border-box',
-  };
+  // Efectos actuales
+  const fxStroke = getFx('textStroke');
+  const fxGlow   = getFx('textGlow');
+  const fx3D     = getFx('textShadow3D');
+  const fxGrad   = getFx('gradient');
 
   return (
     <div style={{
-      width: 280,
-      background: '#fff',
-      border: '1px solid #e0e0e0',
-      borderRadius: 10,
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
       boxShadow: '0 6px 24px rgba(0,0,0,.10)',
       fontFamily: 'system-ui, sans-serif',
-      overflow: 'hidden',
-      alignSelf: 'flex-start',
+      overflow: 'hidden', alignSelf: 'flex-start',
+      maxHeight: '85vh', display: 'flex', flexDirection: 'column',
     }}>
-      {/* Header */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '12px 14px',
         background: 'linear-gradient(135deg, #0abfbc 0%, #089a98 100%)',
         color: '#fff',
@@ -661,159 +1136,82 @@ function ElementPanel({
             {title}
           </strong>
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'rgba(255,255,255,.2)', border: 'none',
-            color: '#fff', cursor: 'pointer',
-            width: 24, height: 24, borderRadius: 4,
-            fontSize: 16, lineHeight: 1, padding: 0,
-          }}
-          title="Cerrar">×</button>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
       </div>
 
-      {/* Body */}
-      <div style={{ padding: 14 }}>
+      <div style={{ padding: 14, overflowY: 'auto' }}>
 
-        {/* Texto (solo si tiene valueKey o es custom) */}
+        {/* Texto */}
         {(isCustom || (meta.valueKey && !meta.valueKey.startsWith('_label_'))) && (
           <>
             <label style={labelStyle}>📝 Texto</label>
             {isMultiline ? (
-              <textarea
-                value={isCustom ? selection.data.value : (get('value') || '')}
+              <textarea value={isCustom ? selection.data.value : (get('value') || '')}
                 onChange={e => isCustom
                   ? onUpdateCustom(selection.id, { value: e.target.value })
                   : set('value', e.target.value)}
                 rows={2}
-                style={{ ...inputStyle, marginBottom: 12, resize: 'vertical' }}
-              />
+                style={{ ...inputStyle, marginBottom: 12, resize: 'vertical' }} />
             ) : (
-              <input
-                type="text"
-                value={isCustom ? selection.data.value : (get('value') || '')}
+              <input type="text" value={isCustom ? selection.data.value : (get('value') || '')}
                 onChange={e => isCustom
                   ? onUpdateCustom(selection.id, { value: e.target.value })
                   : set('value', e.target.value)}
-                style={{ ...inputStyle, marginBottom: 12 }}
-              />
+                style={{ ...inputStyle, marginBottom: 12 }} />
             )}
           </>
         )}
 
         {/* Tamaño */}
-        <label style={labelStyle}>📏 Tamaño ({isCustom ? selection.data.fontSize : get('fontSize')} pt)</label>
-        <input
-          type="range" min={6} max={120} step={1}
+        <NumberSlider label="📏 Tamaño" suffix=" pt"
+          min={6} max={120}
           value={isCustom ? selection.data.fontSize : get('fontSize')}
-          onChange={e => isCustom
-            ? onUpdateCustom(selection.id, { fontSize: Number(e.target.value) })
-            : set('fontSize', e.target.value)}
-          style={{ width: '100%', marginBottom: 4 }}
-        />
-        <input
-          type="number" min={6} max={120}
-          value={isCustom ? selection.data.fontSize : get('fontSize')}
-          onChange={e => isCustom
-            ? onUpdateCustom(selection.id, { fontSize: Number(e.target.value) })
-            : set('fontSize', e.target.value)}
-          style={{ ...inputStyle, marginBottom: 12 }}
-        />
+          onChange={v => isCustom
+            ? onUpdateCustom(selection.id, { fontSize: v })
+            : set('fontSize', v)} />
 
         {/* Color */}
         {showColor && (
-          <>
-            <label style={labelStyle}>
-              🎨 {showColor2
-                ? (get('color') === get('color2') ? 'Color' : 'Color superior')
-                : 'Color'}
-            </label>
-            <div style={{ display: 'flex', gap: 6, marginBottom: showColor2 ? 8 : 12 }}>
-              <input
-                type="color"
-                value={isCustom ? selection.data.color : (get('color') || '#000')}
-                onChange={e => isCustom
-                  ? onUpdateCustom(selection.id, { color: e.target.value })
-                  : set('color', e.target.value)}
-                style={{ width: 44, height: 34, border: '1px solid #ddd',
-                  borderRadius: 5, cursor: 'pointer', padding: 2, flexShrink: 0 }}
-              />
-              <input
-                type="text"
-                value={isCustom ? selection.data.color : (get('color') || '')}
-                onChange={e => isCustom
-                  ? onUpdateCustom(selection.id, { color: e.target.value })
-                  : set('color', e.target.value)}
-                style={{ ...inputStyle }}
-              />
-            </div>
-          </>
+          <ColorRow
+            label={`🎨 ${showColor2 ? (get('color') === get('color2') ? 'Color' : 'Color superior') : 'Color'}`}
+            value={isCustom ? selection.data.color : (get('color') || '#000')}
+            onChange={v => isCustom
+              ? onUpdateCustom(selection.id, { color: v })
+              : set('color', v)} />
         )}
 
-        {/* Color 2 (solo gradiente premioNum) */}
+        {/* Color 2 (gradiente premioNum built-in) */}
         {showColor2 && (
           <>
-            {/* Botón "Hacer sólido" si los colores difieren */}
             {get('color') !== get('color2') && (
-              <button
-                onClick={() => set('color2', get('color'))}
+              <button onClick={() => set('color2', get('color'))}
                 style={{
                   width: '100%', padding: '7px',
                   background: '#f8fafa', color: '#0abfbc',
                   border: '1px dashed #0abfbc', borderRadius: 5,
                   cursor: 'pointer', fontSize: 11, fontWeight: 700,
                   fontFamily: 'inherit', marginBottom: 10,
-                }}
-                title="Iguala los dos colores para tener un color sólido"
-              >⬇ Hacer color sólido (copiar arriba)</button>
+                }}>⬇ Hacer color sólido</button>
             )}
-
-            <label style={labelStyle}>🎨 Color inferior</label>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              <input
-                type="color"
-                value={get('color2') || '#000'}
-                onChange={e => set('color2', e.target.value)}
-                style={{ width: 44, height: 34, border: '1px solid #ddd',
-                  borderRadius: 5, cursor: 'pointer', padding: 2, flexShrink: 0 }}
-              />
-              <input
-                type="text"
-                value={get('color2') || ''}
-                onChange={e => set('color2', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            {/* Color del contorno (stroke) — solo premioNum */}
-            <label style={labelStyle}>✏️ Color del contorno</label>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              <input
-                type="color"
-                value={design.colorPremioStroke || design.colorBorde || '#000000'}
-                onChange={e => onUpdateDesign('colorPremioStroke', e.target.value)}
-                style={{ width: 44, height: 34, border: '1px solid #ddd',
-                  borderRadius: 5, cursor: 'pointer', padding: 2, flexShrink: 0 }}
-              />
-              <input
-                type="text"
-                value={design.colorPremioStroke || design.colorBorde || '#000000'}
-                onChange={e => onUpdateDesign('colorPremioStroke', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
+            <ColorRow label="🎨 Color inferior"
+              value={get('color2') || '#000'}
+              onChange={v => set('color2', v)} />
+            <ColorRow label="✏️ Color del contorno"
+              value={design.colorPremioStroke || design.colorBorde || '#000000'}
+              onChange={v => onUpdateDesign('colorPremioStroke', v)} />
           </>
         )}
 
-        {/* Peso (solo custom) */}
+        {/* Peso (custom) */}
         {showWeight && (
           <>
             <label style={labelStyle}>💪 Peso</label>
-            <select
-              value={selection.data.fontWeight}
+            <select value={selection.data.fontWeight}
               onChange={e => onUpdateCustom(selection.id, { fontWeight: Number(e.target.value) })}
-              style={{ ...inputStyle, marginBottom: 10 }}
-            >
+              style={{ ...inputStyle, marginBottom: 10 }}>
               <option value={300}>Light (300)</option>
               <option value={400}>Normal (400)</option>
               <option value={600}>Semi-Bold (600)</option>
@@ -823,13 +1221,11 @@ function ElementPanel({
           </>
         )}
 
-        {/* Itálica + Negrita rápida (solo custom) */}
+        {/* Italic/Bold rápidos (custom) */}
         {showItalic && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            <button
-              onClick={() => onUpdateCustom(selection.id, {
-                fontWeight: selection.data.fontWeight >= 700 ? 400 : 700
-              })}
+            <button onClick={() => onUpdateCustom(selection.id, {
+                fontWeight: selection.data.fontWeight >= 700 ? 400 : 700 })}
               style={{
                 flex: 1, padding: '8px',
                 background: selection.data.fontWeight >= 700 ? '#0abfbc' : '#f5f5f5',
@@ -838,10 +1234,8 @@ function ElementPanel({
                 cursor: 'pointer', fontSize: 14, fontWeight: 900,
                 fontFamily: 'inherit',
               }}>B</button>
-            <button
-              onClick={() => onUpdateCustom(selection.id, {
-                fontStyle: selection.data.fontStyle === 'italic' ? 'normal' : 'italic'
-              })}
+            <button onClick={() => onUpdateCustom(selection.id, {
+                fontStyle: selection.data.fontStyle === 'italic' ? 'normal' : 'italic' })}
               style={{
                 flex: 1, padding: '8px',
                 background: selection.data.fontStyle === 'italic' ? '#0abfbc' : '#f5f5f5',
@@ -853,53 +1247,148 @@ function ElementPanel({
           </div>
         )}
 
-        {/* Fuente (solo custom) */}
+        {/* Fuente (custom) */}
         {showFontFam && (
           <>
             <label style={labelStyle}>🔤 Fuente</label>
-            <select
-              value={selection.data.fontFamily}
+            <select value={selection.data.fontFamily}
               onChange={e => onUpdateCustom(selection.id, { fontFamily: e.target.value })}
-              style={{ ...inputStyle, marginBottom: 12 }}
-            >
+              style={{ ...inputStyle, marginBottom: 12 }}>
               {FUENTES.map(f => (
-                <option key={f.val} value={f.val}
-                  style={{ fontFamily: f.val }}>{f.label}</option>
+                <option key={f.val} value={f.val} style={{ fontFamily: f.val }}>{f.label}</option>
               ))}
             </select>
           </>
         )}
 
         {/* Rotación */}
-        <label style={labelStyle}>
-          🔄 Rotación: {isCustom ? selection.data.rotation : get('rotation')}°
-        </label>
-        <input
-          type="range" min={-180} max={180} step={5}
+        <NumberSlider label="🔄 Rotación" suffix="°"
+          min={-180} max={180} step={5}
           value={isCustom ? selection.data.rotation : get('rotation')}
-          onChange={e => isCustom
-            ? onUpdateCustom(selection.id, { rotation: Number(e.target.value) })
-            : set('rotation', e.target.value)}
-          style={{ width: '100%', marginBottom: 6 }}
-        />
+          onChange={v => isCustom
+            ? onUpdateCustom(selection.id, { rotation: v })
+            : set('rotation', v)} />
         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
           {[0, -90, 90, 180].map(deg => (
-            <button
-              key={deg}
+            <button key={deg}
               onClick={() => isCustom
                 ? onUpdateCustom(selection.id, { rotation: deg })
                 : set('rotation', deg)}
               style={{ flex: 1, fontSize: 11, padding: '5px',
                 border: '1px solid #ddd', borderRadius: 4,
-                background: '#fff', cursor: 'pointer',
-                fontFamily: 'inherit' }}>{deg}°</button>
+                background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {deg}°
+            </button>
           ))}
         </div>
 
-        {/* Borrar custom / Ocultar built-in */}
+        {/* ═══ EFECTOS AVANZADOS ═══ */}
+        <div style={sectionStyle}>
+          <div style={collapsibleHeaderStyle} onClick={() => setShowAdvanced(v => !v)}>
+            <strong style={{ fontSize: 12, color: '#7c3aed' }}>✨ Efectos avanzados</strong>
+            <span style={{ fontSize: 11, color: '#7c3aed' }}>{showAdvanced ? '▼' : '▶'}</span>
+          </div>
+
+          {showAdvanced && (
+            <>
+              {/* Contorno (text-stroke) */}
+              <div style={{ background: '#faf7ff', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 11, color: '#7c3aed' }}>✏️ Contorno (margen)</strong>
+                  <input type="checkbox"
+                    checked={!!fxStroke}
+                    onChange={e => setFx('textStroke', e.target.checked ? { width: 1.5, color: '#000' } : null)} />
+                </div>
+                {fxStroke && (
+                  <>
+                    <NumberSlider label="Grosor" suffix="px" min={0.5} max={6} step={0.5}
+                      value={fxStroke.width || 1.5}
+                      onChange={v => setFx('textStroke', { ...fxStroke, width: v })} />
+                    <ColorRow label="Color"
+                      value={fxStroke.color || '#000000'}
+                      onChange={v => setFx('textStroke', { ...fxStroke, color: v })} />
+                  </>
+                )}
+              </div>
+
+              {/* Glow */}
+              <div style={{ background: '#fff7e6', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 11, color: '#e67e00' }}>🌟 Brillo (glow)</strong>
+                  <input type="checkbox"
+                    checked={!!fxGlow}
+                    onChange={e => setFx('textGlow', e.target.checked ? { blur: 8, color: '#ffd700' } : null)} />
+                </div>
+                {fxGlow && (
+                  <>
+                    <NumberSlider label="Intensidad" suffix="px" min={1} max={30}
+                      value={fxGlow.blur || 8}
+                      onChange={v => setFx('textGlow', { ...fxGlow, blur: v })} />
+                    <ColorRow label="Color"
+                      value={fxGlow.color || '#ffd700'}
+                      onChange={v => setFx('textGlow', { ...fxGlow, color: v })} />
+                  </>
+                )}
+              </div>
+
+              {/* Sombra 3D */}
+              <div style={{ background: '#fff0f0', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 11, color: '#d92626' }}>🎲 Sombra 3D</strong>
+                  <input type="checkbox"
+                    checked={!!fx3D}
+                    onChange={e => setFx('textShadow3D', e.target.checked ? { depth: 4, color: '#000' } : null)} />
+                </div>
+                {fx3D && (
+                  <>
+                    <NumberSlider label="Profundidad" min={1} max={10}
+                      value={fx3D.depth || 4}
+                      onChange={v => setFx('textShadow3D', { ...fx3D, depth: v })} />
+                    <ColorRow label="Color"
+                      value={fx3D.color || '#000000'}
+                      onChange={v => setFx('textShadow3D', { ...fx3D, color: v })} />
+                  </>
+                )}
+              </div>
+
+              {/* Gradiente de letra (solo custom, porque built-in tiene color por design key) */}
+              {isCustom && (
+                <div style={{ background: '#f0fdf4', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <strong style={{ fontSize: 11, color: '#15803d' }}>🌈 Gradiente</strong>
+                    <input type="checkbox"
+                      checked={!!fxGrad}
+                      onChange={e => setFx('gradient', e.target.checked
+                        ? { from: '#ff006e', to: '#3a0ca3', direction: '180deg' } : null)} />
+                  </div>
+                  {fxGrad && (
+                    <>
+                      <ColorRow label="Color inicio"
+                        value={fxGrad.from || '#ff006e'}
+                        onChange={v => setFx('gradient', { ...fxGrad, from: v })} />
+                      <ColorRow label="Color final"
+                        value={fxGrad.to || '#3a0ca3'}
+                        onChange={v => setFx('gradient', { ...fxGrad, to: v })} />
+                      <label style={labelStyle}>Dirección</label>
+                      <select value={fxGrad.direction || '180deg'}
+                        onChange={e => setFx('gradient', { ...fxGrad, direction: e.target.value })}
+                        style={{ ...inputStyle, marginBottom: 8 }}>
+                        <option value="180deg">↓ Vertical</option>
+                        <option value="90deg">→ Horizontal</option>
+                        <option value="135deg">↘ Diagonal ↘</option>
+                        <option value="45deg">↗ Diagonal ↗</option>
+                      </select>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Borrar / Ocultar */}
         {isCustom ? (
-          <button
-            onClick={() => onDeleteCustom(selection.id)}
+          <button onClick={() => onDeleteCustom(selection.id)}
             style={{
               width: '100%', padding: '10px',
               background: '#fff', color: '#d92626',
@@ -908,79 +1397,62 @@ function ElementPanel({
               fontFamily: 'inherit', marginTop: 4,
             }}>🗑 Eliminar este texto</button>
         ) : (
-          <button
-            onClick={() => onHideBuiltin(selection.id)}
+          <button onClick={() => onHideBuiltin(selection.id)}
             style={{
               width: '100%', padding: '10px',
               background: '#fff', color: '#d92626',
               border: '1.5px solid #d92626', borderRadius: 6,
               cursor: 'pointer', fontSize: 13, fontWeight: 700,
               fontFamily: 'inherit', marginTop: 4,
-            }}
-            title="Lo ocultas del ticket. Podrás restaurarlo desde la barra superior."
-          >🙈 Ocultar este texto</button>
+            }}>🙈 Ocultar este texto</button>
         )}
       </div>
     </div>
   );
 }
 
+
 /* ════════════════════════════════════════════════════════════
-   <PaletasPanel> — paletas globales (opcional)
+   <PaletasPanel>
 ═════════════════════════════════════════════════════════════ */
-function PaletasPanel({ design, onApply, onClose }) {
+function PaletasPanel({ onApply, onClose }) {
   return (
     <div style={{
-      width: 280,
-      background: '#fff',
-      border: '1px solid #e0e0e0',
-      borderRadius: 10,
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
       boxShadow: '0 6px 24px rgba(0,0,0,.10)',
       fontFamily: 'system-ui, sans-serif',
-      overflow: 'hidden',
-      alignSelf: 'flex-start',
+      overflow: 'hidden', alignSelf: 'flex-start',
     }}>
       <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', padding: '12px 14px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
         background: 'linear-gradient(135deg, #f0a500 0%, #d68f00 100%)',
         color: '#fff',
       }}>
-        <strong style={{ fontSize: 13 }}>🎨 Paletas globales</strong>
+        <strong style={{ fontSize: 13 }}>🎨 Paletas de colores</strong>
         <button onClick={onClose}
           style={{ background: 'rgba(255,255,255,.2)', border: 'none',
             color: '#fff', cursor: 'pointer', width: 24, height: 24,
             borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
       </div>
-      <div style={{ padding: 14 }}>
+      <div style={{ padding: 14, maxHeight: 400, overflowY: 'auto' }}>
         <p style={{ fontSize: 12, color: '#666', marginTop: 0, marginBottom: 12 }}>
-          Aplica un set de colores a TODO el ticket de una vez.
+          Aplica un set de colores a TODO el ticket.
         </p>
         {PALETAS.map(p => (
-          <button
-            key={p.id}
-            onClick={() => onApply(p.colors)}
+          <button key={p.id} onClick={() => onApply(p.colors)}
             style={{
-              display: 'flex', width: '100%', alignItems: 'center',
-              gap: 10, padding: '8px 10px',
-              background: '#fff', border: '1px solid #e0e0e0',
-              borderRadius: 6, cursor: 'pointer', marginBottom: 6,
+              display: 'flex', width: '100%', alignItems: 'center', gap: 10,
+              padding: '8px 10px', background: '#fff',
+              border: '1px solid #e0e0e0', borderRadius: 6,
+              cursor: 'pointer', marginBottom: 6,
               fontFamily: 'inherit', fontSize: 13, textAlign: 'left',
-              transition: 'background .12s, border-color .12s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = '#f0fbfb';
-              e.currentTarget.style.borderColor = '#0abfbc';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = '#fff';
-              e.currentTarget.style.borderColor = '#e0e0e0';
-            }}
-          >
+            }}>
             <div style={{ display: 'flex', gap: 2 }}>
-              {[p.colors.colorPremio1, p.colors.colorPremio2, p.colors.colorSlogan].map((c,i) => (
-                <div key={i} style={{ width: 14, height: 18,
-                  background: c, borderRadius: 2, border: '1px solid rgba(0,0,0,.1)' }} />
+              {[p.colors.colorPremio1, p.colors.colorPremio2, p.colors.colorSlogan].map((c, i) => (
+                <div key={i} style={{ width: 14, height: 18, background: c,
+                  borderRadius: 2, border: '1px solid rgba(0,0,0,.1)' }} />
               ))}
             </div>
             <span style={{ fontWeight: 600 }}>{p.label}</span>
@@ -992,16 +1464,301 @@ function PaletasPanel({ design, onApply, onClose }) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   <TicketEditable>
+   <FormasPanel> — Picker de formas
+═════════════════════════════════════════════════════════════ */
+function FormasPanel({ onAdd, onClose }) {
+  return (
+    <div style={{
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
+      boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+      fontFamily: 'system-ui, sans-serif',
+      overflow: 'hidden', alignSelf: 'flex-start',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
+        background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+        color: '#fff',
+      }}>
+        <strong style={{ fontSize: 13 }}>◆ Agregar forma</strong>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      <div style={{ padding: 14, maxHeight: 420, overflowY: 'auto' }}>
+        <p style={{ fontSize: 11, color: '#666', marginTop: 0, marginBottom: 10 }}>
+          Click para agregar al centro del ticket. Luego arrastra para mover.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {TIPOS_FORMA.map(t => (
+            <button key={t.type} onClick={() => onAdd(t.type)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 4, padding: '10px 6px', background: '#fff',
+                border: '1.5px solid #e9d5ff', borderRadius: 8,
+                cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'all .15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = '#faf7ff';
+                e.currentTarget.style.borderColor = '#7c3aed';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.borderColor = '#e9d5ff';
+              }}>
+              <span style={{ fontSize: 22 }}>{t.icon}</span>
+              <span style={{ fontSize: 11, color: '#555', fontWeight: 600 }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   <ImagenPanel> — Agregar/editar URL de imagen
+═════════════════════════════════════════════════════════════ */
+function ImagenPanel({ onAdd, onClose }) {
+  const [url, setUrl] = useState('');
+  return (
+    <div style={{
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
+      boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+      fontFamily: 'system-ui, sans-serif',
+      overflow: 'hidden', alignSelf: 'flex-start',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
+        background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+        color: '#fff',
+      }}>
+        <strong style={{ fontSize: 13 }}>🖼 Agregar imagen</strong>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      <div style={{ padding: 14 }}>
+        <label style={labelStyle}>🔗 URL pública de la imagen</label>
+        <input type="text" value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="https://i.imgur.com/..."
+          style={{ ...inputStyle, marginBottom: 8 }} />
+        <p style={{ fontSize: 11, color: '#888', margin: '0 0 12px' }}>
+          Sube tu imagen a <strong>Imgur</strong>, <strong>Cloudinary</strong>,
+          o usa una URL directa terminada en .jpg/.png/.webp
+        </p>
+        <button onClick={() => { if (url.trim()) { onAdd(url.trim()); setUrl(''); } }}
+          disabled={!url.trim()}
+          style={{
+            width: '100%', padding: '10px',
+            background: url.trim() ? '#06b6d4' : '#ccc',
+            color: '#fff', border: 'none', borderRadius: 6,
+            cursor: url.trim() ? 'pointer' : 'not-allowed',
+            fontSize: 13, fontWeight: 700,
+            fontFamily: 'inherit',
+          }}>+ Agregar imagen</button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   <EstiloPanel> — Marco + Watermark + Textura
+═════════════════════════════════════════════════════════════ */
+function EstiloPanel({ design, onUpdateDesign, onClose }) {
+  return (
+    <div style={{
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
+      boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+      fontFamily: 'system-ui, sans-serif',
+      overflow: 'hidden', alignSelf: 'flex-start',
+      maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
+        background: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)',
+        color: '#fff',
+      }}>
+        <strong style={{ fontSize: 13 }}>🖼 Estilo global del ticket</strong>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      <div style={{ padding: 14, overflowY: 'auto' }}>
+
+        {/* ── MARCO ── */}
+        <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
+          🖼 Marco del ticket
+        </strong>
+        <label style={labelStyle}>Estilo</label>
+        <select value={design.frameStyle || 'classic'}
+          onChange={e => onUpdateDesign('frameStyle', e.target.value)}
+          style={{ ...inputStyle, marginBottom: 10 }}>
+          {FRAMES.map(f => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
+        <ColorRow label="Color del marco"
+          value={design.frameColor || design.colorBorde || '#000'}
+          onChange={v => onUpdateDesign('frameColor', v)} />
+        <NumberSlider label="Grosor del marco" suffix="px"
+          min={1} max={8} step={0.5}
+          value={design.frameWidth || 2.5}
+          onChange={v => onUpdateDesign('frameWidth', v)} />
+
+        {/* ── WATERMARK ── */}
+        <div style={sectionStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <strong style={{ fontSize: 12, color: '#7c3aed' }}>💧 Marca de agua</strong>
+            <input type="checkbox" checked={!!design.watermarkEnabled}
+              onChange={e => onUpdateDesign('watermarkEnabled', e.target.checked)} />
+          </div>
+          {design.watermarkEnabled && (
+            <>
+              <label style={labelStyle}>Texto</label>
+              <input type="text" value={design.watermarkText || ''}
+                onChange={e => onUpdateDesign('watermarkText', e.target.value)}
+                style={{ ...inputStyle, marginBottom: 10 }} />
+              <ColorRow label="Color"
+                value={design.watermarkColor || '#000'}
+                onChange={v => onUpdateDesign('watermarkColor', v)} />
+              <NumberSlider label="Opacidad" min={0.02} max={0.5} step={0.02}
+                value={design.watermarkOpacity != null ? design.watermarkOpacity : 0.06}
+                onChange={v => onUpdateDesign('watermarkOpacity', v)} />
+              <NumberSlider label="Tamaño" suffix=" pt" min={30} max={200}
+                value={design.watermarkSize || 100}
+                onChange={v => onUpdateDesign('watermarkSize', v)} />
+              <NumberSlider label="Rotación" suffix="°" min={-90} max={90} step={5}
+                value={design.watermarkRotation != null ? design.watermarkRotation : -20}
+                onChange={v => onUpdateDesign('watermarkRotation', v)} />
+            </>
+          )}
+        </div>
+
+        {/* ── TEXTURA ── */}
+        <div style={sectionStyle}>
+          <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
+            📜 Textura del papel
+          </strong>
+          <label style={labelStyle}>Tipo</label>
+          <select value={design.paperTexture || 'none'}
+            onChange={e => onUpdateDesign('paperTexture', e.target.value)}
+            style={{ ...inputStyle, marginBottom: 10 }}>
+            {TEXTURAS.map(t => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+          {design.paperTexture && design.paperTexture !== 'none' && (
+            <NumberSlider label="Intensidad" min={0.02} max={0.5} step={0.02}
+              value={design.paperTextureOpacity != null ? design.paperTextureOpacity : 0.08}
+              onChange={v => onUpdateDesign('paperTextureOpacity', v)} />
+          )}
+        </div>
+
+        {/* ── BACKGROUND ── */}
+        <div style={sectionStyle}>
+          <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
+            🎨 Fondo
+          </strong>
+          <ColorRow label="Color del papel"
+            value={design.bgPaper || '#f5f5f0'}
+            onChange={v => onUpdateDesign('bgPaper', v)} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <input type="checkbox" id="paperGlow"
+              checked={!!design.paperGlow}
+              onChange={e => onUpdateDesign('paperGlow', e.target.checked)} />
+            <label htmlFor="paperGlow" style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>
+              ✨ Resplandor radial
+            </label>
+          </div>
+          {design.paperGlow && (
+            <ColorRow label="Color del resplandor"
+              value={design.paperGlowColor || '#fff8d0'}
+              onChange={v => onUpdateDesign('paperGlowColor', v)} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   <PresetsPanel>
+═════════════════════════════════════════════════════════════ */
+function PresetsPanel({ onApply, onClose }) {
+  return (
+    <div style={{
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
+      boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+      fontFamily: 'system-ui, sans-serif',
+      overflow: 'hidden', alignSelf: 'flex-start',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
+        background: 'linear-gradient(135deg, #db2777 0%, #9d174d 100%)',
+        color: '#fff',
+      }}>
+        <strong style={{ fontSize: 13 }}>🎭 Presets espectaculares</strong>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      <div style={{ padding: 14, maxHeight: 440, overflowY: 'auto' }}>
+        <p style={{ fontSize: 11, color: '#888', marginTop: 0, marginBottom: 10 }}>
+          Aplica un diseño completo con colores, formas, marco y efectos.
+        </p>
+        {PRESETS.map(p => (
+          <button key={p.id} onClick={() => onApply(p.patch)}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left',
+              padding: '10px 12px', background: '#fff',
+              border: '1.5px solid #fce7f3', borderRadius: 8,
+              cursor: 'pointer', fontFamily: 'inherit',
+              marginBottom: 6, fontSize: 13, fontWeight: 700, color: '#9d174d',
+              transition: 'all .15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#fdf2f8';
+              e.currentTarget.style.borderColor = '#db2777';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#fff';
+              e.currentTarget.style.borderColor = '#fce7f3';
+            }}>
+            {p.label}
+          </button>
+        ))}
+        <p style={{ fontSize: 10, color: '#999', marginTop: 14, fontStyle: 'italic' }}>
+          ⚠️ Aplicar un preset reemplaza las formas y colores actuales.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   <TicketEditable> — Componente principal
 ═════════════════════════════════════════════════════════════ */
 export default function TicketEditable({ r, numero, design, onUpdate, printMode = false }) {
-  // En printMode, onUpdate puede no llegar — uso noop
   if (!onUpdate) onUpdate = () => {};
-  // Aplica factor global a los tamaños si está activo
+
   const globalSizeFactor = design?.globalSizeFactor || 1.0;
   const baseDesign = { ...DEFAULT_DESIGN, ...(design || {}) };
 
-  // D contiene tamaños YA escalados por factor global
   const D = { ...baseDesign };
   if (globalSizeFactor !== 1.0) {
     Object.keys(D).forEach(k => {
@@ -1011,11 +1768,13 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
     });
   }
 
-  const positions = baseDesign.positions || {};
-  const customTexts = baseDesign.customTexts || [];
+  const positions    = baseDesign.positions    || {};
+  const customTexts  = baseDesign.customTexts  || [];
+  const customShapes = baseDesign.customShapes || [];
+  const customImages = baseDesign.customImages || [];
   const hiddenFields = baseDesign.hiddenFields || [];
 
-  // ── Defaults de la rifa ──
+  // Defaults de la rifa
   const { numero: premioNumRifa, texto: premioTxtRifa } = splitPremio(r?.premio);
   const fechaRifa     = fmtFechaLoteria(r?.fecha_sorteo);
   const horaRifa      = D.horaSort?.trim() || fmtHora12(r?.hora_sorteo) || '';
@@ -1034,156 +1793,259 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
   const valorTexto   = resolveValue(D, 'valorTexto',   valorRifa);
   const subPremioTxt = resolveValue(D, 'subPremioNum', subPremioRifa);
 
-  // ── Responsive ──
+  // Responsive
   const [containerRef, containerWidth] = useContainerWidth();
-  // El layout entero (ticket + panel) necesita ~640px de ancho.
-  // Si el contenedor es más chico, escalamos solo el ticket.
   const PANEL_GAP = 16;
   const PANEL_W   = 280;
   const ticketAvail = containerWidth > (D.ticketWidth + PANEL_W + PANEL_GAP + 32)
     ? D.ticketWidth
     : Math.max(280, containerWidth - PANEL_W - PANEL_GAP - 32);
-
-  // Si no hay espacio para el panel al lado, el panel va abajo
   const panelBelow = containerWidth > 0 && containerWidth < (D.ticketWidth + PANEL_W + PANEL_GAP + 32);
   const ticketScale = panelBelow
     ? Math.min(1, containerWidth / D.ticketWidth)
     : Math.min(1, ticketAvail / D.ticketWidth);
 
-  // ── Selección ──
-  // selection = { kind: 'builtin'|'custom', id, data? }
-  const [selection, setSelection] = useState(null);
-  const [showPaletas, setShowPaletas] = useState(false);
-  const [showHiddenMenu, setShowHiddenMenu] = useState(false);
+  // Selección
+  const [selection,        setSelection]        = useState(null);
+  const [showPaletas,      setShowPaletas]      = useState(false);
+  const [showFormas,       setShowFormas]       = useState(false);
+  const [showImagen,       setShowImagen]       = useState(false);
+  const [showEstilo,       setShowEstilo]       = useState(false);
+  const [showPresets,      setShowPresets]      = useState(false);
+  const [showHiddenMenu,   setShowHiddenMenu]   = useState(false);
 
-  // ── Recalcula selection.data cuando design cambia (para mantener el panel sincronizado) ──
+  // Cierra todos los paneles secundarios al abrir uno
+  const cerrarTodos = () => {
+    setShowPaletas(false); setShowFormas(false); setShowImagen(false);
+    setShowEstilo(false);  setShowPresets(false); setShowHiddenMenu(false);
+  };
+
+  // Recalcula selection.data cuando design cambia
   useEffect(() => {
     if (selection?.kind === 'custom') {
       const updated = customTexts.find(t => t.id === selection.id);
       if (updated && updated !== selection.data) {
         setSelection({ kind: 'custom', id: selection.id, data: updated });
-      } else if (!updated) {
-        setSelection(null); // se borró
-      }
+      } else if (!updated) setSelection(null);
+    } else if (selection?.kind === 'shape') {
+      const updated = customShapes.find(s => s.id === selection.id);
+      if (updated && updated !== selection.data) {
+        setSelection({ kind: 'shape', id: selection.id, data: updated });
+      } else if (!updated) setSelection(null);
+    } else if (selection?.kind === 'image') {
+      const updated = customImages.find(i => i.id === selection.id);
+      if (updated && updated !== selection.data) {
+        setSelection({ kind: 'image', id: selection.id, data: updated });
+      } else if (!updated) setSelection(null);
     }
-  }, [customTexts]);
+  }, [customTexts, customShapes, customImages]);
 
-  // ── Mover built-in ──
+  // ── Built-in handlers ──
   const handleMoveBuiltin = useCallback((campo, newPos) => {
     const def = DEFAULT_POSITIONS[campo] || {};
     const cur = positions[campo] || {};
     onUpdate('positions', {
       ...positions,
-      [campo]: {
-        ...def,    // preserva 'rotated' default
-        ...cur,    // preserva 'rotation' custom previo
-        x: newPos.x, y: newPos.y,
-      },
+      [campo]: { ...def, ...cur, x: newPos.x, y: newPos.y },
     });
   }, [positions, onUpdate]);
 
-  // ── Mover custom ──
+  // ── Custom text handlers ──
   const handleMoveCustom = useCallback((id, newPos) => {
     onUpdate('customTexts', customTexts.map(t =>
       t.id === id ? { ...t, x: newPos.x, y: newPos.y } : t
     ));
   }, [customTexts, onUpdate]);
-
-  // ── Editar valor de custom ──
   const handleChangeCustomValue = useCallback((id, newValue) => {
     onUpdate('customTexts', customTexts.map(t =>
       t.id === id ? { ...t, value: newValue } : t
     ));
   }, [customTexts, onUpdate]);
-
-  // ── Update parcial de custom (desde el panel) ──
   const handleUpdateCustomProps = useCallback((id, partial) => {
     onUpdate('customTexts', customTexts.map(t =>
       t.id === id ? { ...t, ...partial } : t
     ));
   }, [customTexts, onUpdate]);
-
-  // ── Agregar texto ──
-  const handleAddText = () => {
-    const newId = `custom_${Date.now()}`;
-    const nuevoTexto = {
-      id: newId,
-      value: 'Texto nuevo',
-      x: Math.round(D.ticketWidth / 2 - 60),
-      y: Math.round(D.ticketHeight / 2),
-      fontSize: 14,
-      fontWeight: 700,
-      color: '#000000',
-      fontStyle: 'normal',
-      fontFamily: "'Poppins', sans-serif",
-      rotation: 0,
-    };
-    onUpdate('customTexts', [...customTexts, nuevoTexto]);
-    setSelection({ kind: 'custom', id: newId, data: nuevoTexto });
-    setShowPaletas(false);
-  };
-
-  // ── Borrar custom ──
   const handleDeleteCustom = (id) => {
     onUpdate('customTexts', customTexts.filter(t => t.id !== id));
     if (selection?.id === id) setSelection(null);
   };
 
-  // ── Ocultar built-in ──
+  // ── Shape handlers ──
+  const handleMoveShape = useCallback((id, newPos) => {
+    onUpdate('customShapes', customShapes.map(s =>
+      s.id === id ? { ...s, x: newPos.x, y: newPos.y } : s
+    ));
+  }, [customShapes, onUpdate]);
+  const handleUpdateShapeProps = useCallback((id, partial) => {
+    onUpdate('customShapes', customShapes.map(s =>
+      s.id === id ? { ...s, ...partial } : s
+    ));
+  }, [customShapes, onUpdate]);
+  const handleDeleteShape = (id) => {
+    onUpdate('customShapes', customShapes.filter(s => s.id !== id));
+    if (selection?.id === id) setSelection(null);
+  };
+
+  // ── Image handlers ──
+  const handleMoveImage = useCallback((id, newPos) => {
+    onUpdate('customImages', customImages.map(i =>
+      i.id === id ? { ...i, x: newPos.x, y: newPos.y } : i
+    ));
+  }, [customImages, onUpdate]);
+  const handleUpdateImageProps = useCallback((id, partial) => {
+    onUpdate('customImages', customImages.map(i =>
+      i.id === id ? { ...i, ...partial } : i
+    ));
+  }, [customImages, onUpdate]);
+  const handleDeleteImage = (id) => {
+    onUpdate('customImages', customImages.filter(i => i.id !== id));
+    if (selection?.id === id) setSelection(null);
+  };
+
+  // ── Agregar texto ──
+  const handleAddText = () => {
+    const newId = `custom_${Date.now()}`;
+    const nuevoTexto = {
+      id: newId, value: 'Texto nuevo',
+      x: Math.round(D.ticketWidth / 2 - 60),
+      y: Math.round(D.ticketHeight / 2),
+      fontSize: 14, fontWeight: 700, color: '#000000',
+      fontStyle: 'normal', fontFamily: "'Poppins', sans-serif",
+      rotation: 0,
+    };
+    onUpdate('customTexts', [...customTexts, nuevoTexto]);
+    setSelection({ kind: 'custom', id: newId, data: nuevoTexto });
+    cerrarTodos();
+  };
+
+  // ── Agregar shape ──
+  const handleAddShape = (type) => {
+    const newId = `shape_${Date.now()}`;
+    const defaultsByType = {
+      arrow:     { width: 80,  height: 30 },
+      star:      { width: 60,  height: 60 },
+      burst:     { width: 80,  height: 80 },
+      sparkle:   { width: 50,  height: 50 },
+      circle:    { width: 70,  height: 70 },
+      ring:      { width: 80,  height: 80 },
+      rect:      { width: 100, height: 60 },
+      triangle:  { width: 60,  height: 60 },
+      diamond:   { width: 60,  height: 60 },
+      heart:     { width: 50,  height: 50 },
+      lightning: { width: 40,  height: 70 },
+      polygon:   { width: 70,  height: 70 },
+      ribbon:    { width: 100, height: 50 },
+      banner:    { width: 120, height: 50 },
+      stamp:     { width: 100, height: 100 },
+      line:      { width: 120, height: 12 },
+    };
+    const dims = defaultsByType[type] || { width: 60, height: 60 };
+    const nuevaForma = {
+      id: newId, type,
+      x: Math.round(D.ticketWidth / 2 - dims.width / 2),
+      y: Math.round(D.ticketHeight / 2 - dims.height / 2),
+      ...dims,
+      rotation: 0, opacity: 0.85,
+      color: '#d92626', color2: '#f5c518',
+      strokeColor: '#000000', strokeWidth: 1,
+      layer: 'front',
+      ...(type === 'stamp'   ? { label: 'OK' } : {}),
+      ...(type === 'polygon' ? { sides: 6 } : {}),
+      ...(type === 'star'    ? { points: 5 } : {}),
+      ...(type === 'ring'    ? { innerRadius: 32 } : {}),
+      ...(type === 'rect'    ? { borderRadius: 0 } : {}),
+    };
+    onUpdate('customShapes', [...customShapes, nuevaForma]);
+    setSelection({ kind: 'shape', id: newId, data: nuevaForma });
+    cerrarTodos();
+  };
+
+  // ── Agregar imagen ──
+  const handleAddImage = (src) => {
+    const newId = `img_${Date.now()}`;
+    const nuevaImg = {
+      id: newId, src,
+      x: Math.round(D.ticketWidth / 2 - 80),
+      y: Math.round(D.ticketHeight / 2 - 60),
+      width: 160, height: 120,
+      rotation: 0, opacity: 1,
+      blendMode: 'normal', borderRadius: 0,
+      layer: 'back', objectFit: 'cover',
+      grayscale: 0, sepia: 0, blur: 0, brightness: 1,
+    };
+    onUpdate('customImages', [...customImages, nuevaImg]);
+    setSelection({ kind: 'image', id: newId, data: nuevaImg });
+    cerrarTodos();
+  };
+
+  // ── Hide / restore built-in ──
   const handleHideBuiltin = (id) => {
     if (hiddenFields.includes(id)) return;
     onUpdate('hiddenFields', [...hiddenFields, id]);
     if (selection?.id === id) setSelection(null);
   };
-
-  // ── Restaurar built-in oculto ──
   const handleRestoreBuiltin = (id) => {
     onUpdate('hiddenFields', hiddenFields.filter(f => f !== id));
   };
-
-  // ── Restaurar TODOS los ocultos ──
   const handleRestoreAll = () => {
     onUpdate('hiddenFields', []);
   };
 
-  // ── Reset posiciones ──
+  // ── Reset ──
   const handleResetPositions = () => {
-    if (window.confirm('¿Restaurar las posiciones al diseño original? (los textos custom no se borran)')) {
+    if (window.confirm('¿Restaurar las posiciones al diseño original? (los textos, formas e imágenes custom no se borran)')) {
       onUpdate('positions', {});
       setSelection(null);
     }
   };
-
-  // ── Aplicar paleta ──
-  const handleApplyPaleta = (colors) => {
-    Object.entries(colors).forEach(([k, v]) => onUpdate(k, v));
-    setShowPaletas(false);
+  const handleResetAll = () => {
+    if (window.confirm('¿BORRAR todas las formas, imágenes y textos custom?')) {
+      onUpdate('customShapes', []);
+      onUpdate('customImages', []);
+      onUpdate('customTexts',  []);
+      setSelection(null);
+    }
   };
 
-  // ── Click en canvas vacío: deseleccionar ──
+  // ── Aplicar paleta / preset ──
+  const handleApplyPaleta = (colors) => {
+    Object.entries(colors).forEach(([k, v]) => onUpdate(k, v));
+    cerrarTodos();
+  };
+  const handleApplyPreset = (patch) => {
+    Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
+    cerrarTodos();
+    setSelection(null);
+  };
+
+  // ── Click canvas vacío ──
   const handleCanvasMouseDown = (e) => {
     if (e.target === e.currentTarget) {
       setSelection(null);
-      setShowPaletas(false);
-      setShowHiddenMenu(false);
+      cerrarTodos();
     }
   };
 
-  // ── Selección desde un elemento ──
+  // ── Selección desde cualquier elemento ──
   const handleSelect = useCallback((id) => {
+    cerrarTodos();
     if (id.startsWith('custom_')) {
       const data = customTexts.find(t => t.id === id);
       if (data) setSelection({ kind: 'custom', id, data });
+    } else if (id.startsWith('shape_')) {
+      const data = customShapes.find(s => s.id === id);
+      if (data) setSelection({ kind: 'shape', id, data });
+    } else if (id.startsWith('img_')) {
+      const data = customImages.find(i => i.id === id);
+      if (data) setSelection({ kind: 'image', id, data });
     } else {
       setSelection({ kind: 'builtin', id });
     }
-    setShowPaletas(false);
-  }, [customTexts]);
+  }, [customTexts, customShapes, customImages]);
 
-  // ── px helper para tamaños YA escalados por globalSizeFactor ──
   const pxScaled = (pt) => Math.round((Number(pt) || 0) * PT_TO_PX);
 
-  // ── Obtener rotación efectiva de un built-in ──
   const getRotation = (campo) => {
     const pos = positions[campo] || DEFAULT_POSITIONS[campo] || {};
     if (pos.rotation !== undefined) return pos.rotation;
@@ -1192,51 +2054,62 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
 
   const STROKE = D.colorBorde;
 
-  // Helper para built-in (null si está oculto)
+  // Helper built-in con efectos avanzados
   const F = (campo, value, onChangeKey, textStyle, opts = {}) => {
     if (hiddenFields.includes(campo)) return null;
+    // Aplica efectos avanzados (textEffects.{campo})
+    const fx = D.textEffects?.[campo];
+    const finalStyle = fx ? applyAdvancedTextEffects(textStyle, fx) : textStyle;
     return (
       <DraggableEditable
-        key={campo}
-        id={campo}
+        key={campo} id={campo}
         position={getPos(positions, campo)}
         rotation={getRotation(campo)}
         onMove={handleMoveBuiltin}
         value={value}
         onChange={v => onUpdate(onChangeKey, v)}
-        textStyle={textStyle}
+        textStyle={finalStyle}
         scale={ticketScale}
         multiline={opts.multiline}
         placeholder={opts.placeholder}
         selected={selection?.id === campo}
         onSelect={handleSelect}
-        printMode={printMode}
-      />
+        printMode={printMode} />
     );
   };
+
+  // Paper background
+  const paperBg = getPaperBgStyle(D);
+
+  // ── Botón helper para barra superior ──
+  const BarButton = ({ active, onClick, bg, color, children, title }) => (
+    <button onClick={onClick} title={title}
+      style={{
+        padding: '7px 14px',
+        background: active ? bg : '#fff',
+        color: active ? '#fff' : color,
+        border: `1.5px solid ${color}`, borderRadius: 6,
+        cursor: 'pointer', fontSize: 12, fontWeight: 700,
+        fontFamily: 'inherit',
+      }}>
+      {children}
+    </button>
+  );
 
   return (
     <div style={{ width: '100%' }} ref={containerRef}>
 
-      {/* ═══ Barra superior (oculta en printMode) ═══ */}
+      {/* ═══ Barra superior ═══ */}
       {!printMode && <div style={{
-        display: 'flex',
-        gap: 10,
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        marginBottom: 14,
-        padding: '10px 14px',
-        background: '#f8fafa',
-        border: '1px solid #e0e8e8',
-        borderRadius: 8,
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: 12,
+        display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+        marginBottom: 14, padding: '10px 14px',
+        background: '#f8fafa', border: '1px solid #e0e8e8',
+        borderRadius: 8, fontFamily: 'system-ui, sans-serif', fontSize: 12,
       }}>
-        <span style={{ fontWeight: 600, color: '#333' }}>Tamaño global:</span>
+        <span style={{ fontWeight: 600, color: '#333' }}>Tamaño:</span>
         <div style={{ display: 'flex', gap: 4 }}>
           {TAMANOS_GLOBALES.map(t => (
-            <button
-              key={t.label}
+            <button key={t.label}
               onClick={() => onUpdate('globalSizeFactor', t.factor)}
               style={{
                 padding: '6px 12px',
@@ -1245,49 +2118,35 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
                 border: '1px solid ' + (globalSizeFactor === t.factor ? '#0abfbc' : '#ddd'),
                 borderRadius: 5, cursor: 'pointer',
                 fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
-              }}
-            >{t.label}</button>
+              }}>{t.label}</button>
           ))}
         </div>
 
         <div style={{ flex: 1, minWidth: 12 }} />
 
-        {/* Botón "Ocultos" con dropdown — solo si hay alguno */}
+        {/* Ocultos dropdown */}
         {hiddenFields.length > 0 && (
           <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowHiddenMenu(v => !v)}
-              style={{
-                padding: '7px 14px',
-                background: showHiddenMenu ? '#7c3aed' : '#fff',
-                color: showHiddenMenu ? '#fff' : '#7c3aed',
-                border: '1.5px solid #7c3aed', borderRadius: 6,
-                cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-              title="Elementos ocultos del ticket"
-            >
+            <BarButton active={showHiddenMenu}
+              onClick={() => { cerrarTodos(); setShowHiddenMenu(v => !v); }}
+              bg="#7c3aed" color="#7c3aed"
+              title="Elementos ocultos">
               🙈 Ocultos
               <span style={{
                 background: showHiddenMenu ? '#fff' : '#7c3aed',
                 color: showHiddenMenu ? '#7c3aed' : '#fff',
                 borderRadius: 10, padding: '1px 7px',
-                fontSize: 11, fontWeight: 800,
-                minWidth: 18, textAlign: 'center',
+                fontSize: 11, fontWeight: 800, minWidth: 18, textAlign: 'center',
+                marginLeft: 6,
               }}>{hiddenFields.length}</span>
-            </button>
-
+            </BarButton>
             {showHiddenMenu && (
               <div style={{
                 position: 'absolute', top: 'calc(100% + 6px)', right: 0,
-                width: 260,
-                background: '#fff',
-                border: '1px solid #e0e0e0',
-                borderRadius: 8,
+                width: 260, background: '#fff',
+                border: '1px solid #e0e0e0', borderRadius: 8,
                 boxShadow: '0 6px 24px rgba(0,0,0,.12)',
-                zIndex: 5000,
-                padding: 10,
+                zIndex: 5000, padding: 10,
                 fontFamily: 'system-ui, sans-serif',
               }}>
                 <div style={{
@@ -1295,47 +2154,28 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
                   alignItems: 'center', marginBottom: 8,
                   paddingBottom: 8, borderBottom: '1px solid #eee',
                 }}>
-                  <strong style={{ fontSize: 12, color: '#333' }}>
-                    Restaurar elementos
-                  </strong>
-                  <button
-                    onClick={() => { handleRestoreAll(); setShowHiddenMenu(false); }}
-                    style={{
-                      background: 'transparent', border: 'none',
+                  <strong style={{ fontSize: 12, color: '#333' }}>Restaurar</strong>
+                  <button onClick={() => { handleRestoreAll(); setShowHiddenMenu(false); }}
+                    style={{ background: 'transparent', border: 'none',
                       color: '#0abfbc', cursor: 'pointer',
                       fontSize: 11, fontWeight: 700,
-                      fontFamily: 'inherit', padding: 0,
-                    }}
-                    title="Restaurar todos">Restaurar todos</button>
+                      fontFamily: 'inherit', padding: 0 }}>Todos</button>
                 </div>
                 <div style={{ maxHeight: 240, overflowY: 'auto' }}>
                   {hiddenFields.map(id => {
                     const meta = FIELD_META[id];
                     return (
-                      <button
-                        key={id}
-                        onClick={() => handleRestoreBuiltin(id)}
+                      <button key={id} onClick={() => handleRestoreBuiltin(id)}
                         style={{
                           display: 'flex', width: '100%',
                           alignItems: 'center', justifyContent: 'space-between',
-                          padding: '8px 10px',
-                          background: '#fff', border: '1px solid #eee',
-                          borderRadius: 5, marginBottom: 4,
-                          cursor: 'pointer', fontSize: 12,
-                          fontFamily: 'inherit', textAlign: 'left',
-                          color: '#333',
-                        }}
-                        onMouseEnter={e => {
-                          e.currentTarget.style.background = '#f0fbfb';
-                          e.currentTarget.style.borderColor = '#0abfbc';
-                        }}
-                        onMouseLeave={e => {
-                          e.currentTarget.style.background = '#fff';
-                          e.currentTarget.style.borderColor = '#eee';
-                        }}
-                      >
+                          padding: '8px 10px', background: '#fff',
+                          border: '1px solid #eee', borderRadius: 5,
+                          marginBottom: 4, cursor: 'pointer', fontSize: 12,
+                          fontFamily: 'inherit', textAlign: 'left', color: '#333',
+                        }}>
                         <span>{meta?.label || id}</span>
-                        <span style={{ color: '#0abfbc', fontWeight: 700 }}>↶ Mostrar</span>
+                        <span style={{ color: '#0abfbc', fontWeight: 700 }}>↶</span>
                       </button>
                     );
                   })}
@@ -1345,78 +2185,104 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
           </div>
         )}
 
-        <button
-          onClick={() => { setShowPaletas(true); setSelection(null); }}
+        <BarButton active={showPresets} bg="#db2777" color="#db2777"
+          onClick={() => { cerrarTodos(); setShowPresets(true); setSelection(null); }}>
+          🎭 Presets
+        </BarButton>
+        <BarButton active={showPaletas} bg="#f0a500" color="#f0a500"
+          onClick={() => { cerrarTodos(); setShowPaletas(true); setSelection(null); }}>
+          🎨 Paletas
+        </BarButton>
+        <BarButton active={showEstilo} bg="#f97316" color="#f97316"
+          onClick={() => { cerrarTodos(); setShowEstilo(true); setSelection(null); }}>
+          🖼 Marco
+        </BarButton>
+        <BarButton active={showFormas} bg="#7c3aed" color="#7c3aed"
+          onClick={() => { cerrarTodos(); setShowFormas(true); setSelection(null); }}>
+          + Forma
+        </BarButton>
+        <BarButton active={showImagen} bg="#06b6d4" color="#06b6d4"
+          onClick={() => { cerrarTodos(); setShowImagen(true); setSelection(null); }}>
+          + Imagen
+        </BarButton>
+        <button onClick={handleAddText}
           style={{
             padding: '7px 14px',
-            background: '#fff', color: '#f0a500',
-            border: '1.5px solid #f0a500', borderRadius: 6,
-            cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            fontFamily: 'inherit',
-          }}>🎨 Paletas</button>
-        <button
-          onClick={handleAddText}
-          style={{
-            padding: '7px 16px',
             background: '#0abfbc', border: '1.5px solid #0abfbc',
             color: '#fff', borderRadius: 6,
             cursor: 'pointer', fontSize: 12, fontWeight: 700,
             fontFamily: 'inherit',
-            boxShadow: '0 1px 3px rgba(10,191,188,.3)',
-          }}>+ Agregar texto</button>
-        <button
-          onClick={handleResetPositions}
+          }}>+ Texto</button>
+        <button onClick={handleResetPositions}
           style={{
-            padding: '7px 14px',
-            background: '#fff', color: '#d92626',
+            padding: '7px 12px', background: '#fff', color: '#d92626',
             border: '1.5px solid #d92626', borderRadius: 6,
             cursor: 'pointer', fontSize: 12, fontWeight: 600,
             fontFamily: 'inherit',
-          }}>↺ Reset posiciones</button>
+          }} title="Restaurar posiciones originales">↺ Reset</button>
+        {(customShapes.length > 0 || customImages.length > 0 || customTexts.length > 0) && (
+          <button onClick={handleResetAll}
+            style={{
+              padding: '7px 12px', background: '#fff', color: '#991b1b',
+              border: '1.5px solid #991b1b', borderRadius: 6,
+              cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              fontFamily: 'inherit',
+            }} title="Borrar TODAS las formas, imágenes y textos custom">🗑 Limpiar</button>
+        )}
       </div>}
 
       {/* ═══ Layout principal: ticket + panel ═══ */}
       <div style={{
-        display: 'flex',
-        gap: PANEL_GAP,
+        display: 'flex', gap: PANEL_GAP,
         flexDirection: panelBelow ? 'column' : 'row',
         alignItems: 'flex-start',
       }}>
 
-        {/* ── Wrapper del ticket (responsive) ── */}
+        {/* ── Wrapper del ticket ── */}
         <div style={{
           flex: panelBelow ? 'none' : '0 0 auto',
           width: panelBelow ? '100%' : D.ticketWidth * ticketScale,
           height: D.ticketHeight * ticketScale,
           position: 'relative',
         }}>
-          {/* CANVAS */}
-          <div
-            data-ticket-canvas="true"
+          <div data-ticket-canvas="true"
             onMouseDown={handleCanvasMouseDown}
             style={{
-              width: D.ticketWidth,
-              height: D.ticketHeight,
+              width: D.ticketWidth, height: D.ticketHeight,
               fontFamily: "'Poppins','Arial Black',sans-serif",
-              background: D.bgPaper,
-              border: `2.5px solid ${STROKE}`,
-              position: 'relative',
-              overflow: 'hidden',
+              ...paperBg,
+              border: `${D.frameWidth || 2.5}px solid ${D.frameColor || STROKE}`,
+              position: 'relative', overflow: 'hidden',
               transform: ticketScale < 1 ? `scale(${ticketScale})` : 'none',
               transformOrigin: 'top left',
               boxSizing: 'border-box',
-            }}
-          >
-            {/* Líneas decorativas fijas */}
+            }}>
+
+            {/* ═══ CAPAS DE FONDO ═══ */}
+            {customImages.filter(im => (im.layer || 'back') === 'back').map(im => (
+              <DecorativeImage key={im.id} image={im} scale={ticketScale}
+                draggable={!printMode}
+                selected={selection?.id === im.id}
+                onSelect={handleSelect} onMove={handleMoveImage} />
+            ))}
+            {customShapes.filter(sh => (sh.layer || 'back') === 'back').map(sh => (
+              <DecorativeShape key={sh.id} shape={sh} scale={ticketScale}
+                draggable={!printMode}
+                selected={selection?.id === sh.id}
+                onSelect={handleSelect} onMove={handleMoveShape} />
+            ))}
+            <WatermarkLayer design={D} />
+
+            {/* Líneas decorativas fijas (talón) */}
             <div style={{ position: 'absolute', left: 115, top: 0, bottom: 0,
-              borderLeft: `2px dashed ${STROKE}`, pointerEvents: 'none' }} />
+              borderLeft: `2px dashed ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
             <div style={{ position: 'absolute', left: 137, top: 0, bottom: 0,
-              borderLeft: `1px solid ${STROKE}`, pointerEvents: 'none' }} />
+              borderLeft: `1px solid ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
             <div style={{ position: 'absolute', left: 145, right: 10,
               bottom: 50, height: 0,
-              borderTop: `1px dashed ${STROKE}40`, pointerEvents: 'none' }} />
+              borderTop: `1px dashed ${STROKE}40`, pointerEvents: 'none', zIndex: 1 }} />
 
-            {/* Built-in fields */}
+            {/* ═══ TEXTOS BUILT-IN ═══ */}
             {F('numBoletoIzq', numBoleto, 'numBoleto', {
               border: `2px solid ${STROKE}`, padding: '6px 12px',
               fontSize: pxScaled(D.sizeNumTalon), fontWeight: 900,
@@ -1443,8 +2309,7 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               color: D.colorSlogan, letterSpacing: 1,
               textTransform: 'uppercase',
               WebkitTextStroke: `.5px ${STROKE}`,
-              textShadow: '1px 1px 0 rgba(0,0,0,.15)',
-              lineHeight: 1,
+              textShadow: '1px 1px 0 rgba(0,0,0,.15)', lineHeight: 1,
             })}
             {F('fechaPrefix', D.fechaPrefix, 'fechaPrefix', {
               fontSize: pxScaled(D.sizeFecha), fontWeight: 800,
@@ -1466,30 +2331,22 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               letterSpacing: .5, lineHeight: 1,
               textShadow: `2px 2px 0 ${STROKE}`,
             })}
-            {/* premioNum: en printMode usamos SVG (html2canvas no captura
-                bien background-clip:text). En modo edición sigue siendo el
-                CSS gradient clipeado con outline y cursor. */}
+            {/* premioNum: SVG en printMode, CSS-clip en edición */}
             {!hiddenFields.includes('premioNum') && printMode ? (
-              <PremioNumeroSVG
-                key="premioNum"
-                value={premioNum}
+              <PremioNumeroSVG key="premioNum" value={premioNum}
                 position={getPos(positions, 'premioNum')}
                 rotation={getRotation('premioNum')}
                 fontSize={pxScaled(D.sizePremioNum)}
-                color1={D.colorPremio1}
-                color2={D.colorPremio2}
+                color1={D.colorPremio1} color2={D.colorPremio2}
                 stroke={D.colorPremioStroke || STROKE}
-                dropShadowColor={`${STROKE}30`}
-              />
+                dropShadowColor={`${STROKE}30`} />
             ) : F('premioNum', premioNum, 'premioNum', {
               fontFamily: "'Arial Black','Poppins',sans-serif",
               fontWeight: 900, fontSize: pxScaled(D.sizePremioNum),
               lineHeight: .85, letterSpacing: 2,
               backgroundImage: `linear-gradient(180deg,${D.colorPremio1} 0%,${D.colorPremio1} 48%,${D.colorPremio2 || D.colorPremio1} 52%,${D.colorPremio2 || D.colorPremio1} 100%)`,
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              color: 'transparent',
+              WebkitBackgroundClip: 'text', backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent', color: 'transparent',
               WebkitTextStroke: `1px ${D.colorPremioStroke || STROKE}`,
               filter: `drop-shadow(3px 3px 0 ${STROKE}30)`,
             })}
@@ -1550,68 +2407,96 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               fontSize: pxScaled(D.sizeFooter), color: '#999', letterSpacing: .5,
             })}
 
-            {/* Custom texts */}
-            {customTexts.map(t => (
-              <DraggableEditable
-                key={t.id}
-                id={t.id}
-                position={{ x: t.x, y: t.y }}
-                rotation={t.rotation || 0}
-                onMove={handleMoveCustom}
-                value={t.value}
-                onChange={v => handleChangeCustomValue(t.id, v)}
-                textStyle={{
-                  fontSize: pxScaled(t.fontSize),
-                  fontWeight: t.fontWeight,
-                  color: t.color,
-                  fontStyle: t.fontStyle,
-                  fontFamily: t.fontFamily,
-                }}
-                scale={ticketScale}
-                selected={selection?.id === t.id}
-                onSelect={handleSelect}
-                printMode={printMode}
-              />
+            {/* ═══ TEXTOS CUSTOM ═══ */}
+            {customTexts.map(t => {
+              const baseStyle = {
+                fontSize: pxScaled(t.fontSize),
+                fontWeight: t.fontWeight,
+                color: t.color,
+                fontStyle: t.fontStyle,
+                fontFamily: t.fontFamily,
+              };
+              const finalStyle = t.fx ? applyAdvancedTextEffects(baseStyle, t.fx) : baseStyle;
+              return (
+                <DraggableEditable key={t.id} id={t.id}
+                  position={{ x: t.x, y: t.y }}
+                  rotation={t.rotation || 0}
+                  onMove={handleMoveCustom}
+                  value={t.value}
+                  onChange={v => handleChangeCustomValue(t.id, v)}
+                  textStyle={finalStyle}
+                  scale={ticketScale}
+                  selected={selection?.id === t.id}
+                  onSelect={handleSelect}
+                  printMode={printMode} />
+              );
+            })}
+
+            {/* ═══ CAPAS FRONT (sobre todo) ═══ */}
+            {customShapes.filter(sh => sh.layer === 'front').map(sh => (
+              <DecorativeShape key={sh.id} shape={sh} scale={ticketScale}
+                draggable={!printMode}
+                selected={selection?.id === sh.id}
+                onSelect={handleSelect} onMove={handleMoveShape} />
             ))}
+            {customImages.filter(im => im.layer === 'front').map(im => (
+              <DecorativeImage key={im.id} image={im} scale={ticketScale}
+                draggable={!printMode}
+                selected={selection?.id === im.id}
+                onSelect={handleSelect} onMove={handleMoveImage} />
+            ))}
+
+            {/* ═══ MARCO DECORATIVO ═══ */}
+            <FrameLayer design={D} />
           </div>
         </div>
 
-        {/* ── Panel lateral (oculto en printMode) ── */}
-        {!printMode && <div style={{ flex: panelBelow ? 'none' : '0 0 auto', width: panelBelow ? '100%' : PANEL_W }}>
+        {/* ── Panel lateral ── */}
+        {!printMode && <div style={{
+          flex: panelBelow ? 'none' : '0 0 auto',
+          width: panelBelow ? '100%' : PANEL_W,
+        }}>
           {showPaletas ? (
-            <PaletasPanel
-              design={baseDesign}
-              onApply={handleApplyPaleta}
-              onClose={() => setShowPaletas(false)}
-            />
+            <PaletasPanel onApply={handleApplyPaleta} onClose={() => setShowPaletas(false)} />
+          ) : showFormas ? (
+            <FormasPanel onAdd={handleAddShape} onClose={() => setShowFormas(false)} />
+          ) : showImagen ? (
+            <ImagenPanel onAdd={handleAddImage} onClose={() => setShowImagen(false)} />
+          ) : showEstilo ? (
+            <EstiloPanel design={baseDesign} onUpdateDesign={onUpdate}
+              onClose={() => setShowEstilo(false)} />
+          ) : showPresets ? (
+            <PresetsPanel onApply={handleApplyPreset} onClose={() => setShowPresets(false)} />
           ) : selection ? (
-            <ElementPanel
-              selection={selection}
-              design={baseDesign}
+            <ElementPanel selection={selection} design={baseDesign}
               onUpdateDesign={onUpdate}
               onUpdateCustom={handleUpdateCustomProps}
+              onUpdateShape={handleUpdateShapeProps}
+              onUpdateImage={handleUpdateImageProps}
               onDeleteCustom={handleDeleteCustom}
+              onDeleteShape={handleDeleteShape}
+              onDeleteImage={handleDeleteImage}
               onHideBuiltin={handleHideBuiltin}
-              onClose={() => setSelection(null)}
-            />
+              onClose={() => setSelection(null)} />
           ) : (
             <div style={{
-              padding: '24px 18px',
-              background: '#f8fafa',
-              border: '1px dashed #c0d0d0',
-              borderRadius: 10,
-              textAlign: 'center',
-              fontFamily: 'system-ui, sans-serif',
-              fontSize: 13, color: '#666',
-              lineHeight: 1.55,
+              padding: '24px 18px', background: '#f8fafa',
+              border: '1px dashed #c0d0d0', borderRadius: 10,
+              textAlign: 'center', fontFamily: 'system-ui, sans-serif',
+              fontSize: 13, color: '#666', lineHeight: 1.55,
             }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👆</div>
               <strong style={{ color: '#333', display: 'block', marginBottom: 6 }}>
-                Selecciona un texto
+                Selecciona un elemento
               </strong>
               <p style={{ margin: 0, fontSize: 12 }}>
-                Click en cualquier texto del ticket para editarlo<br/>
-                <span style={{ color: '#999' }}>Arrastra para moverlo · Shift+arrastra para snap a grid</span>
+                Click en cualquier <strong>texto</strong>, <strong>forma</strong> o <strong>imagen</strong>.<br/>
+                <span style={{ color: '#999' }}>
+                  Arrastra para mover · Shift+arrastra para snap a grid
+                </span>
+              </p>
+              <p style={{ margin: '12px 0 0', fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>
+                💡 Prueba los <strong>🎭 Presets</strong> para diseños espectaculares
               </p>
             </div>
           )}
