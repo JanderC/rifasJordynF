@@ -23,7 +23,7 @@ const LOTERIAS = [
     'Baloto','Revancha Baloto','Lotería de Bogotá','Lotería del Tolima',
   ]},
   { grupo: 'Venezuela', items: [
-    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
+    'Lotería del Táchira TRIPLE TACHIRA','Lotería de Mérida','Lotería del Zulia',
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
