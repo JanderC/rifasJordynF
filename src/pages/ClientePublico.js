@@ -603,12 +603,13 @@ function useRifaProgress(rifaId, refreshKey = 0) {
       .then(r => {
         if (cancel) return;
         const todos = r.data || [];
-        // Mismo cálculo que GridNumeros: números únicos para no doblar en simultánea
-        const unicos       = [...new Set(todos.map(n => n.numero))];
-        const disponiblesU = [...new Set(todos.filter(n => n.estado === 'disponible').map(n => n.numero))];
-        const total        = unicos.length;
-        const tomados      = total - disponiblesU.length;
-        const pct          = total > 0 ? (tomados / total) * 100 : 0;
+        // CAMBIO: contar TODAS las entradas (no únicas). En una rifa simultánea
+        // con 2 series, el total es 2000 (no 1000), y cada serie reservada/vendida
+        // de un mismo número cuenta por separado. "Tomado" = cualquier estado
+        // que no sea 'disponible' (vendido, reservado, agotado, vendido_serie, etc.)
+        const total   = todos.length;
+        const tomados = todos.filter(n => n.estado !== 'disponible').length;
+        const pct     = total > 0 ? (tomados / total) * 100 : 0;
         const data = { totalNumeros: total, tomados, pct };
         _progresoCache.set(rifaId, { ts: Date.now(), data });
         setStat({ ...data, loading:false });
@@ -765,26 +766,40 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
         )}
 
         <div style={{ display:'flex', flexDirection:'column', gap:12, position:'relative' }}>
-          {/* ── Progreso real de venta ── */}
-          <div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
-              <span style={{ fontSize:'.52rem', color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:'1.5px', fontWeight:700 }}>
+          {/* ── Progreso real de venta (versión grande) ── */}
+          <div style={{
+            background:'rgba(255,255,255,.05)',
+            border:'1px solid rgba(255,255,255,.1)',
+            borderRadius:14,
+            padding:'14px 16px',
+          }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:10 }}>
+              <span style={{ fontSize:'.7rem', color:'rgba(255,255,255,.7)', textTransform:'uppercase', letterSpacing:'1.5px', fontWeight:700 }}>
                 🎟 Progreso de venta
               </span>
-              <span style={{ fontSize:'.78rem', color:TURQ, fontWeight:900 }}>{pctHero.toFixed(1)}%</span>
+              <span style={{ fontSize:'1.6rem', color:TURQ, fontWeight:900, lineHeight:1, textShadow:`0 0 16px ${TURQ}88` }}>
+                {pctHero.toFixed(1)}%
+              </span>
             </div>
-            <div style={{ background:'rgba(255,255,255,.08)', borderRadius:8, height:9, overflow:'hidden', border:'1px solid rgba(255,255,255,.08)' }}>
+            <div style={{ background:'rgba(255,255,255,.1)', borderRadius:10, height:16, overflow:'hidden', border:'1px solid rgba(255,255,255,.1)', position:'relative' }}>
               <div style={{
                 width:`${pctHero}%`, height:'100%',
                 background:`linear-gradient(90deg,${TURQ},${TURQ2})`,
-                borderRadius:8, transition:'width 1s ease',
-                boxShadow:`0 0 16px ${TURQ}88`,
+                borderRadius:10, transition:'width 1s ease',
+                boxShadow:`0 0 20px ${TURQ}aa`,
               }}></div>
             </div>
-            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.4)', marginTop:4, fontWeight:600 }}>
-              {progreso.loading
-                ? 'Cargando…'
-                : `${progreso.tomados} de ${progreso.totalNumeros} números vendidos`}
+            <div style={{ fontSize:'.78rem', color:'rgba(255,255,255,.6)', marginTop:8, fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span>
+                {progreso.loading
+                  ? 'Cargando…'
+                  : <><strong style={{ color:'#fff', fontSize:'.92rem' }}>{progreso.tomados.toLocaleString('es-CO')}</strong> de <strong style={{ color:'#fff', fontSize:'.92rem' }}>{progreso.totalNumeros.toLocaleString('es-CO')}</strong> vendidos</>}
+              </span>
+              {!progreso.loading && progreso.totalNumeros > 0 && (
+                <span style={{ fontSize:'.65rem', color:'rgba(255,255,255,.45)' }}>
+                  {(progreso.totalNumeros - progreso.tomados).toLocaleString('es-CO')} disponibles
+                </span>
+              )}
             </div>
           </div>
 
@@ -1897,16 +1912,19 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
             </div>
           )}
 
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
-            <span style={{ fontSize:'.56rem', color:`${DARK}66` }}>
-              {progreso.loading
-                ? 'Cargando…'
-                : `${progreso.tomados} / ${progreso.totalNumeros} vendidos`}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+            <span style={{ fontSize:'.62rem', color:`${DARK}88`, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px' }}>
+              🎟 Progreso
             </span>
-            <span style={{ fontSize:'.56rem', color:TURQ, fontWeight:700 }}>{pct.toFixed(1)}%</span>
+            <span style={{ fontSize:'.95rem', color:TURQ_DK, fontWeight:900 }}>{pct.toFixed(1)}%</span>
           </div>
-          <div style={{ background:'#e8f5f5', borderRadius:6, height:6, overflow:'hidden' }}>
-            <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:6, transition:'width 1s ease' }}></div>
+          <div style={{ background:'#e8f5f5', borderRadius:8, height:10, overflow:'hidden', border:`1px solid ${TURQ}22` }}>
+            <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:8, transition:'width 1s ease', boxShadow:`0 0 10px ${TURQ}66` }}></div>
+          </div>
+          <div style={{ fontSize:'.62rem', color:`${DARK}66`, marginTop:5, fontWeight:600 }}>
+            {progreso.loading
+              ? 'Cargando…'
+              : <><strong style={{ color:DARK }}>{progreso.tomados.toLocaleString('es-CO')}</strong> de <strong style={{ color:DARK }}>{progreso.totalNumeros.toLocaleString('es-CO')}</strong> vendidos</>}
           </div>
         </div>
         <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14 }}>
