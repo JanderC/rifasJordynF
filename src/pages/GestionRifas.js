@@ -21,17 +21,9 @@ import { useAuth } from '../context/AuthContext';
 const LOTERIAS = [
   { grupo: 'Colombia', items: [
     'Baloto','Revancha Baloto','Lotería de Bogotá','Lotería del Tolima',
-    'Lotería de Cundinamarca','Lotería de Boyacá','Lotería del Huila',
-    'Lotería de Caldas','Lotería del Quindío','Lotería de Risaralda',
-    'Lotería del Meta','Lotería de Santander','Lotería del Valle',
-    'Lotería del Cauca','Lotería de Manizales','Lotería de Armenia',
-    'Chance Codechocó','La Greca','Dorado','Culona','Paisita',
-    'Pijao de Oro','Cafeterito','Super Astro Sol','Super Astro Luna',
   ]},
   { grupo: 'Venezuela', items: [
     'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
-    'Lotería de Caracas','Lottery Venezuela','Animalitos','Tripleta',
-    'La Greca Venezuela','El Kino','Chance Venezuela',
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
@@ -1953,143 +1945,301 @@ export default function GestionRifas() {
     const vends     = Array.isArray(r.vendedores) ? r.vendedores : [];
     const totalNums = vends.reduce((acc, v) => acc + (v.numeros_count || 0), 0);
 
+    // Color del avatar por vendedor (estable: hash simple por nombre)
+    const colorVend = (nombre = '') => {
+      const paleta = [
+        { bg:'linear-gradient(135deg,#7c3aed,#a855f7)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#0abfbc,#22d3d0)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#f59e0b,#fbbf24)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#06d6a0,#10b981)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#ec4899,#f472b6)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#3b82f6,#60a5fa)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#ef4444,#f87171)', text:'#fff' },
+        { bg:'linear-gradient(135deg,#14b8a6,#2dd4bf)', text:'#fff' },
+      ];
+      let h = 0;
+      for (let i = 0; i < nombre.length; i++) h = (h * 31 + nombre.charCodeAt(i)) >>> 0;
+      return paleta[h % paleta.length];
+    };
+
     return (
-      <div className={`jd-card ${r.activa ? 'jd-card-primary' : ''} fade-in`} style={{ opacity: r.activa ? 1 : 0.72, height: '100%' }}>
+      <div className={`jd-card ${r.activa ? 'jd-card-primary' : ''} fade-in`}
+           style={{
+             opacity: r.activa ? 1 : 0.72,
+             height: '100%',
+             padding: 0,
+             overflow: 'hidden',
+             display: 'flex',
+             flexDirection: 'column',
+             border: r.activa ? '1.5px solid rgba(10,191,188,0.25)' : '1px solid var(--jordyn-border)',
+             boxShadow: r.activa ? '0 4px 20px rgba(10,191,188,0.08)' : '0 2px 8px rgba(0,0,0,0.04)',
+             transition: 'transform .2s, box-shadow .2s',
+           }}>
 
-        {r.imagen_url && (
-          <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--jordyn-bg2)', borderRadius: 10, overflow: 'hidden', marginBottom: '0.75rem' }}>
-            <img src={r.imagen_url} alt="Premio" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          </div>
-        )}
+        {/* ══════ BANNER DE IMAGEN — completa, sin recortes ══════ */}
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 10',
+          background: r.imagen_url
+            ? `linear-gradient(135deg, rgba(10,30,30,0.04), rgba(124,58,237,0.04)), url(${r.imagen_url}) center/cover no-repeat`
+            : 'linear-gradient(135deg,#0abfbc22,#7c3aed22)',
+          overflow: 'hidden',
+        }}>
+          {/* Fondo borroso para rellenar (efecto cinema) */}
+          {r.imagen_url && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `url(${r.imagen_url}) center/cover no-repeat`,
+              filter: 'blur(28px) brightness(0.55)',
+              transform: 'scale(1.15)',
+            }}></div>
+          )}
+          {/* Imagen completa por encima del fondo borroso */}
+          {r.imagen_url ? (
+            <img
+              src={r.imagen_url}
+              alt={r.premio || r.nombre}
+              style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : (
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '3.5rem', opacity: 0.5,
+            }}>🎰</div>
+          )}
 
-        <div className="d-flex justify-content-between align-items-start mb-2 gap-2">
-          <div style={{ minWidth: 0 }}>
-            <h5 style={{ fontWeight: 800, fontSize: '1.05rem', color: r.activa ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</h5>
-            <div style={{ fontSize: '0.75rem', color: 'var(--jordyn-muted)' }}>🏆 {r.premio}</div>
-          </div>
-          <div className="d-flex flex-column align-items-end gap-1" style={{ flexShrink: 0 }}>
-            <span className={r.activa ? 'badge-disponible' : 'badge-agotado'} style={{ fontSize: '0.68rem' }}>{archivada ? 'ARCHIVADA' : r.activa ? 'ACTIVA' : 'INACTIVA'}</span>
-            {r.tipo && <span className={r.tipo === 'simultanea' ? 'badge-simultanea' : 'badge-sencilla'} style={{ fontSize: '0.64rem' }}>{r.tipo === 'simultanea' ? '⚡ SIMULTÁNEA' : '🎯 SENCILLA'}</span>}
+          {/* Overlay de badges arriba-derecha */}
+          <div style={{
+            position: 'absolute', top: 10, right: 10,
+            display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end',
+            zIndex: 2,
+          }}>
+            <span className={r.activa ? 'badge-disponible' : 'badge-agotado'}
+                  style={{ fontSize: '0.66rem', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}>
+              {archivada ? 'ARCHIVADA' : r.activa ? '● ACTIVA' : 'INACTIVA'}
+            </span>
+            {r.tipo && (
+              <span className={r.tipo === 'simultanea' ? 'badge-simultanea' : 'badge-sencilla'}
+                    style={{ fontSize: '0.62rem', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}>
+                {r.tipo === 'simultanea' ? '⚡ SIMULTÁNEA' : '🎯 SENCILLA'}
+              </span>
+            )}
             {r.desactivar_en && r.activa && (
               <span title={`Se desactiva: ${new Date(r.desactivar_en).toLocaleString('es-CO',{timeZone:'America/Caracas'})}`}
-                style={{ fontSize:'0.6rem',fontWeight:700,background:'rgba(230,57,70,0.08)',border:'1px solid rgba(230,57,70,0.25)',color:'#e63946',borderRadius:20,padding:'1px 7px',display:'inline-flex',alignItems:'center',gap:4,whiteSpace:'nowrap' }}>
+                    style={{ fontSize:'0.58rem',fontWeight:700,background:'rgba(230,57,70,0.92)',color:'#fff',borderRadius:20,padding:'2px 8px',display:'inline-flex',alignItems:'center',gap:4,whiteSpace:'nowrap',boxShadow:'0 2px 8px rgba(0,0,0,0.25)' }}>
                 <i className="bi bi-clock-fill" style={{ fontSize:'0.55rem' }}></i>
                 {new Date(r.desactivar_en).toLocaleString('es-CO',{ day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'America/Caracas' })}
               </span>
             )}
           </div>
+
+          {/* Etiqueta de precio arriba-izquierda */}
+          <div style={{
+            position: 'absolute', top: 10, left: 10,
+            background: 'rgba(255,255,255,0.95)',
+            borderRadius: 50,
+            padding: '5px 14px',
+            fontSize: '0.85rem',
+            fontWeight: 800,
+            color: 'var(--jordyn-gold)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 2,
+          }}>
+            💰 {fmtCOP(r.precio)}
+          </div>
+
+          {/* Franja inferior con nombre + premio sobre la imagen */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)',
+            padding: '40px 14px 12px',
+            zIndex: 1,
+          }}>
+            <h5 style={{
+              fontWeight: 800, fontSize: '1.1rem', color: '#fff',
+              marginBottom: 3, lineHeight: 1.15,
+              textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{r.nombre}</h5>
+            <div style={{
+              fontSize: '0.78rem', color: 'rgba(255,255,255,0.92)',
+              fontWeight: 600, textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>🏆 {r.premio}</div>
+          </div>
         </div>
 
-        <div className="row g-2 mb-3" style={{ fontSize: '0.78rem' }}>
-          <div className="col-6">
-            <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>PRECIO</div>
-            <div style={{ fontWeight: 700, color: 'var(--jordyn-gold)', fontSize: '0.9rem' }}>{fmtCOP(r.precio)}</div>
-          </div>
-          <div className="col-6">
-            <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>SORTEO</div>
-            <div style={{ fontWeight: 600 }}>
-              {fmtF(r.fecha_sorteo)}
+        {/* ══════ CONTENIDO DEL CARD ══════ */}
+        <div style={{ padding: '14px 16px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+
+          {/* Datos clave en grid */}
+          <div className="row g-2 mb-3" style={{ fontSize: '0.78rem' }}>
+            <div className="col-6">
+              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>📅 SORTEO</div>
+              <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--jordyn-text)' }}>
+                {fmtF(r.fecha_sorteo)}
+              </div>
               {fmtHoraSorteo(r.hora_sorteo) && (
-                <span style={{ marginLeft:6, color:'var(--jordyn-primary)', fontWeight:700, fontSize:'0.78rem' }}>
-                  · {fmtHoraSorteo(r.hora_sorteo)}
-                </span>
+                <div style={{ fontSize:'0.7rem', color:'var(--jordyn-primary)', fontWeight:700, marginTop: 1 }}>
+                  🕐 {fmtHoraSorteo(r.hora_sorteo)}
+                </div>
               )}
             </div>
-          </div>
-          <div className="col-6">
-            <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>VENTAS</div>
-            <div style={{ fontWeight: 700, color: 'var(--jordyn-primary)' }}>{r.total_ventas || 0}</div>
-          </div>
-          <div className="col-6">
-            <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>RECAUDADO</div>
-            <div style={{ fontWeight: 700, color: 'var(--jordyn-green)' }}>{fmtCOP(r.ingresos_totales)}</div>
-          </div>
-        </div>
-
-        {/* Vendedores */}
-        {vends.length > 0 && (
-          <div style={{ marginBottom: '0.75rem', padding: '10px 12px', background: 'rgba(124,58,237,0.05)', border: '1.5px solid rgba(124,58,237,0.18)', borderRadius: 10 }}>
-            <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span><i className="bi bi-people-fill me-1"></i>{vends.length} VENDEDOR(ES) · {totalNums} NÚM. RESERVADOS</span>
-              <span style={{ background: 'rgba(124,58,237,0.1)', borderRadius: 6, padding: '1px 7px' }}>🔒 reservados</span>
+            <div className="col-3">
+              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>🎟 VENTAS</div>
+              <div style={{ fontWeight: 800, color: 'var(--jordyn-primary)', fontSize: '1rem', lineHeight: 1 }}>{r.total_ventas || 0}</div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {vends.map(v => (
-                <span key={v.id} style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 20, padding: '3px 10px', fontSize: '.65rem', color: '#7c3aed', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(124,58,237,0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', fontWeight: 900 }}>
-                    {v.nombre.charAt(0).toUpperCase()}
-                  </span>
-                  {v.nombre.split(' ')[0]}
-                  <span style={{ background: 'rgba(124,58,237,0.15)', borderRadius: 4, padding: '0 4px', fontSize: '.58rem' }}>{v.numeros_count || 0}</span>
+            <div className="col-3">
+              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>💵 TOTAL</div>
+              <div style={{ fontWeight: 800, color: 'var(--jordyn-green)', fontSize: '0.82rem', lineHeight: 1 }}>{fmtCOP(r.ingresos_totales)}</div>
+            </div>
+          </div>
+
+          {/* Vendedores — diseño mejorado con avatares de colores */}
+          {vends.length > 0 && (
+            <div style={{
+              marginBottom: '0.75rem',
+              padding: '10px 12px',
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.06), rgba(124,58,237,0.02))',
+              border: '1.5px solid rgba(124,58,237,0.22)',
+              borderRadius: 12,
+            }}>
+              <div style={{
+                fontSize: '.62rem', fontWeight: 800, color: '#7c3aed',
+                textTransform: 'uppercase', letterSpacing: '1px',
+                marginBottom: 10, display: 'flex',
+                justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                  <i className="bi bi-people-fill"></i>
+                  {vends.length} VENDEDOR{vends.length !== 1 ? 'ES' : ''}
                 </span>
-              ))}
+                <span style={{
+                  background: 'rgba(124,58,237,0.15)',
+                  borderRadius: 20, padding: '2px 9px',
+                  fontSize: '.6rem', fontWeight: 700,
+                }}>
+                  🔒 {totalNums} reservado{totalNums !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {vends.map(v => {
+                  const c = colorVend(v.nombre || '');
+                  return (
+                    <span key={v.id}
+                          title={`${v.nombre} · ${v.numeros_count || 0} números`}
+                          style={{
+                            background: '#fff',
+                            border: '1.5px solid rgba(124,58,237,0.18)',
+                            borderRadius: 24,
+                            padding: '3px 10px 3px 3px',
+                            fontSize: '.7rem',
+                            color: 'var(--jordyn-text)',
+                            fontWeight: 700,
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            boxShadow: '0 1px 3px rgba(124,58,237,0.08)',
+                          }}>
+                      <span style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: c.bg, color: c.text,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '.68rem', fontWeight: 900,
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
+                        flexShrink: 0,
+                      }}>
+                        {(v.nombre || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <span style={{ maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(v.nombre || '').split(' ')[0]}
+                      </span>
+                      <span style={{
+                        background: 'rgba(124,58,237,0.12)',
+                        color: '#7c3aed',
+                        borderRadius: 10, padding: '1px 7px',
+                        fontSize: '.62rem', fontWeight: 800,
+                      }}>{v.numeros_count || 0}</span>
+                    </span>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {vends.length === 0 && !archivada && r.activa && (
-          <div style={{ marginBottom: '0.75rem', padding: '8px 12px', background: 'rgba(240,165,0,0.06)', border: '1px dashed rgba(240,165,0,0.35)', borderRadius: 8 }}>
-            <div style={{ fontSize: '.68rem', color: 'var(--jordyn-gold)', fontWeight: 600 }}>
-              <i className="bi bi-exclamation-triangle me-1"></i>
-              Sin vendedores — todos los números son públicos
+          {vends.length === 0 && !archivada && r.activa && (
+            <div style={{ marginBottom: '0.75rem', padding: '8px 12px', background: 'rgba(240,165,0,0.06)', border: '1px dashed rgba(240,165,0,0.35)', borderRadius: 8 }}>
+              <div style={{ fontSize: '.68rem', color: 'var(--jordyn-gold)', fontWeight: 600 }}>
+                <i className="bi bi-exclamation-triangle me-1"></i>
+                Sin vendedores — todos los números son públicos
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Ofertas */}
-        {ofertas.length > 0 && (
-          <div style={{ marginBottom: '0.75rem', padding: '8px 10px', background: 'rgba(10,191,188,.05)', border: '1px solid rgba(10,191,188,.2)', borderRadius: 8 }}>
-            <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 5 }}>
-              <i className="bi bi-tag-fill me-1" style={{ color: 'var(--jordyn-primary)' }}></i>{ofertas.length} oferta{ofertas.length > 1 ? 's' : ''} activa{ofertas.length > 1 ? 's' : ''}
+          {/* Ofertas */}
+          {ofertas.length > 0 && (
+            <div style={{ marginBottom: '0.75rem', padding: '8px 10px', background: 'rgba(10,191,188,.05)', border: '1px solid rgba(10,191,188,.2)', borderRadius: 8 }}>
+              <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 5 }}>
+                <i className="bi bi-tag-fill me-1" style={{ color: 'var(--jordyn-primary)' }}></i>{ofertas.length} oferta{ofertas.length > 1 ? 's' : ''} activa{ofertas.length > 1 ? 's' : ''}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {ofertas.map(o => {
+                  const desc = r.precio > 0 ? Math.round((1 - o.precio_total / (r.precio * o.cantidad)) * 100) : 0;
+                  return (
+                    <span key={o.cantidad} style={{ background: 'rgba(10,191,188,.12)', color: 'var(--jordyn-primary)', border: '1px solid rgba(10,191,188,.3)', borderRadius: 20, padding: '2px 8px', fontSize: '.65rem', fontWeight: 700 }}>
+                      ×{o.cantidad} → {fmtCOP(o.precio_total)} {desc > 0 && <span style={{ color: '#059669' }}>−{desc}%</span>}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {ofertas.map(o => {
-                const desc = r.precio > 0 ? Math.round((1 - o.precio_total / (r.precio * o.cantidad)) * 100) : 0;
-                return (
-                  <span key={o.cantidad} style={{ background: 'rgba(10,191,188,.12)', color: 'var(--jordyn-primary)', border: '1px solid rgba(10,191,188,.3)', borderRadius: 20, padding: '2px 8px', fontSize: '.65rem', fontWeight: 700 }}>
-                    ×{o.cantidad} → {fmtCOP(o.precio_total)} {desc > 0 && <span style={{ color: '#059669' }}>−{desc}%</span>}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          )}
 
-        {(r.total_ventas || 0) > 0 && (
-          <div className="mb-3">
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--jordyn-muted)', marginBottom: 3 }}>
-              <span>Progreso</span><span>{Math.min(100, Math.round((r.total_ventas / 1000) * 100))}%</span>
+          {(r.total_ventas || 0) > 0 && (
+            <div className="mb-3">
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--jordyn-muted)', marginBottom: 3 }}>
+                <span>Progreso</span><span>{Math.min(100, Math.round((r.total_ventas / 1000) * 100))}%</span>
+              </div>
+              <div className="jd-progress"><div className="jd-progress-bar jd-progress-bar-primary" style={{ width: `${Math.min(100, (r.total_ventas / 1000) * 100)}%` }}></div></div>
             </div>
-            <div className="jd-progress"><div className="jd-progress-bar jd-progress-bar-primary" style={{ width: `${Math.min(100, (r.total_ventas / 1000) * 100)}%` }}></div></div>
-          </div>
-        )}
+          )}
 
-        {!archivada && (
-          <div className="d-flex flex-wrap gap-2">
-            <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
-            <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
-            <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
-            {/* Activar (si inactiva) — comportamiento directo */}
-            {!r.activa && (
-              <button onClick={() => handleToggle(r)} style={{ background:'transparent',border:'1.5px solid rgba(6,214,160,0.4)',color:'var(--jordyn-green)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer' }}>Activar</button>
-            )}
-            {/* Desactivar (si activa) — abre modal de programación */}
-            {r.activa && (
-              <button onClick={() => setModalDesactivar(r)} style={{ background:'transparent',border:`1.5px solid ${r.desactivar_en?'rgba(230,57,70,0.7)':'rgba(230,57,70,0.4)'}`,color:'var(--jordyn-red)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}>
-                <i className="bi bi-clock-fill" style={{ fontSize:'0.65rem' }}></i>
-                {r.desactivar_en ? 'Reprogramar' : 'Desactivar'}
-              </button>
-            )}
-            <button onClick={() => handleArchivar(r)} title="Archivar" style={{ background: 'transparent', border: '1.5px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', marginLeft: 'auto' }}><i className="bi bi-archive"></i></button>
-            <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }} title="Eliminar rifa"><i className="bi bi-trash3"></i></button>
-          </div>
-        )}
-        {archivada && (
-          <div className="d-flex gap-2">
-            <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-trash3"></i> Eliminar</button>
-            <button onClick={() => handleToggle({ ...r, activa: false })} style={{ background: 'rgba(6,214,160,0.08)', border: '1.5px solid rgba(6,214,160,0.35)', color: 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-arrow-counterclockwise me-1"></i>Restaurar</button>
-          </div>
-        )}
+          {/* Spacer para empujar botones al final */}
+          <div style={{ flex: 1 }}></div>
+
+          {!archivada && (
+            <div className="d-flex flex-wrap gap-2">
+              <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
+              <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
+              <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
+              {/* Activar (si inactiva) — comportamiento directo */}
+              {!r.activa && (
+                <button onClick={() => handleToggle(r)} style={{ background:'transparent',border:'1.5px solid rgba(6,214,160,0.4)',color:'var(--jordyn-green)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer' }}>Activar</button>
+              )}
+              {/* Desactivar (si activa) — abre modal de programación */}
+              {r.activa && (
+                <button onClick={() => setModalDesactivar(r)} style={{ background:'transparent',border:`1.5px solid ${r.desactivar_en?'rgba(230,57,70,0.7)':'rgba(230,57,70,0.4)'}`,color:'var(--jordyn-red)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5 }}>
+                  <i className="bi bi-clock-fill" style={{ fontSize:'0.65rem' }}></i>
+                  {r.desactivar_en ? 'Reprogramar' : 'Desactivar'}
+                </button>
+              )}
+              <button onClick={() => handleArchivar(r)} title="Archivar" style={{ background: 'transparent', border: '1.5px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 8, padding: '4px 8px', cursor: 'pointer', marginLeft: 'auto' }}><i className="bi bi-archive"></i></button>
+              <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }} title="Eliminar rifa"><i className="bi bi-trash3"></i></button>
+            </div>
+          )}
+          {archivada && (
+            <div className="d-flex gap-2">
+              <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-trash3"></i> Eliminar</button>
+              <button onClick={() => handleToggle({ ...r, activa: false })} style={{ background: 'rgba(6,214,160,0.08)', border: '1.5px solid rgba(6,214,160,0.35)', color: 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-arrow-counterclockwise me-1"></i>Restaurar</button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
