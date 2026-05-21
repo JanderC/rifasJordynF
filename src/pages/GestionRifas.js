@@ -20,10 +20,10 @@ import { useAuth } from '../context/AuthContext';
 /* ─── Loterías ─── */
 const LOTERIAS = [
   { grupo: 'Colombia', items: [
-    'Baloto','Revancha Baloto','Lotería de Bogotá','Lotería del Tolima',
+    'Pijao de Oro','Cafeterito','Super Astro Sol','Super Astro Luna',
   ]},
   { grupo: 'Venezuela', items: [
-    'Lotería del Táchira TRIPLE TACHIRA','Lotería de Mérida','Lotería del Zulia',
+    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
@@ -1767,6 +1767,641 @@ function ModalProgramarDesactivacion({ rifa, onClose, onSaved }) {
   );
 }
 
+/* ════════════════════════════════════════════════════════════
+   BUSCADOR DE NÚMERO GANADOR
+   Input inline dentro del card de rifa. Al escribir 3 dígitos
+   busca entre los vendedores (fijos + extras) y muestra quién
+   tiene ese número. Si es simultánea muestra ambas series.
+════════════════════════════════════════════════════════════ */
+function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
+  const [busqueda, setBusqueda] = useState('');
+  const [resultado, setResultado] = useState(null);
+  const [buscando, setBuscando] = useState(false);
+
+  const buscar = useCallback(async (numero) => {
+    if (!/^\d{3}$/.test(numero)) {
+      setResultado(null);
+      return;
+    }
+    setBuscando(true);
+    try {
+      // Llamada al endpoint que ya existe (boleteria-vendedores trae fijos + extras juntos)
+      const r = await API.get(`/rifas/${rifa.id}/boleteria-vendedores`);
+      const data = r.data;
+      const hits = [];
+      for (const v of (data.vendedores || [])) {
+        for (const nf of (v.numeros_fijos || [])) {
+          const nStr = String(nf.numero).padStart(3, '0');
+          if (nStr === numero) {
+            hits.push({
+              vendedor_id:     v.vendedor_id,
+              vendedor_nombre: v.vendedor_nombre,
+              cedula:          v.cedula,
+              serie:           nf.serie,
+              origen:          nf.origen,
+            });
+          }
+        }
+      }
+      setResultado({ numero, hits, esSim: data.es_simultanea });
+    } catch (err) {
+      toast.error('Error buscando número');
+      setResultado(null);
+    } finally {
+      setBuscando(false);
+    }
+  }, [rifa.id]);
+
+  const handleChange = (val) => {
+    const v = val.replace(/\D/g, '').slice(0, 3);
+    setBusqueda(v);
+    if (v.length === 3) buscar(v);
+    else setResultado(null);
+  };
+
+  const limpiar = () => { setBusqueda(''); setResultado(null); };
+
+  return (
+    <div style={{
+      marginTop: 10, paddingTop: 10,
+      borderTop: '1px dashed rgba(124,58,237,0.25)',
+    }}>
+      <div style={{
+        fontSize: '.58rem', fontWeight: 800, color: '#7c3aed',
+        textTransform: 'uppercase', letterSpacing: '1px',
+        marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5,
+      }}>
+        <i className="bi bi-trophy-fill" style={{ color: '#f59e0b' }}></i>
+        Buscar número ganador
+      </div>
+
+      <div style={{ position: 'relative' }}>
+        <span style={{
+          position: 'absolute', left: 12, top: '50%',
+          transform: 'translateY(-50%)', fontSize: '.85rem',
+          color: 'var(--jordyn-muted)', pointerEvents: 'none',
+        }}>🔍</span>
+        <input
+          type="tel"
+          inputMode="numeric"
+          maxLength={3}
+          value={busqueda}
+          onChange={e => handleChange(e.target.value)}
+          placeholder="Ej: 007"
+          style={{
+            width: '100%', padding: '8px 32px 8px 36px',
+            border: '1.5px solid rgba(124,58,237,0.25)',
+            borderRadius: 8, fontFamily: 'var(--jordyn-font)',
+            fontSize: '.85rem', fontWeight: 700,
+            color: 'var(--jordyn-text)', background: '#fff',
+            outline: 'none', letterSpacing: 2,
+          }}
+          onFocus={e => e.target.style.borderColor = '#7c3aed'}
+          onBlur={e => e.target.style.borderColor = 'rgba(124,58,237,0.25)'}
+        />
+        {busqueda && (
+          <button type="button" onClick={limpiar}
+            style={{
+              position: 'absolute', right: 8, top: '50%',
+              transform: 'translateY(-50%)', background: 'none',
+              border: 'none', cursor: 'pointer', fontSize: '.8rem',
+              color: 'var(--jordyn-muted)', padding: 4,
+            }}>✕</button>
+        )}
+      </div>
+
+      {/* Resultado */}
+      {buscando && (
+        <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2 }}></span>
+          Buscando…
+        </div>
+      )}
+
+      {!buscando && resultado && (
+        <div style={{ marginTop: 8 }}>
+          {resultado.hits.length === 0 ? (
+            <div style={{
+              padding: '8px 12px',
+              background: 'rgba(240,165,0,0.08)',
+              border: '1px solid rgba(240,165,0,0.3)',
+              borderRadius: 8,
+              fontSize: '.72rem', color: 'var(--jordyn-gold)',
+              fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <i className="bi bi-info-circle-fill"></i>
+              El número <strong style={{ letterSpacing: 1.5 }}>{resultado.numero}</strong> no está asignado a ningún vendedor
+              <span style={{ fontSize: '.62rem', fontWeight: 500, color: 'var(--jordyn-muted)', marginLeft: 'auto' }}>(número público)</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '.62rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>
+                🎯 El número <strong style={{ color: '#059669', letterSpacing: 1.5 }}>{resultado.numero}</strong> está en:
+              </div>
+              {resultado.hits.map((h, i) => {
+                const c = colorVend(h.vendedor_nombre || '');
+                const esExtra = h.origen === 'extra';
+                const vendInList = vends.find(vv => vv.id === h.vendedor_id);
+                return (
+                  <button
+                    key={`${h.vendedor_id}-${h.serie}-${i}`}
+                    type="button"
+                    onClick={() => vendInList && onAbrirVendedor(vendInList)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px',
+                      background: 'linear-gradient(135deg, rgba(5,150,105,0.08), rgba(5,150,105,0.03))',
+                      border: '1.5px solid rgba(5,150,105,0.3)',
+                      borderRadius: 10,
+                      cursor: vendInList ? 'pointer' : 'default',
+                      fontFamily: 'var(--jordyn-font)',
+                      textAlign: 'left',
+                      transition: 'transform .12s, box-shadow .12s',
+                    }}
+                    onMouseEnter={e => {
+                      if (vendInList) {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(5,150,105,0.18)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = '';
+                      e.currentTarget.style.boxShadow = '';
+                    }}>
+                    <span style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: c.bg, color: c.text,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '.85rem', fontWeight: 900,
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+                      flexShrink: 0,
+                    }}>
+                      {(h.vendedor_nombre || '?').charAt(0).toUpperCase()}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: '.85rem', color: 'var(--jordyn-text)' }}>
+                        {h.vendedor_nombre}
+                      </div>
+                      <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {h.cedula && <span>CC {h.cedula}</span>}
+                        {resultado.esSim && (
+                          <span style={{
+                            background: h.serie === 'A' ? '#f0f5ff' : '#fff0f5',
+                            border: `1px solid ${h.serie === 'A' ? '#4361ee30' : '#e91e8c30'}`,
+                            color: h.serie === 'A' ? '#4361ee' : '#e91e8c',
+                            borderRadius: 4, padding: '1px 6px',
+                            fontSize: '.6rem', fontWeight: 800,
+                          }}>Serie {h.serie}</span>
+                        )}
+                        <span style={{
+                          background: esExtra
+                            ? 'linear-gradient(135deg, #f59e0b, #fbbf24)'
+                            : 'rgba(124,58,237,0.12)',
+                          color: esExtra ? '#fff' : '#7c3aed',
+                          borderRadius: 10, padding: '1px 8px',
+                          fontSize: '.58rem', fontWeight: 800,
+                          letterSpacing: '.5px',
+                        }}>
+                          {esExtra ? '✨ EXTRA' : '🎯 FIJO'}
+                        </span>
+                      </div>
+                    </div>
+                    {vendInList && (
+                      <i className="bi bi-chevron-right" style={{ color: '#7c3aed', fontSize: '1rem' }}></i>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODAL: GESTIÓN DE NÚMEROS EXTRAS DEL VENDEDOR
+   Permite agregar/quitar números extras a un vendedor en una
+   rifa específica. Usa los endpoints ya existentes:
+     GET    /rifas/:id/boleteria-vendedores   → estado actual
+     POST   /rifas/:id/boleteria-vendedores/:vendedorId
+            { numeros, serie? }                → agregar
+     DELETE /rifas/:id/boleteria-vendedores/:vendedorId/numero
+            { numero, serie, origen }          → quitar (solo extras)
+════════════════════════════════════════════════════════════ */
+function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
+  const [data,        setData]        = useState(null);   // respuesta de boleteria-vendedores
+  const [loading,     setLoading]     = useState(true);
+  const [inputNums,   setInputNums]   = useState('');
+  const [serieSel,    setSerieSel]    = useState('A');    // solo en simultáneas
+  const [serieAuto,   setSerieAuto]   = useState(true);   // serie automática (solo simult.)
+  const [enviando,    setEnviando]    = useState(false);
+  const [eliminando,  setEliminando]  = useState(null);   // "001-A" del que se está borrando
+
+  const esSim = rifa.tipo === 'simultanea';
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await API.get(`/rifas/${rifa.id}/boleteria-vendedores`);
+      setData(r.data);
+    } catch {
+      toast.error('Error cargando información');
+    } finally {
+      setLoading(false);
+    }
+  }, [rifa.id]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  // Información del vendedor actual dentro de data.vendedores
+  const vendData = data?.vendedores?.find(v => v.vendedor_id === vendedor.id) || null;
+  const numerosFijos  = (vendData?.numeros_fijos || []).filter(n => n.origen === 'fijo');
+  const numerosExtras = (vendData?.numeros_fijos || []).filter(n => n.origen === 'extra');
+
+  // Parsear el input: separar por coma, espacio o salto de línea, validar 3 dígitos
+  const parsearInput = (txt) => {
+    return txt
+      .split(/[\s,;]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .map(s => s.padStart(3, '0'))
+      .filter(s => /^\d{3}$/.test(s));
+  };
+
+  const numerosParsed = parsearInput(inputNums);
+
+  const agregar = async () => {
+    if (numerosParsed.length === 0) {
+      toast.error('Ingresa al menos un número (3 dígitos)');
+      return;
+    }
+    setEnviando(true);
+    try {
+      const body = { numeros: numerosParsed };
+      if (esSim && !serieAuto) body.serie = serieSel;
+      const r = await API.post(`/rifas/${rifa.id}/boleteria-vendedores/${vendedor.id}`, body);
+      const ins = r.data.total_insertados || 0;
+      const col = (r.data.colisiones || []).length;
+      if (ins > 0) toast.success(`${ins} número${ins !== 1 ? 's' : ''} agregado${ins !== 1 ? 's' : ''}`);
+      if (col > 0) {
+        const detalle = r.data.colisiones.slice(0, 3).map(c => `${c.numero}: ${c.razon}`).join(' · ');
+        toast.warn(`${col} número${col !== 1 ? 's' : ''} no se pudo agregar — ${detalle}${col > 3 ? '…' : ''}`);
+      }
+      setInputNums('');
+      await cargar();
+      onChanged?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error agregando números');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const eliminar = async (numero, serie, origen) => {
+    if (origen === 'fijo') {
+      toast.warn('Los números fijos no se pueden eliminar desde aquí (vienen de la categoría)');
+      return;
+    }
+    const key = `${numero}-${serie}`;
+    setEliminando(key);
+    try {
+      await API.delete(`/rifas/${rifa.id}/boleteria-vendedores/${vendedor.id}/numero`,
+        { data: { numero, serie, origen } });
+      toast.success(`Número ${numero}${esSim ? ` (${serie})` : ''} eliminado`);
+      await cargar();
+      onChanged?.();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error eliminando');
+    } finally {
+      setEliminando(null);
+    }
+  };
+
+  // Color del avatar (mismo hash que en RifaCard, dejado local para no acoplar)
+  const c = (() => {
+    const paleta = [
+      { bg:'linear-gradient(135deg,#7c3aed,#a855f7)' },
+      { bg:'linear-gradient(135deg,#0abfbc,#22d3d0)' },
+      { bg:'linear-gradient(135deg,#f59e0b,#fbbf24)' },
+      { bg:'linear-gradient(135deg,#06d6a0,#10b981)' },
+      { bg:'linear-gradient(135deg,#ec4899,#f472b6)' },
+      { bg:'linear-gradient(135deg,#3b82f6,#60a5fa)' },
+      { bg:'linear-gradient(135deg,#ef4444,#f87171)' },
+      { bg:'linear-gradient(135deg,#14b8a6,#2dd4bf)' },
+    ];
+    let h = 0;
+    const nombre = vendedor.nombre || '';
+    for (let i = 0; i < nombre.length; i++) h = (h * 31 + nombre.charCodeAt(i)) >>> 0;
+    return paleta[h % paleta.length];
+  })();
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(4px)', zIndex: 1100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '20px', fontFamily: 'var(--jordyn-font)',
+    }} onClick={onClose}>
+      <div style={{
+        background: '#fff', borderRadius: 18,
+        width: '100%', maxWidth: 560, maxHeight: '90vh',
+        overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+        animation: 'fadeUp .22s ease',
+      }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+          color: '#fff', padding: '16px 20px',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%',
+            background: c.bg, color: '#fff',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.2rem', fontWeight: 900,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            border: '2px solid rgba(255,255,255,0.4)',
+          }}>
+            {(vendedor.nombre || '?').charAt(0).toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, opacity: 0.85, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              Gestión de extras
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {vendedor.nombre}
+            </div>
+            <div style={{ fontSize: '0.7rem', opacity: 0.9, marginTop: 2 }}>
+              Rifa: {rifa.nombre}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
+            width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1rem',
+          }}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1 }}>
+
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '36px 0' }}>
+              <div className="jd-spinner" style={{ width: 36, height: 36 }}></div>
+            </div>
+          ) : (
+            <>
+              {/* Resumen actual */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 120, padding: '10px 14px', background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 10 }}>
+                  <div style={{ fontSize: '.55rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>
+                    🎯 Fijos
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#7c3aed', lineHeight: 1 }}>
+                    {numerosFijos.length}
+                  </div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>de la categoría</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 120, padding: '10px 14px', background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(251,191,36,0.08))', border: '1.5px solid rgba(245,158,11,0.3)', borderRadius: 10 }}>
+                  <div style={{ fontSize: '.55rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>
+                    ✨ Extras
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#d97706', lineHeight: 1 }}>
+                    {numerosExtras.length}
+                  </div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>solo esta rifa</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 120, padding: '10px 14px', background: 'rgba(5,150,105,0.08)', border: '1.5px solid rgba(5,150,105,0.25)', borderRadius: 10 }}>
+                  <div style={{ fontSize: '.55rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>
+                    Σ Total
+                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#059669', lineHeight: 1 }}>
+                    {numerosFijos.length + numerosExtras.length}
+                  </div>
+                  {rifa.precio > 0 && (
+                    <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
+                      {fmtCOP((numerosFijos.length + numerosExtras.length) * rifa.precio)}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Formulario de agregar */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(245,158,11,0.05), rgba(251,191,36,0.03))',
+                border: '1.5px solid rgba(245,158,11,0.3)',
+                borderRadius: 12, padding: '14px',
+                marginBottom: 16,
+              }}>
+                <div style={{ fontSize: '.62rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>
+                  ✨ Agregar números extras
+                </div>
+
+                <textarea
+                  value={inputNums}
+                  onChange={e => setInputNums(e.target.value.replace(/[^\d,;\s]/g, ''))}
+                  placeholder="Ej: 001, 045, 123  (uno o varios, separados por coma o espacio)"
+                  rows={2}
+                  style={{
+                    width: '100%', padding: '10px 12px',
+                    border: '1.5px solid rgba(245,158,11,0.35)',
+                    borderRadius: 8, fontFamily: 'var(--jordyn-font)',
+                    fontSize: '.85rem', fontWeight: 600,
+                    color: 'var(--jordyn-text)', background: '#fff',
+                    outline: 'none', resize: 'vertical',
+                  }}
+                  onFocus={e => e.target.style.borderColor = '#d97706'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(245,158,11,0.35)'}
+                />
+
+                {/* Preview de números válidos */}
+                {numerosParsed.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>
+                    <span style={{ fontWeight: 700 }}>{numerosParsed.length}</span> número{numerosParsed.length !== 1 ? 's' : ''} listo{numerosParsed.length !== 1 ? 's' : ''}:{' '}
+                    <span style={{ fontWeight: 700, color: '#d97706', letterSpacing: 1 }}>
+                      {numerosParsed.slice(0, 10).join(', ')}{numerosParsed.length > 10 ? `… +${numerosParsed.length - 10}` : ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* Selector de serie (solo simultáneas) */}
+                {esSim && (
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={serieAuto} onChange={e => setSerieAuto(e.target.checked)}
+                        style={{ accentColor: '#d97706', cursor: 'pointer' }} />
+                      Asignar serie automáticamente
+                    </label>
+                    {!serieAuto && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {['A', 'B'].map(s => (
+                          <button key={s} type="button" onClick={() => setSerieSel(s)}
+                            style={{
+                              padding: '4px 14px',
+                              background: serieSel === s
+                                ? (s === 'A' ? '#4361ee' : '#e91e8c')
+                                : '#fff',
+                              color: serieSel === s ? '#fff' : (s === 'A' ? '#4361ee' : '#e91e8c'),
+                              border: `1.5px solid ${s === 'A' ? '#4361ee' : '#e91e8c'}`,
+                              borderRadius: 6, fontWeight: 800, fontSize: '.75rem',
+                              cursor: 'pointer', fontFamily: 'var(--jordyn-font)',
+                            }}>
+                            Serie {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button type="button" onClick={agregar} disabled={enviando || numerosParsed.length === 0}
+                  style={{
+                    marginTop: 10, width: '100%', padding: '9px 14px',
+                    background: enviando || numerosParsed.length === 0
+                      ? 'var(--jordyn-bg2)'
+                      : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    color: enviando || numerosParsed.length === 0 ? 'var(--jordyn-muted)' : '#fff',
+                    border: 'none', borderRadius: 8,
+                    fontWeight: 800, fontSize: '.82rem', cursor: enviando || numerosParsed.length === 0 ? 'not-allowed' : 'pointer',
+                    fontFamily: 'var(--jordyn-font)',
+                    boxShadow: enviando || numerosParsed.length === 0 ? 'none' : '0 4px 12px rgba(245,158,11,0.35)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                  {enviando ? (
+                    <>
+                      <span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2, borderColor: '#fff', borderTopColor: 'transparent' }}></span>
+                      Agregando…
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-plus-circle-fill"></i>
+                      Agregar {numerosParsed.length || ''} número{numerosParsed.length !== 1 ? 's' : ''} extra{numerosParsed.length !== 1 ? 's' : ''}
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Lista de extras actuales */}
+              {numerosExtras.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: '.62rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>
+                    Extras actuales · click ✕ para quitar
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {numerosExtras.map((n) => {
+                      const numStr = String(n.numero).padStart(3, '0');
+                      const key = `${numStr}-${n.serie}`;
+                      const borrando = eliminando === key;
+                      return (
+                        <span key={key} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
+                          border: '1.5px solid #f59e0b',
+                          borderRadius: 8, padding: '4px 4px 4px 10px',
+                          fontSize: '.78rem', fontWeight: 800, color: '#92400e',
+                          fontFamily: 'var(--jordyn-font)', letterSpacing: 1,
+                          opacity: borrando ? 0.5 : 1,
+                          transition: 'opacity .15s',
+                        }}>
+                          {numStr}
+                          {esSim && (
+                            <span style={{
+                              background: n.serie === 'A' ? '#4361ee' : '#e91e8c',
+                              color: '#fff', borderRadius: 4,
+                              padding: '0 5px', fontSize: '.58rem', fontWeight: 900,
+                            }}>{n.serie}</span>
+                          )}
+                          <button type="button" onClick={() => eliminar(numStr, n.serie, 'extra')}
+                            disabled={borrando}
+                            title="Quitar este número extra"
+                            style={{
+                              background: 'rgba(146,64,14,0.15)', border: 'none',
+                              color: '#92400e', borderRadius: 4,
+                              padding: '0 5px', fontSize: '.7rem', fontWeight: 900,
+                              cursor: borrando ? 'wait' : 'pointer',
+                              fontFamily: 'var(--jordyn-font)', lineHeight: 1,
+                            }}>
+                            {borrando ? '…' : '✕'}
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de fijos (solo lectura) */}
+              {numerosFijos.length > 0 && (
+                <details style={{ marginBottom: 8 }}>
+                  <summary style={{
+                    cursor: 'pointer', fontSize: '.62rem', fontWeight: 800,
+                    color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '1px',
+                    marginBottom: 8,
+                  }}>
+                    🎯 Ver números fijos de la categoría ({numerosFijos.length}) ▾
+                  </summary>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                    {numerosFijos.map((n, i) => {
+                      const numStr = String(n.numero).padStart(3, '0');
+                      return (
+                        <span key={`${numStr}-${n.serie}-${i}`} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          background: 'rgba(124,58,237,0.08)',
+                          border: '1px solid rgba(124,58,237,0.18)',
+                          borderRadius: 6, padding: '2px 8px',
+                          fontSize: '.7rem', fontWeight: 700, color: '#7c3aed',
+                          fontFamily: 'var(--jordyn-font)', letterSpacing: 1,
+                        }}>
+                          {numStr}
+                          {esSim && (
+                            <span style={{
+                              background: n.serie === 'A' ? '#4361ee' : '#e91e8c',
+                              color: '#fff', borderRadius: 3,
+                              padding: '0 4px', fontSize: '.55rem', fontWeight: 900,
+                            }}>{n.serie}</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 6, fontStyle: 'italic' }}>
+                    Los fijos no se editan aquí — vienen de la categoría asignada a la rifa.
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '12px 20px',
+          borderTop: '1px solid var(--jordyn-border)',
+          display: 'flex', justifyContent: 'flex-end', gap: 8,
+        }}>
+          <button type="button" onClick={onClose}
+            style={{
+              padding: '8px 18px',
+              background: 'var(--jordyn-bg2)', border: '1.5px solid var(--jordyn-border)',
+              color: 'var(--jordyn-text)', borderRadius: 8,
+              fontWeight: 700, fontSize: '.82rem', cursor: 'pointer',
+              fontFamily: 'var(--jordyn-font)',
+            }}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GestionRifas() {
   const { user } = useAuth();
   const [rifas,           setRifas]           = useState([]);
@@ -1790,6 +2425,9 @@ export default function GestionRifas() {
   // Plantillas de ticket disponibles
   const [plantillas, setPlantillas] = useState([]);
   const [modalDesactivar, setModalDesactivar] = useState(null);
+  // Modal de gestión de números extras de un vendedor en una rifa
+  // { rifa, vendedor }  ó  null
+  const [modalNumExtras, setModalNumExtras] = useState(null);
   const fileRef = useRef();
 
   // Cargar plantillas al montar
@@ -2103,7 +2741,7 @@ export default function GestionRifas() {
             </div>
           </div>
 
-          {/* Vendedores — diseño mejorado con avatares de colores */}
+          {/* Vendedores — diseño mejorado con avatares de colores (ahora son BOTONES) */}
           {vends.length > 0 && (
             <div style={{
               marginBottom: '0.75rem',
@@ -2130,23 +2768,52 @@ export default function GestionRifas() {
                   🔒 {totalNums} reservado{totalNums !== 1 ? 's' : ''}
                 </span>
               </div>
+
+              {/* Aviso interactivo */}
+              <div style={{
+                fontSize: '.6rem', color: 'var(--jordyn-muted)',
+                fontStyle: 'italic', marginBottom: 8,
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                <i className="bi bi-hand-index-thumb"></i>
+                Toca un vendedor para asignarle números extras
+              </div>
+
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {vends.map(v => {
                   const c = colorVend(v.nombre || '');
+                  const extras = v.extras_count || 0;
+                  const fijos  = v.fijos_count  || 0;
                   return (
-                    <span key={v.id}
-                          title={`${v.nombre} · ${v.numeros_count || 0} números`}
-                          style={{
-                            background: '#fff',
-                            border: '1.5px solid rgba(124,58,237,0.18)',
-                            borderRadius: 24,
-                            padding: '3px 10px 3px 3px',
-                            fontSize: '.7rem',
-                            color: 'var(--jordyn-text)',
-                            fontWeight: 700,
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                            boxShadow: '0 1px 3px rgba(124,58,237,0.08)',
-                          }}>
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setModalNumExtras({ rifa: r, vendedor: v })}
+                      title={`${v.nombre} · ${v.numeros_count || 0} números (${fijos} fijos${extras ? ` + ${extras} extras` : ''}) — Click para gestionar extras`}
+                      style={{
+                        background: '#fff',
+                        border: '1.5px solid rgba(124,58,237,0.18)',
+                        borderRadius: 24,
+                        padding: '3px 10px 3px 3px',
+                        fontSize: '.7rem',
+                        color: 'var(--jordyn-text)',
+                        fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        boxShadow: '0 1px 3px rgba(124,58,237,0.08)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--jordyn-font)',
+                        transition: 'transform .12s, box-shadow .12s, border-color .12s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(124,58,237,0.25)';
+                        e.currentTarget.style.borderColor = 'rgba(124,58,237,0.45)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.transform = '';
+                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(124,58,237,0.08)';
+                        e.currentTarget.style.borderColor = 'rgba(124,58,237,0.18)';
+                      }}>
                       <span style={{
                         width: 22, height: 22, borderRadius: '50%',
                         background: c.bg, color: c.text,
@@ -2166,10 +2833,28 @@ export default function GestionRifas() {
                         borderRadius: 10, padding: '1px 7px',
                         fontSize: '.62rem', fontWeight: 800,
                       }}>{v.numeros_count || 0}</span>
-                    </span>
+                      {extras > 0 && (
+                        <span title={`${extras} número${extras !== 1 ? 's' : ''} extra${extras !== 1 ? 's' : ''}`}
+                              style={{
+                                background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                                color: '#fff',
+                                borderRadius: 10, padding: '1px 6px',
+                                fontSize: '.55rem', fontWeight: 900,
+                                boxShadow: '0 2px 4px rgba(245,158,11,0.35)',
+                              }}>+{extras}</span>
+                      )}
+                    </button>
                   );
                 })}
               </div>
+
+              {/* ─── BUSCADOR DE NÚMERO GANADOR ─── */}
+              <BuscadorGanador
+                rifa={r}
+                vends={vends}
+                colorVend={colorVend}
+                onAbrirVendedor={(vend) => setModalNumExtras({ rifa: r, vendedor: vend })}
+              />
             </div>
           )}
 
@@ -2594,6 +3279,16 @@ export default function GestionRifas() {
       )}
 
       {modalNums && <ModalBoleteria rifa={modalNums} onClose={() => setModalNums(null)} />}
+
+      {/* ═══ MODAL: GESTIÓN DE NÚMEROS EXTRAS DEL VENDEDOR ═══ */}
+      {modalNumExtras && (
+        <ModalNumerosExtrasVendedor
+          rifa={modalNumExtras.rifa}
+          vendedor={modalNumExtras.vendedor}
+          onClose={() => setModalNumExtras(null)}
+          onChanged={() => load()}
+        />
+      )}
 
       {/* ═══ MODAL CONFIRMACIÓN ELIMINAR RIFA CON VENTAS ═══ */}
       {confirmDelete && (
