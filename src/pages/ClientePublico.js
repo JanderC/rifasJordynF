@@ -587,7 +587,7 @@ function useRifaProgress(rifaId, refreshKey = 0) {
   const [stat, setStat] = useState(() => {
     const c = _progresoCache.get(rifaId);
     if (c && Date.now() - c.ts < PROGRESO_TTL) return { ...c.data, loading:false };
-    return { totalNumeros:0, tomados:0, pct:0, loading:true };
+    return { totalNumeros:0, tomados:0, disponibles:0, pct:0, loading:true };
   });
 
   useEffect(() => {
@@ -603,14 +603,22 @@ function useRifaProgress(rifaId, refreshKey = 0) {
       .then(r => {
         if (cancel) return;
         const todos = r.data || [];
-        // CAMBIO: contar TODAS las entradas (no únicas). En una rifa simultánea
-        // con 2 series, el total es 2000 (no 1000), y cada serie reservada/vendida
-        // de un mismo número cuenta por separado. "Tomado" = cualquier estado
-        // que no sea 'disponible' (vendido, reservado, agotado, vendido_serie, etc.)
+        // CAMBIO: el % se calcula por DIFERENCIA contra el total de la rifa.
+        // tomados = total_rifa - disponibles. Todo lo que NO esté disponible
+        // (reservado, vendido, agotado, o cualquier otra razón) cuenta como
+        // vendido en la barra.
+        //
+        // El total de la rifa se toma de rifa.total_numeros si el backend lo
+        // entrega; si no, se infiere del payload (rifa simultánea con N series
+        // tiene N * 1000 entradas, simple 1000, etc.).
+        const disponibles = todos.filter(n => n.estado === 'disponible').length;
+        // Total: usar todos.length (incluye todas las series y todos los estados
+        // que el backend devuelva). Si el backend solo devolviera disponibles
+        // habría que pedir el total aparte, pero hoy devuelve todos los estados.
         const total   = todos.length;
-        const tomados = todos.filter(n => n.estado !== 'disponible').length;
+        const tomados = Math.max(0, total - disponibles);
         const pct     = total > 0 ? (tomados / total) * 100 : 0;
-        const data = { totalNumeros: total, tomados, pct };
+        const data = { totalNumeros: total, tomados, disponibles, pct };
         _progresoCache.set(rifaId, { ts: Date.now(), data });
         setStat({ ...data, loading:false });
       })
