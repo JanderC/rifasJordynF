@@ -2045,10 +2045,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   /* ── Scroll al click en el link "Rifas" del nav ── */
   const scrollToRifas = (e) => {
     e.preventDefault();
-    // Si existe la sección de rifas secundarias, scroll allí.
-    // Si solo hay rifa principal (hero), scroll al hero.
-    // Si no hay ninguna, scroll al inicio.
-    const sec = document.getElementById('rifas-sec') || document.getElementById('hero-sec');
+    // Prioridad: 1) rifa actual (hero) → 2) otras rifas → 3) tope de la página
+    const sec = document.getElementById('hero-sec') || document.getElementById('rifas-sec');
     if (sec) sec.scrollIntoView({ behavior:'smooth', block:'start' });
     else window.scrollTo({ top:0, behavior:'smooth' });
   };
