@@ -706,8 +706,18 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
     <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
       <div style={{ position:'relative', overflow:'hidden', minHeight:340 }}>
         {tieneImagen ? (
-          <img src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
-            style={{ width:'100%', height:'100%', objectFit:'contain', objectPosition:'center', display:'block', background:'#0d1e1e' }} />
+          <>
+            {/* Fondo borroso para rellenar (efecto cinema) */}
+            <div style={{
+              position:'absolute', inset:0,
+              background:`url(${rifa.imagen_url}) center/cover no-repeat`,
+              filter:'blur(36px) brightness(.45)',
+              transform:'scale(1.2)',
+            }}></div>
+            {/* Imagen completa encima del fondo borroso */}
+            <img src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
+              style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'contain', objectPosition:'center', display:'block' }} />
+          </>
         ) : (
           <div style={{ width:'100%', height:'100%', background:`linear-gradient(135deg,${TURQ_DK}44,${DARK})`, display:'flex', alignItems:'center', justifyContent:'center' }}>
             <div style={{ fontSize:'8rem', opacity:.2, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
@@ -1841,14 +1851,38 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
       <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
-        {tieneImagen
-          ? <img src={rifa.imagen_url} alt={rifa.nombre} onError={() => setImgError(true)} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
-          : <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}><div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div><div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div></div>
-        }
+        {tieneImagen ? (
+          <>
+            {/* Fondo borroso para rellenar (efecto cinema) */}
+            <div style={{
+              position:'absolute', inset:0,
+              background:`url(${rifa.imagen_url}) center/cover no-repeat`,
+              filter:'blur(24px) brightness(.7)',
+              transform:'scale(1.15)',
+            }}></div>
+            {/* Imagen completa encima del fondo borroso */}
+            <img
+              src={rifa.imagen_url}
+              alt={rifa.nombre}
+              onError={() => setImgError(true)}
+              style={{
+                position:'absolute', inset:0,
+                width:'100%', height:'100%',
+                objectFit:'contain',
+                display:'block',
+              }}
+            />
+          </>
+        ) : (
+          <div style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+            <div style={{ fontSize:'3.5rem', marginBottom:8 }}>🎰</div>
+            <div style={{ fontSize:'.75rem', color:TURQ_DK, fontWeight:600 }}>{rifa.premio}</div>
+          </div>
+        )}
 
         {/* Badge OFERTA sobre la imagen */}
         {tieneOfertas && (
-          <div style={{ position:'absolute', top:12, left:12, display:'flex', gap:6, flexDirection:'column', alignItems:'flex-start' }}>
+          <div style={{ position:'absolute', top:12, left:12, display:'flex', gap:6, flexDirection:'column', alignItems:'flex-start', zIndex:2 }}>
             <span className="badge-oferta">🏷️ OFERTA</span>
             {mejorOferta && (
               <span style={{ background:'rgba(0,0,0,.7)', color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:'.55rem', fontWeight:700, backdropFilter:'blur(4px)' }}>
@@ -1858,7 +1892,7 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
           </div>
         )}
 
-        <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
+        <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)', zIndex:2 }}>
           <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
         </div>
       </div>
