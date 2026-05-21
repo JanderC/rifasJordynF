@@ -575,10 +575,17 @@ function useCountdown(targetDate) {
 
 /* ─────────────────────────────────────────────────────────────
    HOOK: progreso real de una rifa
-   Consulta el mismo endpoint que GridNumeros (/publico/rifas/:id/numeros-disponibles)
-   y devuelve { totalNumeros, tomados, pct, loading }.
-   Cache en memoria por rifa.id para no spamear el backend al renderizar
-   varias cards a la vez.
+   Consume el endpoint dedicado /publico/rifas/:id/progreso, que
+   devuelve un único objeto con el cálculo correcto (incluye
+   ventas + reservas + números en poder de vendedores) según el
+   tipo de rifa (sencilla=1000 / simultánea=2000).
+
+   Respuesta del endpoint:
+     { total, vendidos, reservados, asignados_vendedor,
+       tomados, disponibles, pct }
+
+   Cache en memoria por rifaId (30 s) para no recargar al
+   renderizar varias cards a la vez.
 ───────────────────────────────────────────────────────────── */
 const _progresoCache = new Map(); // rifaId -> { ts, data }
 const PROGRESO_TTL = 30_000;       // 30 s
@@ -599,26 +606,20 @@ function useRifaProgress(rifaId, refreshKey = 0) {
     }
     let cancel = false;
     setStat(s => ({ ...s, loading:true }));
-    API.get(`/publico/rifas/${rifaId}/numeros-disponibles`)
+    API.get(`/publico/rifas/${rifaId}/progreso`)
       .then(r => {
         if (cancel) return;
-        const todos = r.data || [];
-        // CAMBIO: el % se calcula por DIFERENCIA contra el total de la rifa.
-        // tomados = total_rifa - disponibles. Todo lo que NO esté disponible
-        // (reservado, vendido, agotado, o cualquier otra razón) cuenta como
-        // vendido en la barra.
-        //
-        // El total de la rifa se toma de rifa.total_numeros si el backend lo
-        // entrega; si no, se infiere del payload (rifa simultánea con N series
-        // tiene N * 1000 entradas, simple 1000, etc.).
-        const disponibles = todos.filter(n => n.estado === 'disponible').length;
-        // Total: usar todos.length (incluye todas las series y todos los estados
-        // que el backend devuelva). Si el backend solo devolviera disponibles
-        // habría que pedir el total aparte, pero hoy devuelve todos los estados.
-        const total   = todos.length;
-        const tomados = Math.max(0, total - disponibles);
-        const pct     = total > 0 ? (tomados / total) * 100 : 0;
-        const data = { totalNumeros: total, tomados, disponibles, pct };
+        const d = r.data || {};
+        const data = {
+          totalNumeros: Number(d.total)       || 0,
+          tomados:      Number(d.tomados)     || 0,
+          disponibles:  Number(d.disponibles) || 0,
+          pct:          Number(d.pct)         || 0,
+          // Extra opcional por si se quiere desglosar
+          vendidos:           Number(d.vendidos)           || 0,
+          reservados:         Number(d.reservados)         || 0,
+          asignados_vendedor: Number(d.asignados_vendedor) || 0,
+        };
         _progresoCache.set(rifaId, { ts: Date.now(), data });
         setStat({ ...data, loading:false });
       })
