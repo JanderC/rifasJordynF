@@ -573,6 +573,53 @@ function useCountdown(targetDate) {
   return time;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   HOOK: progreso real de una rifa
+   Consulta el mismo endpoint que GridNumeros (/publico/rifas/:id/numeros-disponibles)
+   y devuelve { totalNumeros, tomados, pct, loading }.
+   Cache en memoria por rifa.id para no spamear el backend al renderizar
+   varias cards a la vez.
+───────────────────────────────────────────────────────────── */
+const _progresoCache = new Map(); // rifaId -> { ts, data }
+const PROGRESO_TTL = 30_000;       // 30 s
+
+function useRifaProgress(rifaId, refreshKey = 0) {
+  const [stat, setStat] = useState(() => {
+    const c = _progresoCache.get(rifaId);
+    if (c && Date.now() - c.ts < PROGRESO_TTL) return { ...c.data, loading:false };
+    return { totalNumeros:0, tomados:0, pct:0, loading:true };
+  });
+
+  useEffect(() => {
+    if (!rifaId) return;
+    const c = _progresoCache.get(rifaId);
+    if (c && Date.now() - c.ts < PROGRESO_TTL) {
+      setStat({ ...c.data, loading:false });
+      return;
+    }
+    let cancel = false;
+    setStat(s => ({ ...s, loading:true }));
+    API.get(`/publico/rifas/${rifaId}/numeros-disponibles`)
+      .then(r => {
+        if (cancel) return;
+        const todos = r.data || [];
+        // Mismo cálculo que GridNumeros: números únicos para no doblar en simultánea
+        const unicos       = [...new Set(todos.map(n => n.numero))];
+        const disponiblesU = [...new Set(todos.filter(n => n.estado === 'disponible').map(n => n.numero))];
+        const total        = unicos.length;
+        const tomados      = total - disponiblesU.length;
+        const pct          = total > 0 ? (tomados / total) * 100 : 0;
+        const data = { totalNumeros: total, tomados, pct };
+        _progresoCache.set(rifaId, { ts: Date.now(), data });
+        setStat({ ...data, loading:false });
+      })
+      .catch(() => { if (!cancel) setStat(s => ({ ...s, loading:false })); });
+    return () => { cancel = true; };
+  }, [rifaId, refreshKey]);
+
+  return stat;
+}
+
 /* ═══════════════════════════════════════════════════════════
    BANNER DE OFERTAS — encima del grid
 ═══════════════════════════════════════════════════════════ */
@@ -630,11 +677,13 @@ function BannerOfertas({ ofertas, precioUnitario }) {
    HERO DE LA RIFA PRINCIPAL
    FIX PUNTO 1B: condición !cd.invalid agregada al render del countdown
 ═══════════════════════════════════════════════════════════ */
-function HeroRifaPrincipal({ rifa, onVerNumeros }) {
-  const cd = useCountdown(rifa.fecha_sorteo);
+function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
+  const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
   const tieneImagen = rifa.imagen_url && !imgError;
   const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
+  const progreso = useRifaProgress(rifa.id, refreshKey);
+  const pctHero = Math.min(100, progreso.pct);
 
   const unidades = [
     { val: String(cd.dias).padStart(2,'0'),     lbl: 'Días'  },
@@ -716,6 +765,29 @@ function HeroRifaPrincipal({ rifa, onVerNumeros }) {
         )}
 
         <div style={{ display:'flex', flexDirection:'column', gap:12, position:'relative' }}>
+          {/* ── Progreso real de venta ── */}
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+              <span style={{ fontSize:'.52rem', color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:'1.5px', fontWeight:700 }}>
+                🎟 Progreso de venta
+              </span>
+              <span style={{ fontSize:'.78rem', color:TURQ, fontWeight:900 }}>{pctHero.toFixed(1)}%</span>
+            </div>
+            <div style={{ background:'rgba(255,255,255,.08)', borderRadius:8, height:9, overflow:'hidden', border:'1px solid rgba(255,255,255,.08)' }}>
+              <div style={{
+                width:`${pctHero}%`, height:'100%',
+                background:`linear-gradient(90deg,${TURQ},${TURQ2})`,
+                borderRadius:8, transition:'width 1s ease',
+                boxShadow:`0 0 16px ${TURQ}88`,
+              }}></div>
+            </div>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.4)', marginTop:4, fontWeight:600 }}>
+              {progreso.loading
+                ? 'Cargando…'
+                : `${progreso.tomados} de ${progreso.totalNumeros} números vendidos`}
+            </div>
+          </div>
+
           <div>
             <div style={{ fontSize:'.52rem', color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:2 }}>Por número</div>
             <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>{fmt(rifa.precio)}</div>
@@ -1716,11 +1788,13 @@ function GridNumeros({ rifa, onComprar }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CARD DE RIFA — con badge OFERTA
+   CARD DE RIFA — con badge OFERTA, countdown y barra real
 ═══════════════════════════════════════════════════════════ */
-function RifaCard({ rifa, onSeleccionar }) {
+function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
   const [imgError, setImgError] = useState(false);
-  const pct = Math.min(100, (rifa.numeros_vendidos / 1000) * 100);
+  const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
+  const progreso = useRifaProgress(rifa.id, refreshKey);
+  const pct = Math.min(100, progreso.pct);
   const tieneImagen  = rifa.imagen_url && !imgError;
   const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
 
@@ -1791,9 +1865,45 @@ function RifaCard({ rifa, onSeleccionar }) {
         )}
 
         <div style={{ marginBottom:14 }}>
+          {/* ── Cuenta regresiva en cada rifa secundaria ── */}
+          {rifa.fecha_sorteo && !cd.expired && !cd.invalid && (
+            <div style={{
+              background:`linear-gradient(135deg,${DARK},#0d2424)`,
+              borderRadius:10, padding:'8px 10px', marginBottom:10,
+              display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
+            }}>
+              <span style={{ fontSize:'.5rem', color:'rgba(255,255,255,.55)', letterSpacing:'1.5px', textTransform:'uppercase', fontWeight:700 }}>⏳ Faltan</span>
+              <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                {[
+                  { v:cd.dias,    l:'d' },
+                  { v:cd.horas,   l:'h' },
+                  { v:cd.minutos, l:'m' },
+                  { v:cd.segundos,l:'s' },
+                ].map((u, i, arr) => (
+                  <React.Fragment key={u.l}>
+                    <span style={{ display:'inline-flex', alignItems:'baseline', gap:1 }}>
+                      <span style={{ fontSize:'.85rem', color:'#fff', fontWeight:900, fontVariantNumeric:'tabular-nums' }}>{String(u.v).padStart(2,'0')}</span>
+                      <span style={{ fontSize:'.5rem', color:TURQ, fontWeight:700 }}>{u.l}</span>
+                    </span>
+                    {i < arr.length - 1 && <span style={{ color:'rgba(255,255,255,.3)', fontSize:'.7rem' }}>·</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+          {cd.expired && !cd.invalid && (
+            <div style={{ background:'#fff0f0', border:'1px solid #ffcaca', color:'#c0392b', borderRadius:10, padding:'5px 10px', marginBottom:10, fontSize:'.6rem', fontWeight:700, textAlign:'center', letterSpacing:'1px', textTransform:'uppercase' }}>
+              🔴 Sorteo finalizado
+            </div>
+          )}
+
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
-            <span style={{ fontSize:'.56rem', color:`${DARK}66` }}>{rifa.numeros_vendidos} vendidos</span>
-            <span style={{ fontSize:'.56rem', color:TURQ }}>{pct.toFixed(1)}%</span>
+            <span style={{ fontSize:'.56rem', color:`${DARK}66` }}>
+              {progreso.loading
+                ? 'Cargando…'
+                : `${progreso.tomados} / ${progreso.totalNumeros} vendidos`}
+            </span>
+            <span style={{ fontSize:'.56rem', color:TURQ, fontWeight:700 }}>{pct.toFixed(1)}%</span>
           </div>
           <div style={{ background:'#e8f5f5', borderRadius:6, height:6, overflow:'hidden' }}>
             <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:6, transition:'width 1s ease' }}></div>
@@ -1833,9 +1943,48 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
   };
 
-  const rifasActivas     = rifas.filter(r => r.activa);
-  const rifaHero         = rifasActivas[0] || null;
-  const rifasSecundarias = rifasActivas.slice(1);
+  /* ─────────────────────────────────────────────────────────────
+     ORDENAR RIFAS POR CUENTA REGRESIVA (más próximas primero)
+     - Las rifas con fecha de sorteo más cercana al ahora son las
+       principales: rifaHero es la más próxima.
+     - Las que ya pasaron (sorteo finalizado) van al final.
+     - Las que no tienen fecha válida también van al final.
+  ───────────────────────────────────────────────────────────── */
+  const ahora = Date.now();
+  const rifasActivasOrdenadas = [...rifas]
+    .filter(r => r.activa)
+    .map(r => {
+      const d = parseSorteo(r);
+      const t = d ? d.getTime() : null;
+      return { rifa: r, t, expirada: t != null && t <= ahora };
+    })
+    .sort((a, b) => {
+      // 1) Las activas (no expiradas y con fecha) primero, ordenadas por fecha asc
+      // 2) Después las expiradas, ordenadas por fecha desc (más reciente primero)
+      // 3) Por último las que no tienen fecha
+      if (a.t == null && b.t == null) return 0;
+      if (a.t == null) return 1;
+      if (b.t == null) return -1;
+      if (a.expirada && !b.expirada) return 1;
+      if (!a.expirada && b.expirada) return -1;
+      if (a.expirada && b.expirada) return b.t - a.t;
+      return a.t - b.t; // ambas activas → más próxima primero
+    })
+    .map(x => x.rifa);
+
+  const rifaHero         = rifasActivasOrdenadas[0] || null;
+  const rifasSecundarias = rifasActivasOrdenadas.slice(1);
+
+  /* ── Scroll al click en el link "Rifas" del nav ── */
+  const scrollToRifas = (e) => {
+    e.preventDefault();
+    // Si existe la sección de rifas secundarias, scroll allí.
+    // Si solo hay rifa principal (hero), scroll al hero.
+    // Si no hay ninguna, scroll al inicio.
+    const sec = document.getElementById('rifas-sec') || document.getElementById('hero-sec');
+    if (sec) sec.scrollIntoView({ behavior:'smooth', block:'start' });
+    else window.scrollTo({ top:0, behavior:'smooth' });
+  };
 
   return (
     <div style={{ minHeight:'100vh', background:'#f0fafa' }}>
@@ -1846,7 +1995,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:700, fontFamily:"'Poppins',sans-serif" }}>Rifas Jordyn</span>
         </div>
         <div style={{ display:'flex', gap:24, alignItems:'center' }}>
-          {[['#rifas-sec','Rifas'],['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
+          <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link">Rifas</a>
+          {[['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
             <a key={href} href={href} className="nav-link">{label}</a>
           ))}
         </div>
@@ -1857,8 +2007,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
         </div>
       ) : rifaHero ? (
-        <section style={{ padding:'40px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
-          <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} />
+        <section id="hero-sec" style={{ padding:'40px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} refreshKey={refreshKey} />
         </section>
       ) : null}
 
@@ -1867,9 +2017,10 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           <div style={{ textAlign:'center', marginBottom:36 }}>
             <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:8, fontWeight:600 }}>MÁS RIFAS</div>
             <h2 style={{ fontSize:'clamp(1.8rem,3.5vw,2.4rem)', color:DARK, fontWeight:800 }}>Otras rifas activas</h2>
+            <div style={{ fontSize:'.72rem', color:`${DARK}66`, marginTop:6 }}>Ordenadas por proximidad al sorteo</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:24 }}>
-            {rifasSecundarias.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} />)}
+            {rifasSecundarias.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} refreshKey={refreshKey} />)}
           </div>
         </section>
       )}

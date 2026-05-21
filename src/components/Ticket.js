@@ -1,24 +1,3 @@
-// ============================================================
-//   RIFAS JORDYN — Componente Ticket  (v2 MONSTRUOSO)
-//   RF07: Rediseño estilo LOTERÍA TRADICIONAL + sistema de
-//         CAPAS DECORATIVAS (formas, flechas, imágenes,
-//         marcos, watermarks, glow, contornos, gradientes).
-//
-//   NUEVAS CAPACIDADES:
-//   ▸ customShapes[]   — flechas, estrellas, rayos, círculos,
-//                        rectángulos, líneas, sellos, ribbons
-//   ▸ customImages[]   — imágenes con opacidad/rotación/blend
-//   ▸ frameStyle       — marco decorativo del ticket
-//   ▸ watermark        — marca de agua central
-//   ▸ paperTexture     — textura del papel
-//   ▸ Por texto: textStroke (contorno/margen), textGlow,
-//                textShadow3D, textGradient
-//
-//   Compatible 100% con diseños antiguos (todo opcional).
-//   ✅ Persistencia en BD via GET/PUT /api/ticket-design
-//   ✅ buildTicketHTML y TicketPreview renderizan ambos modos
-//   ✅ parseFecha + extraerHora sin desfase UTC (VET timezone)
-// ============================================================
 import React, { useState, useEffect } from 'react';
 import API from '../services/api';
 
