@@ -704,19 +704,25 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
 
   return (
     <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
-      <div style={{ position:'relative', overflow:'hidden', minHeight:340 }}>
+      <div style={{ position:'relative', overflow:'hidden', minHeight:340, background:'#0d1e1e' }}>
         {tieneImagen ? (
           <>
-            {/* Fondo borroso para rellenar (efecto cinema) */}
+            {/* Fondo borroso por si quedan franjas (raro con cover, pero por seguridad) */}
             <div style={{
               position:'absolute', inset:0,
               background:`url(${rifa.imagen_url}) center/cover no-repeat`,
-              filter:'blur(36px) brightness(.45)',
+              filter:'blur(36px) brightness(.4)',
               transform:'scale(1.2)',
             }}></div>
-            {/* Imagen completa encima del fondo borroso */}
+            {/* Imagen principal: llena el espacio sin dejar huecos */}
             <img src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
-              style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'contain', objectPosition:'center', display:'block' }} />
+              style={{
+                position:'absolute', inset:0,
+                width:'100%', height:'100%',
+                objectFit:'cover',
+                objectPosition:'center top',
+                display:'block',
+              }} />
           </>
         ) : (
           <div style={{ width:'100%', height:'100%', background:`linear-gradient(135deg,${TURQ_DK}44,${DARK})`, display:'flex', alignItems:'center', justifyContent:'center' }}>
