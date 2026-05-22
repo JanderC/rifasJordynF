@@ -791,21 +791,6 @@ function ModalBoleteria({ rifa, onClose }) {
                 }}>
                 <i className="bi bi-person-fill"></i> Por vendedor
               </button>
-              <button
-                type="button"
-                onClick={() => { setModoBusqueda('numero'); setBusquedaVend(''); }}
-                style={{
-                  flex:1, padding:'6px 10px',
-                  background: modoBusqueda === 'numero' ? '#7c3aed' : '#fff',
-                  color:      modoBusqueda === 'numero' ? '#fff' : 'var(--jordyn-text)',
-                  border: `1.5px solid ${modoBusqueda === 'numero' ? '#7c3aed' : 'var(--jordyn-border)'}`,
-                  borderRadius:6, cursor:'pointer',
-                  fontSize:'.78rem', fontWeight:700,
-                  fontFamily:'inherit',
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-                }}>
-                <i className="bi bi-hash"></i> Por número
-              </button>
             </div>
 
             {/* Input según modo */}
