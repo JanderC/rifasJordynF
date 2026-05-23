@@ -815,11 +815,6 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
               }}></div>
             </div>
             <div style={{ fontSize:'.78rem', color:'rgba(255,255,255,.6)', marginTop:8, fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <span>
-                {progreso.loading
-                  ? 'Cargando…'
-                  : <><strong style={{ color:'#fff', fontSize:'.92rem' }}>{progreso.tomados.toLocaleString('es-CO')}</strong> de <strong style={{ color:'#fff', fontSize:'.92rem' }}>{progreso.totalNumeros.toLocaleString('es-CO')}</strong> vendidos</>}
-              </span>
               {!progreso.loading && progreso.totalNumeros > 0 && (
                 <span style={{ fontSize:'.65rem', color:'rgba(255,255,255,.45)' }}>
                   {(progreso.totalNumeros - progreso.tomados).toLocaleString('es-CO')} disponibles
