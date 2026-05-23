@@ -2850,20 +2850,6 @@ export default function GestionRifas() {
         </p>
         <button className="btn-jordyn" onClick={handleNueva}><i className="bi bi-plus-lg me-1"></i>NUEVA RIFA</button>
       </div>
-
-      {/* ═══ PANEL TASA DE CAMBIO ═══ */}
-      <div className="jd-card mb-4 fade-in" style={{ borderLeft: '3px solid var(--jordyn-gold)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }} onClick={() => setShowTasaPanel(p => !p)}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '1.25rem' }}>💱</span>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--jordyn-gold)' }}>CALCULADORA DE TASA DE CAMBIO</div>
-              <div style={{ fontSize: '.62rem', color: 'var(--jordyn-muted)', marginTop: 1 }}>Convierte montos de Bolívares a Pesos Colombianos o USD</div>
-            </div>
-          </div>
-          <i className={`bi bi-chevron-${showTasaPanel ? 'up' : 'down'}`} style={{ color: 'var(--jordyn-muted)', fontSize: '1rem' }}></i>
-        </div>
-
         {showTasaPanel && (
           <div style={{ marginTop: 18, borderTop: '1px solid var(--jordyn-border)', paddingTop: 18 }}>
             <div className="row g-3 align-items-end">

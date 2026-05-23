@@ -1356,9 +1356,6 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   GRID DE NÚMEROS — con barra de carrito inteligente
-═══════════════════════════════════════════════════════════ */
 function GridNumeros({ rifa, onComprar }) {
   const [todos,       setTodos]      = useState([]);
   const [loading,     setLoading]    = useState(true);
