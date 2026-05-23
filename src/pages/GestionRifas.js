@@ -2850,43 +2850,6 @@ export default function GestionRifas() {
         </p>
         <button className="btn-jordyn" onClick={handleNueva}><i className="bi bi-plus-lg me-1"></i>NUEVA RIFA</button>
       </div>
-        {showTasaPanel && (
-          <div style={{ marginTop: 18, borderTop: '1px solid var(--jordyn-border)', paddingTop: 18 }}>
-            <div className="row g-3 align-items-end">
-              <div className="col-12 col-md-4">
-                <label className="jd-label">TASA (1 USD = ? Bs.)</label>
-                <input className="jd-input" type="number" min="1" step="0.01" placeholder="Ej: 45.50" value={tasaValor} onChange={e => { setTasaValor(e.target.value); setTasaResultado(null); }} style={{ fontWeight: 800, fontSize: '1rem' }} />
-              </div>
-              <div className="col-12 col-md-4">
-                <label className="jd-label">MONTO EN BOLÍVARES (Bs.)</label>
-                <input className="jd-input" type="number" min="0" step="0.01" placeholder="Ej: 1000" value={tasaBase} onChange={e => { setTasaBase(e.target.value); setTasaResultado(null); }} style={{ fontWeight: 800, fontSize: '1rem' }} />
-              </div>
-              <div className="col-12 col-md-4">
-                <button className="btn-jordyn w-100" style={{ fontSize: '.88rem' }} onClick={() => {
-                  const tasa = parseFloat(tasaValor), monto = parseFloat(tasaBase);
-                  if (!tasa || tasa <= 0) { toast.error('Ingresa una tasa válida'); return; }
-                  if (!monto || monto <= 0) { toast.error('Ingresa un monto válido'); return; }
-                  setTasaResultado({ monto, tasa, usd: monto / tasa, cop: (monto / tasa) * 4200 });
-                }}>
-                  <i className="bi bi-calculator-fill me-1"></i> Calcular
-                </button>
-              </div>
-            </div>
-            {tasaResultado && (
-              <div className="fade-in" style={{ marginTop: 16, padding: '14px 18px', background: 'rgba(240,165,0,.07)', border: '1.5px solid rgba(240,165,0,.3)', borderRadius: 12, display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center' }}>
-                <div><div style={{ fontSize: '.55rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>Monto ingresado</div><div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--jordyn-text)' }}>Bs. {tasaResultado.monto.toFixed(2)}</div></div>
-                <div style={{ color: 'var(--jordyn-gold)', fontSize: '1.3rem', fontWeight: 900 }}>→</div>
-                <div><div style={{ fontSize: '.55rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>Equivale en USD</div><div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--jordyn-primary)' }}>$ {tasaResultado.usd.toFixed(2)} USD</div></div>
-                <div style={{ color: 'var(--jordyn-gold)', fontSize: '1.3rem', fontWeight: 900 }}>→</div>
-                <div><div style={{ fontSize: '.55rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 3 }}>Ref. en Pesos (COP)</div><div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--jordyn-gold)' }}>{fmtCOP(tasaResultado.cop)}</div></div>
-                <div style={{ flexShrink: 0, marginLeft: 'auto', fontSize: '.62rem', color: 'var(--jordyn-muted)', lineHeight: 1.6, textAlign: 'right' }}>
-                  <i className="bi bi-info-circle me-1"></i>Tasa: 1 USD = Bs. {tasaResultado.tasa}<br />Ref. COP/USD: ~4,200
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ═══ FORMULARIO CREAR / EDITAR ═══ */}
       {showForm && (
