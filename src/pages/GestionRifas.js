@@ -380,7 +380,21 @@ function SelectorCategoria({
 
                 {/* Números con series */}
                 <div style={{ textAlign: 'center', maxWidth: 220 }}>
-                  {esSim ? (
+                  {v.total_numeros === 0 ? (
+                    /* ── Vendedor sin números: badge informativo ── */
+                    <div style={{
+                      fontSize: '.68rem', color: '#b37700',
+                      background: 'rgba(240,165,0,0.10)',
+                      border: '1px dashed rgba(240,165,0,0.45)',
+                      borderRadius: 8, padding: '4px 10px',
+                      fontStyle: 'italic', lineHeight: 1.4,
+                    }}>
+                      Sin números aún
+                      <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', fontStyle: 'normal', marginTop: 1 }}>
+                        Agrega extras en boletería
+                      </div>
+                    </div>
+                  ) : esSim ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
                       {['A', 'B'].map(serie => {
                         const ns = nums.filter(a => a.serie === serie).map(a => String(a.numero).padStart(3, '0'));
@@ -399,15 +413,20 @@ function SelectorCategoria({
                           </div>
                         );
                       })}
+                      <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', marginTop: 2 }}>
+                        {v.total_numeros} serie(s)
+                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)', lineHeight: 1.6 }}>
-                      {nums.map(a => String(a.numero).padStart(3, '0')).join(', ')}
-                    </div>
+                    <>
+                      <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)', lineHeight: 1.6 }}>
+                        {nums.map(a => String(a.numero).padStart(3, '0')).join(', ')}
+                      </div>
+                      <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', marginTop: 2 }}>
+                        {v.total_numeros} núm.
+                      </div>
+                    </>
                   )}
-                  <div style={{ fontSize: '.6rem', fontWeight: 700, color: '#7c3aed', marginTop: 2 }}>
-                    {v.total_numeros} {esSim ? 'serie(s)' : 'núm.'}
-                  </div>
                 </div>
 
                 {/* Monto */}
@@ -449,7 +468,7 @@ function SelectorCategoria({
       {categoriaId && !cargando && vendedoresCargados.length === 0 && (
         <div style={{ padding: '14px', textAlign: 'center', fontSize: '.78rem', color: 'var(--jordyn-muted)', background: 'var(--jordyn-bg2)', borderRadius: 10, border: '1px dashed var(--jordyn-border)' }}>
           <i className="bi bi-exclamation-circle me-1"></i>
-          Esta categoría no tiene vendedores con números asignados.
+          Esta categoría no tiene vendedores registrados aún.
         </div>
       )}
     </div>
