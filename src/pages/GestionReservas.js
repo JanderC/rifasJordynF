@@ -70,6 +70,226 @@ const abrirWA = (telefono, texto) => {
 };
 
 /* ════════════════════════════════════════════════════════════
+   VISOR DE COMPROBANTE — zoom, pan y pantalla completa
+════════════════════════════════════════════════════════════ */
+function ComprobanteVisor({ src }) {
+  const [zoom,       setZoom]       = React.useState(1);
+  const [pan,        setPan]        = React.useState({ x: 0, y: 0 });
+  const [dragging,   setDragging]   = React.useState(false);
+  const [dragStart,  setDragStart]  = React.useState({ x: 0, y: 0 });
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const containerRef = React.useRef(null);
+
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 5;
+  const STEP     = 0.4;
+
+  const clampPan = (px, py, z) => {
+    // Cuando zoom = 1 no hay espacio para mover
+    if (z <= 1) return { x: 0, y: 0 };
+    return { x: px, y: py };
+  };
+
+  const changeZoom = (delta) => {
+    setZoom(prev => {
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + delta).toFixed(2)));
+      if (next === 1) setPan({ x: 0, y: 0 });
+      else setPan(p => clampPan(p.x, p.y, next));
+      return next;
+    });
+  };
+
+  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+
+  // Mouse drag
+  const onMouseDown = (e) => {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    setDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+  const onMouseMove = (e) => {
+    if (!dragging) return;
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+  const onMouseUp = () => setDragging(false);
+
+  // Touch drag
+  const touchRef = React.useRef(null);
+  const onTouchStart = (e) => {
+    if (zoom <= 1 || e.touches.length !== 1) return;
+    touchRef.current = { x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y };
+  };
+  const onTouchMove = (e) => {
+    if (!touchRef.current || e.touches.length !== 1) return;
+    e.preventDefault();
+    setPan({ x: e.touches[0].clientX - touchRef.current.x, y: e.touches[0].clientY - touchRef.current.y });
+  };
+  const onTouchEnd = () => { touchRef.current = null; };
+
+  // Scroll wheel zoom
+  const onWheel = (e) => {
+    e.preventDefault();
+    changeZoom(e.deltaY < 0 ? STEP : -STEP);
+  };
+
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
+
+  const pct = Math.round(zoom * 100);
+
+  const imgStyle = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transformOrigin: 'center center',
+    transition: dragging ? 'none' : 'transform .15s ease',
+    cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in',
+    userSelect: 'none',
+    display: 'block',
+    maxWidth: '100%',
+    maxHeight: fullscreen ? '80vh' : 320,
+    objectFit: 'contain',
+    borderRadius: fullscreen ? 0 : 0,
+  };
+
+  const containerStyle = {
+    position: 'relative',
+    border: '2px solid var(--jordyn-border)',
+    borderRadius: 10,
+    overflow: 'hidden',
+    background: '#111',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: fullscreen ? '60vh' : 200,
+    maxHeight: fullscreen ? '80vh' : 320,
+    cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default',
+  };
+
+  // Barra de herramientas
+  const toolbarBtn = (onClick, icon, title, active = false, danger = false) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        background: active ? 'var(--jordyn-primary)' : danger ? 'rgba(230,57,70,.12)' : 'rgba(255,255,255,.12)',
+        border: `1px solid ${active ? 'var(--jordyn-primary)' : danger ? 'rgba(230,57,70,.4)' : 'rgba(255,255,255,.2)'}`,
+        color: active ? '#fff' : danger ? '#e63946' : '#fff',
+        borderRadius: 7,
+        padding: '5px 10px',
+        cursor: 'pointer',
+        fontSize: '.8rem',
+        fontWeight: 700,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        transition: 'all .12s',
+        fontFamily: 'inherit',
+      }}
+    >
+      <i className={`bi ${icon}`}></i>
+      {title && <span style={{ fontSize: '.7rem' }}>{title}</span>}
+    </button>
+  );
+
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      {/* Header */}
+      <div style={{
+        fontSize: '.7rem', fontWeight: 700, color: 'var(--jordyn-muted)',
+        textTransform: 'uppercase', letterSpacing: '1px',
+        marginBottom: 8,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
+      }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i className="bi bi-paperclip" style={{ color: 'var(--jordyn-primary)' }}></i>
+          COMPROBANTE DE PAGO
+        </span>
+        <span style={{
+          fontSize: '.65rem', color: 'var(--jordyn-muted)', fontWeight: 500,
+          fontStyle: 'italic', textTransform: 'none', letterSpacing: 0,
+        }}>
+          Scroll o botones para hacer zoom · Arrastra para mover
+        </span>
+      </div>
+
+      {/* Contenedor imagen */}
+      <div
+        ref={containerRef}
+        style={containerStyle}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        <img src={src} alt="Comprobante" style={imgStyle} draggable={false} />
+
+        {/* Toolbar flotante sobre la imagen */}
+        <div style={{
+          position: 'absolute', top: 8, right: 8,
+          display: 'flex', gap: 5, alignItems: 'center',
+          background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(6px)',
+          borderRadius: 10, padding: '5px 8px',
+          zIndex: 10,
+        }}>
+          {toolbarBtn(() => changeZoom(-STEP),  'bi-zoom-out',  '')}
+
+          {/* Indicador % zoom */}
+          <span style={{
+            color: '#fff', fontSize: '.72rem', fontWeight: 800,
+            minWidth: 38, textAlign: 'center', letterSpacing: .5,
+          }}>{pct}%</span>
+
+          {toolbarBtn(() => changeZoom(STEP),   'bi-zoom-in',   '')}
+          {toolbarBtn(resetView,                 'bi-arrow-counterclockwise', 'Reset', false, zoom > 1)}
+          {toolbarBtn(() => setFullscreen(f => !f), fullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen', '', fullscreen)}
+
+          {/* Descargar */}
+          <a
+            href={src}
+            download="comprobante.jpg"
+            title="Descargar comprobante"
+            style={{
+              background: 'rgba(255,255,255,.12)',
+              border: '1px solid rgba(255,255,255,.2)',
+              color: '#fff',
+              borderRadius: 7,
+              padding: '5px 10px',
+              fontSize: '.8rem',
+              display: 'flex', alignItems: 'center', gap: 4,
+              textDecoration: 'none',
+              transition: 'all .12s',
+            }}
+          >
+            <i className="bi bi-download"></i>
+          </a>
+        </div>
+
+        {/* Badge zoom cuando > 1 */}
+        {zoom > 1 && (
+          <div style={{
+            position: 'absolute', bottom: 8, left: 8,
+            background: 'rgba(0,0,0,.6)', color: '#fff',
+            borderRadius: 6, padding: '3px 8px',
+            fontSize: '.65rem', fontWeight: 700, letterSpacing: .5,
+            pointerEvents: 'none',
+          }}>
+            🔍 {pct}% — arrastra para mover
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    MODAL DETALLE DE RESERVA
 ════════════════════════════════════════════════════════════ */
 function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, saving, tasas }) {
@@ -430,23 +650,13 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
             )}
           </div>
 
-          {/* Comprobante */}
+          {/* Comprobante con zoom y pan */}
           {reserva.comprobante_base64 && (
-            <div style={{ marginBottom:'1.25rem' }}>
-              <div style={{ fontSize:'.7rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8, display:'flex', alignItems:'center', gap:6 }}>
-                <i className="bi bi-paperclip" style={{ color:'var(--jordyn-primary)' }}></i>
-                COMPROBANTE DE PAGO
-              </div>
-              <div style={{ border:'2px solid var(--jordyn-border)', borderRadius:10, overflow:'hidden', background:'var(--jordyn-bg2)' }}>
-                <img
-                  src={reserva.comprobante_base64.startsWith('data:')
-                    ? reserva.comprobante_base64
-                    : `data:image/jpeg;base64,${reserva.comprobante_base64}`}
-                  alt="Comprobante"
-                  style={{ width:'100%', maxHeight:300, objectFit:'contain', display:'block' }}
-                />
-              </div>
-            </div>
+            <ComprobanteVisor src={
+              reserva.comprobante_base64.startsWith('data:')
+                ? reserva.comprobante_base64
+                : `data:image/jpeg;base64,${reserva.comprobante_base64}`
+            } />
           )}
 
           {/* Nota admin */}
