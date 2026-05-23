@@ -70,6 +70,153 @@ const abrirWA = (telefono, texto) => {
 };
 
 /* ════════════════════════════════════════════════════════════
+   COMPROBANTE PAGINADO — navega entre comprobantes del grupo
+════════════════════════════════════════════════════════════ */
+function ComprobantePaginado({ reserva, hermanas = [] }) {
+  const [pagina, setPagina] = React.useState(0);
+
+  const lista = [reserva, ...hermanas]
+    .filter(r => r.comprobante_base64)
+    .map(r => ({
+      numero: r.numero,
+      metodo: r.metodo_pago || null,
+      src: r.comprobante_base64.startsWith('data:')
+        ? r.comprobante_base64
+        : `data:image/jpeg;base64,${r.comprobante_base64}`,
+    }));
+
+  if (lista.length === 0) return null;
+
+  const total   = lista.length;
+  const actual  = lista[pagina] || lista[0];
+  const esUnico = total === 1;
+
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+
+      {/* ── Cabecera ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8, gap: 8, flexWrap: 'wrap',
+      }}>
+        {/* Título */}
+        <div style={{
+          fontSize: '.7rem', fontWeight: 700,
+          color: 'var(--jordyn-muted)',
+          textTransform: 'uppercase', letterSpacing: '1px',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <i className="bi bi-paperclip" style={{ color: 'var(--jordyn-primary)' }}></i>
+          COMPROBANTE{!esUnico ? 'S' : ''} DE PAGO
+        </div>
+
+        {/* Paginador — solo si hay más de 1 */}
+        {!esUnico && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <button
+              type="button"
+              onClick={() => setPagina(p => Math.max(0, p - 1))}
+              disabled={pagina === 0}
+              style={{
+                background: pagina === 0 ? 'var(--jordyn-bg2)' : 'var(--jordyn-primary)',
+                border: 'none', color: pagina === 0 ? 'var(--jordyn-muted)' : '#fff',
+                borderRadius: 7, width: 28, height: 28,
+                cursor: pagina === 0 ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit', fontSize: '.85rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: pagina === 0 ? 0.45 : 1,
+                transition: 'all .12s',
+              }}
+            ><i className="bi bi-chevron-left"></i></button>
+
+            {/* Dots */}
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {lista.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setPagina(i)}
+                  title={`Comprobante ${i + 1} — #${lista[i].numero}`}
+                  style={{
+                    width: pagina === i ? 22 : 8,
+                    height: 8,
+                    borderRadius: 4,
+                    border: 'none',
+                    background: pagina === i ? 'var(--jordyn-primary)' : 'var(--jordyn-border)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'all .2s',
+                  }}
+                />
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPagina(p => Math.min(total - 1, p + 1))}
+              disabled={pagina === total - 1}
+              style={{
+                background: pagina === total - 1 ? 'var(--jordyn-bg2)' : 'var(--jordyn-primary)',
+                border: 'none', color: pagina === total - 1 ? 'var(--jordyn-muted)' : '#fff',
+                borderRadius: 7, width: 28, height: 28,
+                cursor: pagina === total - 1 ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit', fontSize: '.85rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                opacity: pagina === total - 1 ? 0.45 : 1,
+                transition: 'all .12s',
+              }}
+            ><i className="bi bi-chevron-right"></i></button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Badges del comprobante actual ── */}
+      {!esUnico && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          marginBottom: 8, flexWrap: 'wrap',
+        }}>
+          {/* Contador */}
+          <span style={{
+            fontSize: '.65rem', fontWeight: 700,
+            color: 'var(--jordyn-muted)',
+          }}>
+            {pagina + 1} de {total}
+          </span>
+          {/* Número de ticket */}
+          <span style={{
+            background: 'rgba(124,58,237,.1)',
+            border: '1px solid rgba(124,58,237,.25)',
+            color: '#7c3aed',
+            borderRadius: 20, padding: '2px 10px',
+            fontSize: '.7rem', fontWeight: 800, letterSpacing: 1,
+          }}>
+            🎟 #{actual.numero}
+          </span>
+          {/* Método de pago */}
+          {actual.metodo && (
+            <span style={{
+              fontSize: '.68rem', color: 'var(--jordyn-muted)',
+              background: 'var(--jordyn-bg2)',
+              border: '1px solid var(--jordyn-border)',
+              borderRadius: 20, padding: '2px 8px',
+            }}>
+              <i className="bi bi-credit-card me-1"></i>{actual.metodo}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── Visor con zoom ── */}
+      <ComprobanteVisor key={`visor-${pagina}`} src={actual.src} />
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    VISOR DE COMPROBANTE — zoom, pan y pantalla completa
 ════════════════════════════════════════════════════════════ */
 function ComprobanteVisor({ src, label = null }) {
@@ -641,84 +788,8 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
             )}
           </div>
 
-          {/* Comprobantes — uno por cada reserva del grupo que tenga imagen */}
-          {(() => {
-            // Reunir todos (principal + hermanas) que tengan comprobante
-            const todasConComp = [reserva, ...hermanas]
-              .filter(r => r.comprobante_base64)
-              .map(r => ({
-                numero:   r.numero,
-                metodo:   r.metodo_pago || null,
-                src: r.comprobante_base64.startsWith('data:')
-                  ? r.comprobante_base64
-                  : `data:image/jpeg;base64,${r.comprobante_base64}`,
-              }));
-
-            if (todasConComp.length === 0) return null;
-
-            return (
-              <div style={{ marginBottom: '1.25rem' }}>
-                {/* Cabecera global */}
-                <div style={{
-                  fontSize: '.7rem', fontWeight: 700,
-                  color: 'var(--jordyn-muted)',
-                  textTransform: 'uppercase', letterSpacing: '1px',
-                  marginBottom: 10,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <i className="bi bi-paperclip" style={{ color: 'var(--jordyn-primary)' }}></i>
-                  COMPROBANTE{todasConComp.length > 1 ? 'S' : ''} DE PAGO
-                  {todasConComp.length > 1 && (
-                    <span style={{
-                      background: 'rgba(10,191,188,.1)',
-                      color: 'var(--jordyn-primary)',
-                      border: '1px solid rgba(10,191,188,.25)',
-                      borderRadius: 20, padding: '1px 8px',
-                      fontSize: '.65rem', fontWeight: 800,
-                    }}>
-                      {todasConComp.length} archivos
-                    </span>
-                  )}
-                </div>
-
-                {/* Un visor por cada comprobante */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {todasConComp.map((c, i) => (
-                    <div key={`comp-${c.numero}-${i}`}>
-                      {/* Badge número + método */}
-                      {todasConComp.length > 1 && (
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          marginBottom: 6,
-                        }}>
-                          <span style={{
-                            background: 'rgba(124,58,237,.1)',
-                            border: '1px solid rgba(124,58,237,.25)',
-                            color: '#7c3aed',
-                            borderRadius: 20, padding: '2px 10px',
-                            fontSize: '.7rem', fontWeight: 800, letterSpacing: 1,
-                          }}>
-                            🎟 #{c.numero}
-                          </span>
-                          {c.metodo && (
-                            <span style={{
-                              fontSize: '.68rem', color: 'var(--jordyn-muted)',
-                              background: 'var(--jordyn-bg2)',
-                              border: '1px solid var(--jordyn-border)',
-                              borderRadius: 20, padding: '2px 8px',
-                            }}>
-                              <i className="bi bi-credit-card me-1"></i>{c.metodo}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <ComprobanteVisor src={c.src} label={todasConComp.length > 1 ? `Comprobante #${i+1}` : null} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+          {/* Comprobantes con paginación */}
+          <ComprobantePaginado reserva={reserva} hermanas={hermanas} />
 
           {/* Nota admin */}
           {!pendiente && reserva.nota_admin && (
