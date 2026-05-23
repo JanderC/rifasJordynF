@@ -185,33 +185,6 @@ export default function DashboardDueno() {
             ))}
           </div>
         </div>
-
-        {/* Números calientes */}
-        <div className="col-12 col-md-3">
-          <div className="jd-card jd-card-red" style={{ height: '100%' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--jordyn-red)', display:'flex', alignItems:'center', gap:6 }}>
-              🔥 NÚMEROS CALIENTES
-            </div>
-            {!data?.numeros_calientes?.length && (
-              <p style={{ color: 'var(--jordyn-muted)', fontSize: '0.8rem' }}>Sin ventas aún</p>
-            )}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {data?.numeros_calientes?.map((n) => (
-                <div key={n.numero} style={{
-                  background: n.veces >= 2 ? 'rgba(230,57,70,0.12)' : 'rgba(240,165,0,0.10)',
-                  border: `1.5px solid ${n.veces >= 2 ? 'rgba(230,57,70,0.35)' : 'rgba(240,165,0,0.35)'}`,
-                  borderRadius: '8px', padding: '5px 10px', textAlign: 'center',
-                }}>
-                  <div style={{ fontWeight: 900, fontSize: '0.95rem', color: n.veces >= 2 ? 'var(--jordyn-red)' : 'var(--jordyn-gold)' }}>
-                    {n.numero}
-                  </div>
-                  <div style={{ fontSize: '0.58rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>{n.veces}×</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
       </div>
     </Layout>
   );
