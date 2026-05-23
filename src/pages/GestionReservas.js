@@ -384,32 +384,44 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
             </div>
             <div style={{
               display:'flex', justifyContent:'center',
-              overflow:'hidden',
               background:'#fafafa', borderRadius:8, padding:10,
               border:'1px dashed #d0d0d0',
+              overflow:'hidden',
             }}>
               {cargandoTpl ? (
                 <div style={{ padding:30, color:'#999', fontSize:13 }}>
                   ⏳ Cargando plantilla…
                 </div>
-              ) : (
-                <div style={{
-                  transform: 'scale(0.55)',
-                  transformOrigin: 'center center',
-                  width: designPreview.ticketWidth,
-                  height: designPreview.ticketHeight * 0.55,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'center',
-                }}>
-                  <TicketEditable
-                    r={rifaCompleta || reserva}
-                    numero={todosNumeros[0]}
-                    design={{ ...designPreview, numBoleto: todosNumeros[0] }}
-                    printMode={true}
-                  />
-                </div>
-              )}
+              ) : (() => {
+                const SCALE = 0.55;
+                const W = designPreview.ticketWidth  || 680;
+                const H = designPreview.ticketHeight || 280;
+                return (
+                  /* Wrapper con el tamaño YA escalado para que no haya recorte */
+                  <div style={{
+                    width:  W * SCALE,
+                    height: H * SCALE,
+                    flexShrink: 0,
+                    position: 'relative',
+                    overflow: 'visible',
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      transformOrigin: 'top left',
+                      transform: `scale(${SCALE})`,
+                    }}>
+                      <TicketEditable
+                        r={rifaCompleta || reserva}
+                        numero={todosNumeros[0]}
+                        design={{ ...designPreview, numBoleto: todosNumeros[0] }}
+                        printMode={true}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             {todosNumeros.length > 1 && (
               <div style={{ fontSize:'.7rem', color:'var(--jordyn-muted)', textAlign:'center', marginTop:6, fontStyle:'italic' }}>
