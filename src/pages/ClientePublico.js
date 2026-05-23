@@ -1962,11 +1962,6 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
           <div style={{ background:'#e8f5f5', borderRadius:8, height:10, overflow:'hidden', border:`1px solid ${TURQ}22` }}>
             <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:8, transition:'width 1s ease', boxShadow:`0 0 10px ${TURQ}66` }}></div>
           </div>
-          <div style={{ fontSize:'.62rem', color:`${DARK}66`, marginTop:5, fontWeight:600 }}>
-            {progreso.loading
-              ? 'Cargando…'
-              : <><strong style={{ color:DARK }}>{progreso.tomados.toLocaleString('es-CO')}</strong> de <strong style={{ color:DARK }}>{progreso.totalNumeros.toLocaleString('es-CO')}</strong> vendidos</>}
-          </div>
         </div>
         <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14 }}>
           Ver números disponibles
