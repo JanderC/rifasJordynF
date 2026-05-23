@@ -1134,9 +1134,11 @@ export default function GestionReservas() {
   useEffect(() => { load(); loadTodas(); }, [load, loadTodas]);
 
   const abrirModal = (r) => {
+    // Hermanas: mismo cliente + rifa + MISMO ESTADO (no mezclar pendientes con aprobados)
     const hermanas = todas.filter(
       x => x.id !== r.id &&
            x.rifa_id === r.rifa_id &&
+           x.estado === r.estado &&
            x.nombre_cliente.trim().toLowerCase() === r.nombre_cliente.trim().toLowerCase()
     );
     setSelR(r);
@@ -1176,11 +1178,11 @@ export default function GestionReservas() {
     { key:'todos',     label:'Todos',      icon:'bi-list-ul',            color:'var(--jordyn-muted)', count: conteos.todos||0     },
   ];
 
-  // Agrupar por cliente+rifa para vista de lista
+  // Agrupar por cliente+rifa+estado — nunca mezclar estados distintos en un grupo
   const reservasAgrupadas = (() => {
     const grupos = {};
     reservas.forEach(r => {
-      const key = `${r.rifa_id}||${r.nombre_cliente.trim().toLowerCase()}`;
+      const key = `${r.rifa_id}||${r.nombre_cliente.trim().toLowerCase()}||${r.estado}`;
       if (!grupos[key]) grupos[key] = { principal: r, extras: [] };
       else grupos[key].extras.push(r);
     });
