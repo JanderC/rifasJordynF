@@ -230,6 +230,13 @@ export default function Caja() {
                     onClick={() => setModalLote('nuevo')}>
                     <i className="bi bi-person-plus me-1" />+ VENDEDOR
                   </button>
+                  <a
+                    href={`/caja/rifa?rifa=${rifaActiva?.id}`}
+                    className="btn-jordyn"
+                    style={{ fontSize: '.8rem', padding: '5px 14px', background: 'linear-gradient(135deg,#f5c518,#e0a800)', color: '#000', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, borderRadius: 6, fontFamily: 'inherit', fontWeight: 700, letterSpacing: '.5px' }}
+                  >
+                    <i className="bi bi-coin" /> 🪙 COBRAR POR NÚMERO
+                  </a>
                   <button className="btn-jordyn-outline" style={{ fontSize: '.8rem', padding: '5px 12px' }}
                     onClick={() => setVistaZonas(v => !v)}>
                     <i className={`bi ${vistaZonas ? 'bi-list-ul' : 'bi-map'} me-1`} />
@@ -274,6 +281,7 @@ export default function Caja() {
                     lotes={lotesFiltrados}
                     semanaCerrada={detalle.estado === 'cerrada'}
                     precioBoleto={detalle.precio_boleto}
+                    rifaId={rifaActiva?.id}
                     onAbono={lote => setModalAbono(lote)}
                     onEditar={lote => setModalLote(lote)}
                     onHistorial={lote => setModalHistorial(lote)}
@@ -558,7 +566,7 @@ function ResumenCards({ detalle: d }) {
 /* ═══════════════════════════════════════════
    TABLA DE CAJA
 ═══════════════════════════════════════════ */
-function TablaCaja({ lotes, semanaCerrada, precioBoleto, onAbono, onEditar, onHistorial, onEliminar, onTogglePago, onVerNums }) {
+function TablaCaja({ lotes, semanaCerrada, precioBoleto, rifaId, onAbono, onEditar, onHistorial, onEliminar, onTogglePago, onVerNums }) {
   if (!lotes.length) {
     return (
       <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', padding: '40px 0', letterSpacing: '2px' }}>
@@ -569,7 +577,7 @@ function TablaCaja({ lotes, semanaCerrada, precioBoleto, onAbono, onEditar, onHi
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {lotes.map(lote => (
-        <FilaLote key={lote.id} lote={lote} semanaCerrada={semanaCerrada} precioBoleto={precioBoleto}
+        <FilaLote key={lote.id} lote={lote} semanaCerrada={semanaCerrada} precioBoleto={precioBoleto} rifaId={rifaId}
           onAbono={onAbono} onEditar={onEditar} onHistorial={onHistorial}
           onEliminar={onEliminar} onTogglePago={onTogglePago} onVerNums={onVerNums} />
       ))}
@@ -578,7 +586,7 @@ function TablaCaja({ lotes, semanaCerrada, precioBoleto, onAbono, onEditar, onHi
 }
 
 /* ── Fila individual ── */
-function FilaLote({ lote, semanaCerrada, precioBoleto, onAbono, onEditar, onHistorial, onEliminar, onTogglePago, onVerNums }) {
+function FilaLote({ lote, semanaCerrada, precioBoleto, rifaId, onAbono, onEditar, onHistorial, onEliminar, onTogglePago, onVerNums }) {
   const [expanded, setExpanded] = useState(false);
   const est = ESTADO_CFG[lote.estado] || ESTADO_CFG.pendiente;
   const numsAsignados   = parseNums(lote.numeros_asignados);
@@ -644,6 +652,14 @@ function FilaLote({ lote, semanaCerrada, precioBoleto, onAbono, onEditar, onHist
 
         {/* Acciones */}
         <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+          {/* Botón COBRAR — lleva a la pantalla de cobro por número */}
+          <a
+            href={rifaId ? `/caja/rifa?rifa=${rifaId}` : '#'}
+            style={{ background: 'rgba(245,197,24,.08)', border: '1px solid rgba(245,197,24,.3)', color: 'var(--jordyn-primary)', borderRadius: 5, padding: '4px 9px', cursor: 'pointer', fontSize: '.75rem', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+            title="Ir a cobro por número"
+          >
+            <i className="bi bi-coin" />
+          </a>
           {!semanaCerrada && (
             <button onClick={() => onAbono(lote)} title="Registrar abono"
               style={{ background: 'rgba(6,214,160,.08)', border: '1px solid rgba(6,214,160,.25)', color: '#06d6a0', borderRadius: 5, padding: '4px 9px', cursor: 'pointer', fontSize: '.75rem' }}>
