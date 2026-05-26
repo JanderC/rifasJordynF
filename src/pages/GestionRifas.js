@@ -19,11 +19,8 @@ import { useAuth } from '../context/AuthContext';
 
 /* ─── Loterías ─── */
 const LOTERIAS = [
-  { grupo: 'Colombia', items: [
-    'Pijao de Oro','Cafeterito','Super Astro Sol','Super Astro Luna',
-  ]},
   { grupo: 'Venezuela', items: [
-    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
+    'Triple Táchira A', 'Triple Táchira B', 'Triple Táchira C', 'Triple Táchira ABC'
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
