@@ -2956,9 +2956,9 @@ export default function GestionRifas() {
                 {/* Atajos rápidos: horarios del Táchira */}
                 <div style={{ display:'flex', gap:5, marginTop:6, flexWrap:'wrap' }}>
                   {[
-                    { lbl: '1:00 PM',  val: '13:00' },
-                    { lbl: '4:00 PM',  val: '16:00' },
-                    { lbl: '10:00 PM', val: '22:00' },
+                    { lbl: '1:15 PM',  val: '13:00' },
+                    { lbl: '4:45 PM',  val: '16:00' },
+                    { lbl: '10:10 PM', val: '22:00' },
                   ].map(h => (
                     <button key={h.val} type="button"
                       onClick={() => setForm(p => ({ ...p, hora_sorteo: h.val }))}
