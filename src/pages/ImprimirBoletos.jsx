@@ -69,19 +69,25 @@ function calcularLayout(ticketAnchoCm, ticketAltoCm, orientacion) {
   };
 }
 
-// ── Deduplica números por valor (ignora serie) ───────────────
+// ── Normaliza números respetando serie (numero+serie = 1 boleto) ──
+// Devuelve array de objetos { numero, serie } sin duplicados exactos.
 function dedupNumeros(numerosFijos) {
   if (!Array.isArray(numerosFijos)) return [];
   const seen = new Set();
   const result = [];
   for (const n of numerosFijos) {
-    const num = String(n.numero || n).padStart(3, '0');
-    if (!seen.has(num)) {
-      seen.add(num);
-      result.push(num);
+    const num   = String(n.numero || n).padStart(3, '0');
+    const serie = String(n.serie || '').toUpperCase();
+    const key   = `${num}-${serie}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push({ numero: num, serie });
     }
   }
-  return result.sort((a, b) => a.localeCompare(b));
+  // Ordenar por número, luego por serie
+  return result.sort((a, b) =>
+    a.numero.localeCompare(b.numero) || a.serie.localeCompare(b.serie)
+  );
 }
 
 // ── Normaliza el design de una plantilla ─────────────────────
@@ -251,7 +257,7 @@ export default function ImprimirBoletos() {
     const totalNumeros = numerosImprimir.length;
 
     for (let i = 0; i < totalNumeros; i++) {
-      const numero = numerosImprimir[i];
+      const { numero, serie } = numerosImprimir[i];
       const indexEnPagina = i % layout.perPage;
       const pagina = Math.floor(i / layout.perPage);
 
@@ -600,7 +606,7 @@ export default function ImprimirBoletos() {
                   <div style={S.infoValue}>{vendedorActual.vendedor_nombre}</div>
                 </div>
                 <div>
-                  <div style={S.infoLabel}>Números únicos</div>
+                  <div style={S.infoLabel}>Total boletos</div>
                   <div style={S.infoValue}>{numerosImprimir.length}</div>
                 </div>
                 <div>
@@ -634,15 +640,17 @@ export default function ImprimirBoletos() {
               {/* Lista de números a imprimir */}
               <div style={S.numerosBox}>
                 <strong style={{ fontSize: 12, color: '#666' }}>
-                  📋 Números a imprimir (sin duplicar por serie):
+                  📋 Números a imprimir (uno por número+serie):
                 </strong>
                 <div style={S.numerosLista}>
                   {numerosImprimir.length === 0 ? (
                     <span style={{ color: '#999', fontSize: 12 }}>
                       Este vendedor no tiene números asignados
                     </span>
-                  ) : numerosImprimir.map(n => (
-                    <span key={n} style={S.numeroChip}>{n}</span>
+                  ) : numerosImprimir.map(({ numero, serie }) => (
+                    <span key={`${numero}-${serie}`} style={S.numeroChip}>
+                      {numero}{serie ? <span style={{ opacity: 0.65, fontSize: 10 }}> {serie}</span> : null}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -651,7 +659,7 @@ export default function ImprimirBoletos() {
               {numerosImprimir.length > 0 && (
                 <div style={S.previewBox}>
                   <h3 style={S.sectionTitle}>
-                    Vista previa — boleto #{numerosImprimir[0]}
+                    Vista previa — boleto #{numerosImprimir[0].numero}{numerosImprimir[0].serie ? ` (Serie ${numerosImprimir[0].serie})` : ''}
                   </h3>
 
                   {/* Panel de diagnóstico de la plantilla */}
@@ -699,8 +707,8 @@ export default function ImprimirBoletos() {
                   <div style={S.previewWrapper}>
                     <TicketEditable
                       r={rifa}
-                      numero={numerosImprimir[0]}
-                      design={{ ...design, numBoleto: numerosImprimir[0] }}
+                      numero={numerosImprimir[0].numero}
+                      design={{ ...design, numBoleto: numerosImprimir[0].numero }}
                       printMode={true}
                     />
                   </div>
