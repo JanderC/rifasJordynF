@@ -1220,7 +1220,7 @@ export function FrameLayer({ design: D }) {
 export function getPaperBgStyle(D) {
   let bg = {};
   if (D.paperGlow) {
-    bg.background = `radial-gradient(ellipse at center, ${D.paperGlowColor || '#ffffff'} 0%, ${D.bgPaper} 75%)`;
+    bg.background = #ffffff;
   } else {
     bg.background = D.bgPaper;
   }
