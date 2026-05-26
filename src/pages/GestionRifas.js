@@ -2742,16 +2742,6 @@ export default function GestionRifas() {
                         borderRadius: 10, padding: '1px 7px',
                         fontSize: '.62rem', fontWeight: 800,
                       }}>{v.numeros_count || 0}</span>
-                      {extras > 0 && (
-                        <span title={`${extras} número${extras !== 1 ? 's' : ''} extra${extras !== 1 ? 's' : ''}`}
-                              style={{
-                                background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
-                                color: '#fff',
-                                borderRadius: 10, padding: '1px 6px',
-                                fontSize: '.55rem', fontWeight: 900,
-                                boxShadow: '0 2px 4px rgba(245,158,11,0.35)',
-                              }}>+{extras}</span>
-                      )}
                     </button>
                   );
                 })}
