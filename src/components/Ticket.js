@@ -1220,9 +1220,9 @@ export function FrameLayer({ design: D }) {
 export function getPaperBgStyle(D) {
   let bg = {};
   if (D.paperGlow) {
-    bg.background = #ffffff;
+    bg.background = `#ffffff`;
   } else {
-    bg.background = D.bgPaper;
+    bg.background = `#ffffff`;
   }
   // Textura como pseudo-elemento no es trivial inline; usamos backgroundImage encima
   if (D.paperTexture && D.paperTexture !== 'none') {
