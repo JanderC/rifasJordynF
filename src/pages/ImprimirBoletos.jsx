@@ -649,7 +649,7 @@ export default function ImprimirBoletos() {
                     </span>
                   ) : numerosImprimir.map(({ numero, serie }) => (
                     <span key={`${numero}-${serie}`} style={S.numeroChip}>
-                      {numero}{serie ? <span style={{ opacity: 0.65, fontSize: 10 }}> {serie}</span> : null}
+                      {numero}{serie ? <span style={{ opacity: 0.65, fontSize: 10 }}></span> : null}
                     </span>
                   ))}
                 </div>
