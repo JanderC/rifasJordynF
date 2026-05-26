@@ -1,10 +1,4 @@
-// ============================================================
-//   GestionReservas.js — RIFAS JORDYN
-//   ✅ Fechas corregidas (sin timezone offset)
-//   ✅ Aprobación auto-dispara WhatsApp con ticket adjunto
-//   ✅ Tasas de cambio reflejadas en el modal
-//   ✅ NUEVO: Ticket → sube a Cloudinary → URL copiable en modal
-// ============================================================
+
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
