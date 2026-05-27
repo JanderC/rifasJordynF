@@ -498,21 +498,83 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
   const estadoColor = t.deuda === 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
   const estadoLabel = t.deuda === 0 ? 'PAGADO' : t.cobrado > 0 ? 'PARCIAL' : 'PENDIENTE';
 
+  // ── Indicador visual de cuadre (solo cosmético) ──
+  const cuadrado  = t.deuda === 0;          // ✅ pagó todo
+  const debiendo  = t.deuda > 0;            // 🚨 queda debiendo
+
   return (
     <div style={{
       background: 'var(--jordyn-bg2)',
-      border: `1.5px solid ${t.deuda === 0 ? 'rgba(6,214,160,0.3)' : t.cobrado > 0 ? 'rgba(245,158,11,0.3)' : 'rgba(230,57,70,0.2)'}`,
+      border: `2px solid ${cuadrado ? 'rgba(6,214,160,0.5)' : t.cobrado > 0 ? 'rgba(245,158,11,0.35)' : 'rgba(230,57,70,0.25)'}`,
       borderRadius: 12,
       overflow: 'hidden',
-      transition: 'border-color .2s',
+      transition: 'border-color .25s, box-shadow .25s',
+      boxShadow: cuadrado
+        ? '0 0 0 3px rgba(6,214,160,0.10)'
+        : debiendo
+          ? '0 0 0 3px rgba(230,57,70,0.07)'
+          : 'none',
     }}>
+
+      {/* ══ BANNER DE ALERTA — solo visual ══ */}
+      {debiendo && (
+        <div style={{
+          background: 'linear-gradient(90deg, #7c0a14, #e63946)',
+          padding: '6px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          animation: 'none',
+        }}>
+          <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚨</span>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: '#fff', fontWeight: 700, letterSpacing: '1px' }}>
+              {vendedor.vendedor_nombre.split(' ')[0].toUpperCase()} NO HA PAGADO COMPLETO
+            </span>
+            <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '.95rem', color: '#ffd6d9', letterSpacing: '2px', marginLeft: 10 }}>
+              — DEBE {COP(t.deuda)}
+            </span>
+          </div>
+          <span style={{ fontSize: '.85rem', color: 'rgba(255,255,255,0.7)', flexShrink: 0 }}>⚠</span>
+        </div>
+      )}
+
+      {/* ══ BANNER CUADRADO ══ */}
+      {cuadrado && t.total > 0 && (
+        <div style={{
+          background: 'linear-gradient(90deg, #064e3b, #059669)',
+          padding: '5px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span style={{ fontSize: '.95rem' }}>✅</span>
+          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#d1fae5', fontWeight: 700, letterSpacing: '1px' }}>
+            {vendedor.vendedor_nombre.split(' ')[0].toUpperCase()} — CUADRADO · PAGÓ {COP(t.totalCobrar)}
+          </span>
+        </div>
+      )}
+
       {/* ── Cabecera ── */}
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
         onClick={() => setExpandida(e => !e)}>
 
-        {/* Avatar */}
-        <div style={{ width: 40, height: 40, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-          {(vendedor.vendedor_nombre || '?').charAt(0).toUpperCase()}
+        {/* Avatar — con ícono de estado encima */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+            {(vendedor.vendedor_nombre || '?').charAt(0).toUpperCase()}
+          </div>
+          {/* Indicador de estado en la esquina del avatar */}
+          <div style={{
+            position: 'absolute', bottom: -2, right: -2,
+            width: 16, height: 16, borderRadius: '50%',
+            background: cuadrado ? '#06d6a0' : debiendo ? '#e63946' : '#f59e0b',
+            border: '2px solid var(--jordyn-bg2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '.45rem',
+          }}>
+            {cuadrado ? '✓' : '!'}
+          </div>
         </div>
 
         {/* Nombre + estado */}
@@ -522,7 +584,7 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
             <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', letterSpacing: '1px', fontWeight: 700 }}>
-              {estadoLabel}
+              {cuadrado ? '✅ CUADRADO' : estadoLabel}
             </span>
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>
               {t.total} número{t.total !== 1 ? 's' : ''} · {t.noPagados} no pagaron
