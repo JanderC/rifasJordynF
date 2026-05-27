@@ -844,11 +844,11 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
         {/* Montos */}
         <div style={{ display: 'flex', gap: 14, flexShrink: 0, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL A COBRAR</div>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>DEUDA</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.05rem', color: 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>{COP(t.totalCobrar)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>DEUDA</div>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL A COBRAR</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>{COP(t.deuda)}</div>
           </div>
         </div>
