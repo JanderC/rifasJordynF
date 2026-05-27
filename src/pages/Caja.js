@@ -105,26 +105,64 @@ export default function Caja() {
   const cargarVendedores = async (rifaId, pct) => {
     setLoadingVends(true);
     try {
-      const r = await API.get(`/caja/rifas/${rifaId}/cobro-vendedores?porcentaje=${pct}`);
-      setVendedores(r.data.vendedores || []);
-      setPrecioPorNum(r.data.precio_boleto_efectivo || 0);
-      setPorcentaje(r.data.porcentaje || pct);
-      // Inicializar estado local:
-      // Verde (true) por defecto — todos los números asignados ya están vendidos.
-      // Solo quedan rojos los que fueron marcados explícitamente como no pagados (pagado=false en BD).
-      const map = {};
-      const cuadreMap = {};
-      for (const v of (r.data.vendedores || [])) {
+      // Fuente correcta: boleteria-vendedores trae EXACTAMENTE los vendedores
+      // de esta rifa (rifa_vendedores_sel + numeros_vendedor + extras)
+      // 1. Vendedores exactos de esta rifa
+      const bolRes = await API.get(`/rifas/${rifaId}/boleteria-vendedores`);
+
+      // 2. Estados de pago y cuadre (cobro-vendedores — solo para leer pagosMap y cuadreMap)
+      const pagosRes = await API.get(`/caja/rifas/${rifaId}/cobro-vendedores?porcentaje=${pct}`).catch(() => null);
+
+      // Precio con porcentaje (viene del endpoint de cobro, o lo calculamos del rifaActiva)
+      const precioEfectivo = pagosRes?.data?.precio_boleto_efectivo || 0;
+      setPrecioPorNum(precioEfectivo);
+      setPorcentaje(pagosRes?.data?.porcentaje || pct);
+
+      // Mapa de pagos desde la BD (caja_pagos_numero) — keyed por vendedorId|numero|serie
+      const pagosMap = {};
+      for (const v of (pagosRes?.data?.vendedores || [])) {
         for (const n of (v.numeros || [])) {
-          map[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado !== false;
+          pagosMap[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado !== false;
         }
-        // Cargar estado de cuadre desde el servidor
+      }
+
+      // Mapa de cuadre confirmado en BD
+      const cuadreMap = {};
+      for (const v of (pagosRes?.data?.vendedores || [])) {
         cuadreMap[v.vendedor_id] = v.cuadrado || false;
+      }
+
+      // Vendedores desde boleteria (fuente correcta)
+      const vends = (bolRes.data.vendedores || []).map(v => {
+        const numeros = (v.numeros_fijos || []).map(n => ({
+          numero: String(n.numero).padStart(3, '0'),
+          serie:  n.serie || 'A',
+          origen: n.origen || 'fijo',
+        }));
+        return {
+          vendedor_id:     v.vendedor_id,
+          vendedor_nombre: v.vendedor_nombre,
+          cedula:          v.cedula,
+          numeros,
+          cuadrado:        cuadreMap[v.vendedor_id] || false,
+        };
+      });
+
+      setVendedores(vends);
+
+      // Inicializar pagos: verde por defecto, rojo solo si fue marcado explícitamente
+      const map = {};
+      for (const v of vends) {
+        for (const n of v.numeros) {
+          const key = `${v.vendedor_id}|${n.numero}|${n.serie}`;
+          map[key] = pagosMap.hasOwnProperty(key) ? pagosMap[key] : true;
+        }
       }
       setPagosLocal(map);
       setCuadreLocal(cuadreMap);
-    } catch {
+    } catch (err) {
       toast.error('Error cargando vendedores');
+      console.error(err);
     } finally {
       setLoadingVends(false);
     }
