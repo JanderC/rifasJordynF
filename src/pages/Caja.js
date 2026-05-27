@@ -1,3 +1,12 @@
+// ============================================================
+//   RIFAS JORDYN — Caja.js (v5 — Remodelación completa)
+//   - Muestra vendedores de la rifa activa con sus números
+//   - Precio al 50% aplicado automáticamente
+//   - Números arrancan en VERDE (todos asignados = vendidos por defecto)
+//   - Solo se marca ROJO si al cuadrar un número no jugó / no pagaron
+//   - Contabilidad en tiempo real: baja al marcar no pagado
+//   - Sin zonas, solo vendedores de la rifa
+// ============================================================
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
@@ -79,11 +88,16 @@ export default function Caja() {
       setVendedores(r.data.vendedores || []);
       setPrecioPorNum(r.data.precio_boleto_efectivo || 0);
       setPorcentaje(r.data.porcentaje || pct);
-      // Inicializar estado local de pagos desde el servidor
+      // Inicializar estado local:
+      // Verde (true) por defecto — todos los números asignados ya están vendidos.
+      // Solo quedan rojos los que fueron marcados explícitamente como no pagados (pagado=false en BD).
       const map = {};
       for (const v of (r.data.vendedores || [])) {
         for (const n of (v.numeros || [])) {
-          map[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado;
+          // Si el servidor devuelve pagado=false significa que fue marcado manualmente como rojo.
+          // Si pagado=true O si no hay registro aún (también viene true del endpoint por defecto),
+          // el número arranca en verde.
+          map[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado !== false;
         }
       }
       setPagosLocal(map);
@@ -511,7 +525,7 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
               {estadoLabel}
             </span>
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>
-              {t.total} número{t.total !== 1 ? 's' : ''} · {t.pagados} pagado{t.pagados !== 1 ? 's' : ''}
+              {t.total} número{t.total !== 1 ? 's' : ''} · {t.noPagados} no pagaron
             </span>
           </div>
         </div>
@@ -556,9 +570,9 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
 
           {/* Instrucción */}
           <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ background: 'rgba(6,214,160,0.12)', border: '1px solid rgba(6,214,160,0.3)', color: '#06d6a0', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>VERDE = PAGAN</span>
-            <span style={{ background: 'rgba(230,57,70,0.1)', border: '1px solid rgba(230,57,70,0.3)', color: '#e63946', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>ROJO = NO PAGAN</span>
-            <span style={{ opacity: .6 }}>· Toca para cambiar</span>
+            <span style={{ background: 'rgba(6,214,160,0.12)', border: '1px solid rgba(6,214,160,0.3)', color: '#06d6a0', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>VERDE = JUGÓ / PAGA</span>
+            <span style={{ background: 'rgba(230,57,70,0.1)', border: '1px solid rgba(230,57,70,0.3)', color: '#e63946', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>ROJO = NO JUGÓ / NO PAGÓ</span>
+            <span style={{ opacity: .6 }}>· Toca un número para cambiarlo</span>
           </div>
 
           {/* Números por serie (en simultáneas se agrupan) */}
@@ -572,7 +586,7 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
                     <span style={{ background: serie === 'A' ? '#f0f5ff' : '#fff0f5', border: `1px solid ${serie === 'A' ? '#4361ee30' : '#e91e8c30'}`, color: serie === 'A' ? '#4361ee' : '#e91e8c', borderRadius: 4, padding: '2px 9px', fontWeight: 900 }}>SERIE {serie}</span>
                     <span style={{ color: 'var(--jordyn-muted)' }}>{nums.length} número{nums.length !== 1 ? 's' : ''}</span>
                     <span style={{ color: '#06d6a0', marginLeft: 'auto' }}>
-                      {nums.filter(n => pagosLocal[`${vendedor.vendedor_id}|${n.numero}|${n.serie}`] === true).length} pagados
+                      {nums.filter(n => pagosLocal[`${vendedor.vendedor_id}|${n.numero}|${n.serie}`] !== false).length} jugaron
                     </span>
                   </div>
                   <GridNumeros
@@ -645,7 +659,7 @@ function GridNumeros({ numeros, vendedorId, pagosLocal, guardando, onToggle }) {
             type="button"
             onClick={() => !saving && onToggle(n.numero, n.serie, pagado)}
             disabled={saving}
-            title={`${n.numero}${n.serie ? ` (${n.serie})` : ''} — ${pagado ? 'PAGA · Click para marcar NO PAGA' : 'NO PAGA · Click para marcar PAGA'}`}
+            title={`${n.numero}${n.serie ? ` (${n.serie})` : ''} — ${pagado ? 'JUGÓ / PAGA · Click para marcar que NO pagó' : 'NO PAGÓ · Click para marcar que sí pagó'}`}
             style={{
               display: 'inline-flex',
               flexDirection: 'column',
@@ -681,7 +695,7 @@ function GridNumeros({ numeros, vendedorId, pagosLocal, guardando, onToggle }) {
                   </span>
                 )}
                 <span style={{ fontSize: '.5rem', color: 'rgba(255,255,255,0.75)', fontFamily: "'Share Tech Mono',monospace", lineHeight: 1 }}>
-                  {pagado ? '✓ PAGA' : '✗ NO'}
+                  {pagado ? '✓ JUGÓ' : '✗ NO JUGÓ'}
                 </span>
               </>
             )}
@@ -790,7 +804,7 @@ function ModalHistorialVendedor({ vendedor, precioPorNum, calcularTotales, onClo
         <div style={{ background: 'var(--jordyn-bg)', borderRadius: 8, padding: '12px 16px', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {[
             ['Total números',  t.total,              'var(--jordyn-text)'],
-            ['Pagados',        t.pagados,             '#06d6a0'],
+            ['Jugaron/Pagaron', t.pagados,            '#06d6a0'],
             ['No pagan',       t.noPagados,           '#e63946'],
             ['Total a cobrar', COP(t.totalCobrar),   'var(--jordyn-primary)'],
             ['Cobrado',        COP(t.cobrado),        '#06d6a0'],
