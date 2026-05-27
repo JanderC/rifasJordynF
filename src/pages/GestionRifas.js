@@ -19,8 +19,11 @@ import { useAuth } from '../context/AuthContext';
 
 /* ─── Loterías ─── */
 const LOTERIAS = [
+  { grupo: 'Colombia', items: [
+    'Pijao de Oro','Cafeterito','Super Astro Sol','Super Astro Luna',
+  ]},
   { grupo: 'Venezuela', items: [
-    'Triple Táchira A', 'Triple Táchira B', 'Triple Táchira C', 'Triple Táchira ABC'
+    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
@@ -214,8 +217,11 @@ function SelectorCategoria({
   selectedVendedorIds,
   onSelectionChange,
 }) {
-  const [categorias, setCategorias] = useState([]);
-  const [cargando,   setCargando]   = useState(false);
+  const [categorias,   setCategorias]   = useState([]);
+  const [cargando,     setCargando]     = useState(false);
+  const [busquedaVend, setBusquedaVend] = useState('');
+  const [paginaActual, setPaginaActual] = useState(1);
+  const VENDEDORES_POR_PAGINA = 10;
 
   useEffect(() => {
     API.get('/categorias-globales').then(r => setCategorias(r.data || [])).catch(() => {});
@@ -231,6 +237,8 @@ function SelectorCategoria({
     onCategoriaChange(catId);
     onVendedoresCargados([]);
     onSelectionChange([]);
+    setBusquedaVend('');
+    setPaginaActual(1);
     setCargando(true);
     try {
       const r = await API.get(`/categorias-globales/${catId}/para-rifa`);
@@ -316,8 +324,45 @@ function SelectorCategoria({
       )}
 
       {/* Tabla de vendedores con selección */}
-      {vendedoresCargados.length > 0 && (
+      {vendedoresCargados.length > 0 && (() => {
+        const q = busquedaVend.trim().toLowerCase();
+        const vendedoresFiltrados = q
+          ? vendedoresCargados.filter(v =>
+              v.vendedor_nombre?.toLowerCase().includes(q) ||
+              (v.cedula && v.cedula.toLowerCase().includes(q))
+            )
+          : vendedoresCargados;
+        const totalPaginas = Math.ceil(vendedoresFiltrados.length / VENDEDORES_POR_PAGINA);
+        const paginaSegura = Math.min(paginaActual, Math.max(1, totalPaginas));
+        const inicio = (paginaSegura - 1) * VENDEDORES_POR_PAGINA;
+        const vendedoresPagina = vendedoresFiltrados.slice(inicio, inicio + VENDEDORES_POR_PAGINA);
+        return (
         <div style={{ background: 'rgba(124,58,237,0.04)', border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 12, overflow: 'hidden' }}>
+
+          {/* Buscador de vendedor */}
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(124,58,237,0.12)', background: 'rgba(124,58,237,0.06)' }}>
+            <div style={{ position: 'relative' }}>
+              <i className="bi bi-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--jordyn-muted)', fontSize: '.8rem', pointerEvents: 'none' }}></i>
+              <input
+                className="jd-input"
+                value={busquedaVend}
+                onChange={e => { setBusquedaVend(e.target.value); setPaginaActual(1); }}
+                placeholder="Buscar vendedor por nombre o cédula..."
+                style={{ paddingLeft: 32, paddingRight: busquedaVend ? 32 : 12, fontSize: '.8rem' }}
+              />
+              {busquedaVend && (
+                <button type="button" onClick={() => { setBusquedaVend(''); setPaginaActual(1); }}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--jordyn-muted)', fontSize: '.8rem', padding: 2 }}>
+                  <i className="bi bi-x-lg"></i>
+                </button>
+              )}
+            </div>
+            {q && (
+              <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', marginTop: 5 }}>
+                {vendedoresFiltrados.length} de {vendedoresCargados.length} vendedor(es)
+              </div>
+            )}
+          </div>
 
           {/* Cabecera con checkbox "seleccionar todos" */}
           <div style={{
@@ -341,7 +386,7 @@ function SelectorCategoria({
           </div>
 
           {/* Filas */}
-          {vendedoresCargados.map(v => {
+          {vendedoresPagina.map(v => {
             const seleccionado = selectedVendedorIds.includes(v.vendedor_id);
             const monto        = v.total_numeros * (precioRifa || 0);
             const nums         = v.asignaciones || [];
@@ -440,7 +485,7 @@ function SelectorCategoria({
             );
           })}
 
-          {/* Pie: seleccionados + total */}
+          {/* Pie: seleccionados + total + paginación */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '10px 14px', background: 'rgba(5,150,105,0.07)',
@@ -450,6 +495,11 @@ function SelectorCategoria({
             <span style={{ fontSize: '.72rem', color: 'var(--jordyn-muted)' }}>
               <i className="bi bi-people-fill me-1" style={{ color: '#7c3aed' }}></i>
               {selectedVendedorIds.length} de {vendedoresCargados.length} vendedor(es) seleccionados
+              {q && vendedoresFiltrados.length !== vendedoresCargados.length && (
+                <span style={{ marginLeft: 6, color: '#7c3aed', fontWeight: 700 }}>
+                  · {vendedoresFiltrados.length} filtrado(s)
+                </span>
+              )}
             </span>
             {precioRifa > 0 && (
               <span style={{ fontWeight: 900, fontSize: '1rem', color: '#059669' }}>
@@ -458,8 +508,37 @@ function SelectorCategoria({
               </span>
             )}
           </div>
+
+          {/* Paginación */}
+          {totalPaginas > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', background: '#fff', borderTop: '1px solid rgba(124,58,237,0.1)' }}>
+              <button type="button"
+                onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                disabled={paginaSegura === 1}
+                style={{ background: paginaSegura === 1 ? '#f0f0f0' : 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.2)', color: paginaSegura === 1 ? '#bbb' : '#7c3aed', borderRadius: 7, padding: '4px 10px', cursor: paginaSegura === 1 ? 'default' : 'pointer', fontWeight: 700, fontSize: '.78rem' }}>
+                ‹
+              </button>
+              {Array.from({ length: totalPaginas }, (_, i) => i + 1).map(p => (
+                <button key={p} type="button"
+                  onClick={() => setPaginaActual(p)}
+                  style={{ background: p === paginaSegura ? '#7c3aed' : '#fff', border: `1.5px solid ${p === paginaSegura ? '#7c3aed' : 'rgba(124,58,237,0.2)'}`, color: p === paginaSegura ? '#fff' : '#7c3aed', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: '.78rem', minWidth: 32 }}>
+                  {p}
+                </button>
+              ))}
+              <button type="button"
+                onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                disabled={paginaSegura === totalPaginas}
+                style={{ background: paginaSegura === totalPaginas ? '#f0f0f0' : 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.2)', color: paginaSegura === totalPaginas ? '#bbb' : '#7c3aed', borderRadius: 7, padding: '4px 10px', cursor: paginaSegura === totalPaginas ? 'default' : 'pointer', fontWeight: 700, fontSize: '.78rem' }}>
+                ›
+              </button>
+              <span style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', marginLeft: 4 }}>
+                Página {paginaSegura} de {totalPaginas}
+              </span>
+            </div>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Sin vendedores */}
       {categoriaId && !cargando && vendedoresCargados.length === 0 && (
@@ -2282,6 +2361,79 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                   </div>
                 </details>
               )}
+
+              {/* ── Sección: Agregar números extras ── */}
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1.5px dashed rgba(245,158,11,0.4)' }}>
+                <div style={{ fontSize: '.62rem', fontWeight: 800, color: '#d97706', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="bi bi-plus-circle-fill"></i> Agregar números extras
+                  <span style={{ fontSize: '.58rem', color: 'var(--jordyn-muted)', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>(solo esta rifa)</span>
+                </div>
+
+                {esSim && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    {['A', 'B'].map(s => (
+                      <button key={s} type="button"
+                        onClick={() => { setSerieSel(s); setSerieAuto(false); }}
+                        style={{
+                          flex: 1, padding: '7px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.82rem',
+                          background: !serieAuto && serieSel === s ? (s === 'A' ? '#f0f5ff' : '#fff0f5') : '#fff',
+                          border: `1.5px solid ${!serieAuto && serieSel === s ? (s === 'A' ? '#4361ee' : '#e91e8c') : 'var(--jordyn-border)'}`,
+                          color: !serieAuto && serieSel === s ? (s === 'A' ? '#4361ee' : '#e91e8c') : 'var(--jordyn-muted)',
+                        }}>
+                        Serie {s}
+                      </button>
+                    ))}
+                    <button type="button"
+                      onClick={() => setSerieAuto(true)}
+                      style={{
+                        flex: 1, padding: '7px', borderRadius: 8, cursor: 'pointer', fontWeight: 700, fontSize: '.78rem',
+                        background: serieAuto ? 'rgba(5,150,105,0.08)' : '#fff',
+                        border: `1.5px solid ${serieAuto ? 'rgba(5,150,105,0.4)' : 'var(--jordyn-border)'}`,
+                        color: serieAuto ? '#059669' : 'var(--jordyn-muted)',
+                      }}>
+                      🤖 Auto
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '10px 14px', marginBottom: 8 }}>
+                  <label style={{ display: 'block', fontSize: '.62rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>
+                    Números (separados por coma, espacio o salto de línea)
+                  </label>
+                  <textarea
+                    className="jd-input"
+                    rows={3}
+                    value={inputNums}
+                    onChange={e => setInputNums(e.target.value)}
+                    placeholder="Ej: 001, 045, 123 o uno por línea"
+                    style={{ resize: 'vertical', fontFamily: 'monospace', letterSpacing: 2, fontSize: '.9rem', fontWeight: 700 }}
+                  />
+                  {numerosParsed.length > 0 && (
+                    <div style={{ fontSize: '.68rem', color: '#059669', marginTop: 5, fontWeight: 700 }}>
+                      ✅ {numerosParsed.length} número(s) válido(s): {numerosParsed.slice(0, 8).join(', ')}{numerosParsed.length > 8 ? '…' : ''}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={agregar}
+                  disabled={enviando || numerosParsed.length === 0}
+                  style={{
+                    width: '100%', background: 'linear-gradient(135deg, #d97706, #f59e0b)',
+                    border: 'none', color: '#fff', borderRadius: 9,
+                    padding: '10px 18px', cursor: enviando || numerosParsed.length === 0 ? 'not-allowed' : 'pointer',
+                    fontWeight: 700, fontSize: '.88rem',
+                    opacity: enviando || numerosParsed.length === 0 ? 0.6 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    fontFamily: 'var(--jordyn-font)',
+                  }}>
+                  {enviando
+                    ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span> Agregando...</>
+                    : <><i className="bi bi-plus-circle-fill"></i> Agregar {numerosParsed.length > 0 ? `${numerosParsed.length} número(s)` : 'extras'}</>
+                  }
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -2382,29 +2534,52 @@ export default function GestionRifas() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleEdit = (r) => {
+  const handleEdit = async (r) => {
+    const catId = r.categoria_seleccionada_id || null;
     setForm({
-      nombre:                  r.nombre       || '',
-      descripcion:             r.descripcion  || '',
-      premio:                  r.premio       || '',
-      precio:                  r.precio       || '',
-      precio_display:          r.precio       ? fmtCOP(r.precio) : '',
-      premio_secundario:       r.premio_secundario || '',
+      nombre:                    r.nombre       || '',
+      descripcion:               r.descripcion  || '',
+      premio:                    r.premio       || '',
+      precio:                    r.precio       || '',
+      precio_display:            r.precio       ? fmtCOP(r.precio) : '',
+      premio_secundario:         r.premio_secundario || '',
       premio_secundario_display: r.premio_secundario ? fmtCOP(r.premio_secundario) : '',
-      fecha_sorteo:            r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
-      hora_sorteo:             r.hora_sorteo  ? String(r.hora_sorteo).slice(0,5) : '',
-      loteria_ref:             r.loteria_ref  || '',
-      tipo:                    r.tipo         || 'sencilla',
-      imagen_base64:           r.imagen_url   || '',
-      ticket_template_id:      r.ticket_template_id || null,
-      ofertas:                 Array.isArray(r.ofertas) ? r.ofertas : [],
-      categoria_seleccionada_id: null,
+      fecha_sorteo:              r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
+      hora_sorteo:               r.hora_sorteo  ? String(r.hora_sorteo).slice(0,5) : '',
+      loteria_ref:               r.loteria_ref  || '',
+      tipo:                      r.tipo         || 'sencilla',
+      imagen_base64:             r.imagen_url   || '',
+      ticket_template_id:        r.ticket_template_id || null,
+      ofertas:                   Array.isArray(r.ofertas) ? r.ofertas : [],
+      categoria_seleccionada_id: catId,
     });
     setVendedoresCat([]);
     setSelectedVendorIds([]);
     setEditId(r.id);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Precargar vendedores de la categoría que ya tiene la rifa
+    if (catId) {
+      try {
+        const res = await API.get(`/categorias-globales/${catId}/para-rifa`);
+        const vends = res.data.vendedores || [];
+        setVendedoresCat(vends);
+        // Marcar como seleccionados los que ya están en la rifa
+        const idsEnRifa = (r.vendedores || []).map(v => v.id);
+        if (idsEnRifa.length > 0) {
+          // Intersección: solo los que vienen de la categoría Y están en la rifa
+          const preseleccionados = vends
+            .filter(v => idsEnRifa.includes(v.vendedor_id))
+            .map(v => v.vendedor_id);
+          setSelectedVendorIds(preseleccionados.length > 0 ? preseleccionados : vends.map(v => v.vendedor_id));
+        } else {
+          setSelectedVendorIds(vends.map(v => v.vendedor_id));
+        }
+      } catch {
+        toast.error('No se pudo cargar la categoría de la rifa');
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -2739,6 +2914,16 @@ export default function GestionRifas() {
                         borderRadius: 10, padding: '1px 7px',
                         fontSize: '.62rem', fontWeight: 800,
                       }}>{v.numeros_count || 0}</span>
+                      {extras > 0 && (
+                        <span title={`${extras} número${extras !== 1 ? 's' : ''} extra${extras !== 1 ? 's' : ''}`}
+                              style={{
+                                background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+                                color: '#fff',
+                                borderRadius: 10, padding: '1px 6px',
+                                fontSize: '.55rem', fontWeight: 900,
+                                boxShadow: '0 2px 4px rgba(245,158,11,0.35)',
+                              }}>+{extras}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -2798,7 +2983,7 @@ export default function GestionRifas() {
             <div className="d-flex flex-wrap gap-2">
               <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
               <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
-              <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Imprimir Tickets</a>
+              <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
               {/* Activar (si inactiva) — comportamiento directo */}
               {!r.activa && (
                 <button onClick={() => handleToggle(r)} style={{ background:'transparent',border:'1.5px solid rgba(6,214,160,0.4)',color:'var(--jordyn-green)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer' }}>Activar</button>
@@ -2953,9 +3138,9 @@ export default function GestionRifas() {
                 {/* Atajos rápidos: horarios del Táchira */}
                 <div style={{ display:'flex', gap:5, marginTop:6, flexWrap:'wrap' }}>
                   {[
-                    { lbl: '1:15 PM',  val: '13:00' },
-                    { lbl: '4:45 PM',  val: '16:00' },
-                    { lbl: '10:10 PM', val: '22:00' },
+                    { lbl: '1:00 PM',  val: '13:00' },
+                    { lbl: '4:00 PM',  val: '16:00' },
+                    { lbl: '10:00 PM', val: '22:00' },
                   ].map(h => (
                     <button key={h.val} type="button"
                       onClick={() => setForm(p => ({ ...p, hora_sorteo: h.val }))}
