@@ -7,7 +7,7 @@
 //   - Contabilidad en tiempo real: baja al marcar no pagado
 //   - Sin zonas, solo vendedores de la rifa
 // ============================================================
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
@@ -39,50 +39,68 @@ const fmtHoraSorteo = h => {
    COMPONENTE PRINCIPAL
 ════════════════════════════════════════════════════════════ */
 export default function Caja() {
-  const [rifaActiva,   setRifaActiva]   = useState(null);
+  // ── Selector de rifa ──
+  const [rifasDisponibles, setRifasDisponibles] = useState([]);
+  const [rifaActiva,       setRifaActiva]       = useState(null);
+  const [loadingRifas,     setLoadingRifas]     = useState(true);
+
+  // ── Datos de caja ──
   const [vendedores,   setVendedores]   = useState([]);
   const [porcentaje,   setPorcentaje]   = useState(50);
   const [precioPorNum, setPrecioPorNum] = useState(0);
-  const [loading,      setLoading]      = useState(true);
   const [loadingVends, setLoadingVends] = useState(false);
   const [buscar,       setBuscar]       = useState('');
-  // Estado local de pagos: { 'vendedorId|numero|serie': true/false }
-  const [pagosLocal,   setPagosLocal]   = useState({});
-  const [guardando,    setGuardando]    = useState({});
-  // cuadreLocal: { vendedorId: true|false } — persiste en BD via PUT /cuadre/:vendedorId
-  const [cuadreLocal,  setCuadreLocal]  = useState({});
-  const [guardandoCuadre, setGuardandoCuadre] = useState({});
-  const [modalDeudas,        setModalDeudas]        = useState(false);
-  const [deudasVencidas,     setDeudasVencidas]     = useState([]);
-  const [deudasConfirmadas,  setDeudasConfirmadas]  = useState(false);
-  const [deudasAnteriores,   setDeudasAnteriores]   = useState([]);
-  const [modalAbono,         setModalAbono]         = useState(null);
-  const [modalHistorial,     setModalHistorial]     = useState(null);
-  const [detalleSemana,      setDetalleSemana]      = useState(null);
 
-  /* ── Carga rifa activa ── */
-  const cargarRifa = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await API.get('/caja/rifa-activa');
-      setRifaActiva(r.data.rifa || null);
-      setDeudasAnteriores(r.data.deudas_anteriores || []);
-      if (r.data.deudas_vencidas?.length > 0 && !deudasConfirmadas) {
-        setDeudasVencidas(r.data.deudas_vencidas);
-        setModalDeudas(true);
+  const [pagosLocal,      setPagosLocal]      = useState({});
+  const [guardando,       setGuardando]       = useState({});
+  const [cuadreLocal,     setCuadreLocal]     = useState({});
+  const [guardandoCuadre, setGuardandoCuadre] = useState({});
+
+  const [modalDeudas,       setModalDeudas]       = useState(false);
+  const [deudasVencidas,    setDeudasVencidas]    = useState([]);
+  const [deudasConfirmadas, setDeudasConfirmadas] = useState(false);
+  const [deudasAnteriores,  setDeudasAnteriores]  = useState([]);
+  const [modalAbono,        setModalAbono]        = useState(null);
+  const [modalHistorial,    setModalHistorial]    = useState(null);
+  const [detalleSemana,     setDetalleSemana]     = useState(null);
+
+  /* ── Carga lista de rifas activas para el selector ── */
+  useEffect(() => {
+    (async () => {
+      setLoadingRifas(true);
+      try {
+        const r = await API.get('/rifas');
+        const activas = (r.data || []).filter(rf => rf.activa && rf.estado !== 'archivada');
+        setRifasDisponibles(activas);
+        // Datos de deudas
+        try {
+          const ra = await API.get('/caja/rifa-activa');
+          setDeudasAnteriores(ra.data.deudas_anteriores || []);
+          if (ra.data.deudas_vencidas?.length > 0 && !deudasConfirmadas) {
+            setDeudasVencidas(ra.data.deudas_vencidas);
+            setModalDeudas(true);
+          }
+          if (ra.data.semana) setDetalleSemana(ra.data.semana);
+        } catch {}
+        // Pre-seleccionar si solo hay una rifa activa
+        if (activas.length === 1) setRifaActiva(activas[0]);
+      } catch {
+        toast.error('Error cargando rifas');
+      } finally {
+        setLoadingRifas(false);
       }
-      if (r.data.semana) {
-        setDetalleSemana(r.data.semana);
-      }
-      if (r.data.rifa?.id) {
-        await cargarVendedores(r.data.rifa.id, 50);
-      }
-    } catch {
-      toast.error('Error cargando caja');
-    } finally {
-      setLoading(false);
-    }
-  }, [deudasConfirmadas]); // eslint-disable-line
+    })();
+  }, []); // eslint-disable-line
+
+  /* ── Al seleccionar una rifa, limpiar y cargar sus vendedores ── */
+  useEffect(() => {
+    if (!rifaActiva?.id) return;
+    setBuscar('');
+    setPagosLocal({});
+    setCuadreLocal({});
+    setVendedores([]);
+    cargarVendedores(rifaActiva.id, 50);
+  }, [rifaActiva?.id]); // eslint-disable-line
 
   const cargarVendedores = async (rifaId, pct) => {
     setLoadingVends(true);
@@ -111,8 +129,6 @@ export default function Caja() {
       setLoadingVends(false);
     }
   };
-
-  useEffect(() => { cargarRifa(); }, []); // eslint-disable-line
 
   /* ── Toggle número (verde ↔ rojo) ── */
   const handleToggleNumero = async (vendedorId, rifaId, numero, serie, estadoActual) => {
@@ -203,17 +219,6 @@ export default function Caja() {
   /* ════════════════════════════════════════
      RENDER
   ════════════════════════════════════════ */
-  if (loading) {
-    return (
-      <Layout title="CAJA">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
-          <div className="jd-spinner" style={{ width: 40, height: 40 }} />
-          <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.7rem', color: 'var(--jordyn-muted)', letterSpacing: '3px' }}>CARGANDO CAJA...</div>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout title="CAJA">
 
@@ -227,21 +232,28 @@ export default function Caja() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ══ SIN RIFA ACTIVA ══ */}
-        {!rifaActiva && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, gap: 16 }}>
+        {/* ══ SELECTOR DE RIFA ══ */}
+        <SelectorRifa
+          rifas={rifasDisponibles}
+          rifaSeleccionada={rifaActiva}
+          loading={loadingRifas}
+          onSeleccionar={rifa => setRifaActiva(rifa)}
+        />
+
+        {/* ══ SIN RIFAS ACTIVAS ══ */}
+        {!loadingRifas && rifasDisponibles.length === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, gap: 16 }}>
             <div style={{ fontSize: '3rem', opacity: .25 }}>🎟</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.6rem', color: 'var(--jordyn-muted)', letterSpacing: '4px' }}>
-              SIN RIFA ACTIVA
+              SIN RIFAS ACTIVAS
             </div>
             <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', color: 'var(--jordyn-muted)', letterSpacing: '2px', textAlign: 'center', maxWidth: 380, lineHeight: 1.8 }}>
-              La caja se activa automáticamente cuando existe una rifa activa.<br />
               Crea o activa una rifa desde <strong>Gestión de Rifas</strong>.
             </div>
           </div>
         )}
 
-        {/* ══ RIFA ACTIVA ══ */}
+        {/* ══ CONTENIDO DE LA RIFA SELECCIONADA ══ */}
         {rifaActiva && (
           <>
             {/* Banner rifa */}
@@ -287,7 +299,7 @@ export default function Caja() {
               <button
                 className="btn-jordyn-outline"
                 style={{ fontSize: '.8rem', padding: '5px 12px' }}
-                onClick={() => cargarVendedores(rifaActiva.id, porcentaje)}
+                onClick={() => rifaActiva?.id && cargarVendedores(rifaActiva.id, porcentaje)}
               >
                 <i className="bi bi-arrow-clockwise me-1" />ACTUALIZAR
               </button>
@@ -357,6 +369,154 @@ export default function Caja() {
         />
       )}
     </Layout>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   SELECTOR DE RIFA
+═══════════════════════════════════════════ */
+function SelectorRifa({ rifas, rifaSeleccionada, loading, onSeleccionar }) {
+  const fmtFechaCorta = f => {
+    if (!f) return '—';
+    return new Date(f).toLocaleDateString('es-CO', {
+      day: '2-digit', month: 'short', timeZone: 'America/Caracas',
+    });
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 10 }}>
+        <div className="jd-spinner" style={{ width: 18, height: 18, flexShrink: 0 }} />
+        <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)', letterSpacing: '2px' }}>
+          CARGANDO RIFAS...
+        </span>
+      </div>
+    );
+  }
+
+  if (!rifas.length) return null;
+
+  // Si solo hay una, mostrar solo el banner sin selector
+  if (rifas.length === 1) return null;
+
+  return (
+    <div style={{
+      background: 'var(--jordyn-bg2)',
+      border: '1.5px solid rgba(124,58,237,0.25)',
+      borderRadius: 12,
+      padding: '14px 18px',
+    }}>
+      <div style={{
+        fontFamily: "'Share Tech Mono',monospace",
+        fontSize: '.55rem',
+        color: '#a78bfa',
+        letterSpacing: '2px',
+        fontWeight: 700,
+        marginBottom: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+      }}>
+        <i className="bi bi-collection-fill" />
+        SELECCIONAR RIFA A CUADRAR
+        <span style={{ color: 'var(--jordyn-muted)', fontWeight: 400, marginLeft: 4 }}>
+          · {rifas.length} rifas activas
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {rifas.map(rifa => {
+          const seleccionada = rifaSeleccionada?.id === rifa.id;
+          return (
+            <button
+              key={rifa.id}
+              type="button"
+              onClick={() => onSeleccionar(rifa)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 14px',
+                background: seleccionada
+                  ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(124,58,237,0.06))'
+                  : '#fff',
+                border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`,
+                borderRadius: 9,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                textAlign: 'left',
+                transition: 'all .15s',
+                boxShadow: seleccionada ? '0 2px 12px rgba(124,58,237,0.15)' : 'none',
+              }}
+              onMouseEnter={e => {
+                if (!seleccionada) e.currentTarget.style.borderColor = 'rgba(124,58,237,0.4)';
+              }}
+              onMouseLeave={e => {
+                if (!seleccionada) e.currentTarget.style.borderColor = 'var(--jordyn-border)';
+              }}
+            >
+              {/* Indicador seleccionada */}
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                background: seleccionada ? '#7c3aed' : 'var(--jordyn-border)',
+                border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {seleccionada && (
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />
+                )}
+              </div>
+
+              {/* Info rifa */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: "'Oswald',sans-serif",
+                  fontSize: '.95rem',
+                  fontWeight: 700,
+                  color: seleccionada ? '#7c3aed' : 'var(--jordyn-text)',
+                  lineHeight: 1.1,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {rifa.nombre}
+                </div>
+                <div style={{
+                  fontFamily: "'Share Tech Mono',monospace",
+                  fontSize: '.5rem',
+                  color: 'var(--jordyn-muted)',
+                  marginTop: 3,
+                  display: 'flex', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span>🏆 {rifa.premio}</span>
+                  <span>📅 {fmtFechaCorta(rifa.fecha_sorteo)}</span>
+                  {rifa.tipo === 'simultanea' && <span style={{ color: '#a78bfa' }}>⚡ Simultánea</span>}
+                </div>
+              </div>
+
+              {/* Precio */}
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>PRECIO</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: seleccionada ? '#7c3aed' : 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>
+                  {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(rifa.precio || 0)}
+                </div>
+              </div>
+
+              {/* Check activa */}
+              {seleccionada && (
+                <div style={{
+                  background: '#7c3aed', color: '#fff',
+                  borderRadius: 6, padding: '4px 10px',
+                  fontFamily: "'Share Tech Mono',monospace",
+                  fontSize: '.52rem', fontWeight: 700, letterSpacing: '1px',
+                  flexShrink: 0,
+                }}>
+                  ✓ ACTIVA
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
