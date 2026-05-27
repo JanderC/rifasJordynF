@@ -409,8 +409,6 @@ export default function Caja() {
       {modalAbono && (
         <ModalAbono
           vendedor={modalAbono}
-          precioPorNum={precioPorNum}
-          calcularTotales={() => calcularTotalesVendedor(modalAbono)}
           detalleSemana={detalleSemana}
           onClose={() => setModalAbono(null)}
           onSave={async ({ lote_id, monto, nota }) => {
@@ -844,11 +842,11 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
         {/* Montos */}
         <div style={{ display: 'flex', gap: 14, flexShrink: 0, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>DEUDA</div>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL A COBRAR</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.05rem', color: 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>{COP(t.totalCobrar)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL A COBRAR</div>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>DEUDA</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>{COP(t.deuda)}</div>
           </div>
         </div>
@@ -1077,77 +1075,148 @@ function GridNumeros({ numeros, vendedorId, pagosLocal, guardando, onToggle }) {
 /* ═══════════════════════════════════════════
    MODAL: ABONO
 ═══════════════════════════════════════════ */
-function ModalAbono({ vendedor, precioPorNum, calcularTotales, detalleSemana, onClose, onSave }) {
-  const [monto,   setMonto]   = useState('');
-  const [nota,    setNota]    = useState('');
-  const [saving,  setSaving]  = useState(false);
-  const [loteId,  setLoteId]  = useState(null);
+function ModalAbono({ vendedor, detalleSemana, onClose, onSave }) {
+  const [monto,       setMonto]       = useState('');
+  const [nota,        setNota]        = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [lote,        setLote]        = useState(null);   // lote completo con por_pagar, abono, pendiente
   const [loadingLote, setLoadingLote] = useState(true);
-  const t = calcularTotales();
 
   useEffect(() => {
-    // Buscar el lote_id del vendedor en la semana activa
     if (!detalleSemana?.id || !vendedor?.vendedor_id) { setLoadingLote(false); return; }
-    API.get(`/caja/semanas/${detalleSemana.id}`).then(r => {
-      const lote = (r.data.lotes || []).find(l => l.vendedor_id === vendedor.vendedor_id);
-      setLoteId(lote?.id || null);
-    }).catch(() => {}).finally(() => setLoadingLote(false));
+    API.get(`/caja/semanas/${detalleSemana.id}`)
+      .then(r => {
+        const found = (r.data.lotes || []).find(l => l.vendedor_id === vendedor.vendedor_id);
+        setLote(found || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingLote(false));
   }, [detalleSemana, vendedor]);
+
+  const porPagar  = Number(lote?.por_pagar  || 0);   // histórico — no cambia
+  const abonado   = Number(lote?.abono      || 0);   // lo que ya pagó
+  const pendiente = Number(lote?.pendiente  || 0);   // deuda viva = porPagar - abonado
 
   const handleSave = async () => {
     if (!monto || Number(monto) <= 0) { toast.error('Ingresa un monto válido'); return; }
-    if (!loteId) { toast.error('No se encontró el lote del vendedor'); return; }
+    if (!lote?.id) { toast.error('No se encontró el lote del vendedor'); return; }
     setSaving(true);
-    try { await onSave({ lote_id: loteId, monto: Number(monto), nota }); }
+    try { await onSave({ lote_id: lote.id, monto: Number(monto), nota }); }
     finally { setSaving(false); }
   };
 
   return (
     <ModalBase title={`REGISTRAR ABONO — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ background: 'var(--jordyn-bg)', borderRadius: 7, padding: '10px 14px', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          {[
-            ['Total a cobrar', COP(t.totalCobrar), 'var(--jordyn-text)'],
-            ['Cobrado',        COP(t.cobrado),     '#06d6a0'],
-            ['Deuda',          COP(t.deuda),       '#e63946'],
-          ].map(([k, v, c]) => (
-            <div key={k}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.46rem', color: 'var(--jordyn-muted)', letterSpacing: '2px' }}>{k}</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: c, letterSpacing: '2px' }}>{v}</div>
-            </div>
-          ))}
-        </div>
+
+        {/* Resumen del lote */}
         {loadingLote ? (
           <div style={{ textAlign: 'center', padding: 16 }}><div className="jd-spinner" style={{ width: 24, height: 24 }} /></div>
-        ) : !loteId ? (
+        ) : !lote ? (
           <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid rgba(230,57,70,0.25)', borderRadius: 8, padding: '10px 14px', fontSize: '.75rem', color: '#e63946', fontFamily: "'Share Tech Mono',monospace" }}>
-            ⚠ Este vendedor no tiene un lote de caja asignado. Los abonos manuales requieren un lote.
+            ⚠ Este vendedor no tiene un lote de caja asignado.
           </div>
         ) : (
           <>
-            <div>
-              <label className="jd-label">MONTO DEL ABONO *</label>
-              <input className="jd-input" type="number" min="1" value={monto} onChange={e => setMonto(e.target.value)}
-                placeholder={`Deuda: ${COP(t.deuda)}`} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
-              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                {[t.deuda, Math.round(t.deuda / 2)].filter(v => v > 0).map(v => (
-                  <button key={v} onClick={() => setMonto(String(v))}
-                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                    {COP(v)}
-                  </button>
-                ))}
+            {/* Cards de montos */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              {/* Total a cobrar — histórico fijo */}
+              <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1.5px', marginBottom: 4 }}>
+                  TOTAL A COBRAR
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>
+                  {COP(porPagar)}
+                </div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>
+                  histórico · no cambia
+                </div>
+              </div>
+
+              {/* Ya abonado */}
+              <div style={{ background: 'rgba(6,214,160,0.06)', border: '1px solid rgba(6,214,160,0.25)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', letterSpacing: '1.5px', marginBottom: 4 }}>
+                  YA ABONADO
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+                  {COP(abonado)}
+                </div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: '#06d6a0', marginTop: 3, opacity: .7 }}>
+                  pagos acumulados
+                </div>
+              </div>
+
+              {/* Deuda viva */}
+              <div style={{ background: pendiente > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.06)', border: `1px solid ${pendiente > 0 ? 'rgba(230,57,70,0.3)' : 'rgba(6,214,160,0.25)'}`, borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', letterSpacing: '1.5px', marginBottom: 4 }}>
+                  DEUDA PENDIENTE
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+                  {COP(pendiente)}
+                </div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', marginTop: 3, opacity: .7 }}>
+                  {pendiente <= 0 ? '✅ saldado' : 'baja con cada abono'}
+                </div>
               </div>
             </div>
-            <div>
-              <label className="jd-label">NOTA (opcional)</label>
-              <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)} placeholder="Ej: Pago en efectivo..." />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-              <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
-                {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : 'REGISTRAR ABONO'}
-              </button>
-            </div>
+
+            {/* Barra de progreso */}
+            {porPagar > 0 && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: "'Share Tech Mono',monospace", fontSize: '.46rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
+                  <span>Progreso de cobro</span>
+                  <span style={{ color: '#06d6a0', fontWeight: 700 }}>
+                    {Math.min(100, Math.round((abonado / porPagar) * 100))}%
+                  </span>
+                </div>
+                <div style={{ height: 8, background: 'var(--jordyn-border)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, (abonado / porPagar) * 100)}%`, background: pendiente <= 0 ? '#06d6a0' : 'linear-gradient(90deg,var(--jordyn-primary),#06d6a0)', borderRadius: 4, transition: 'width .4s' }} />
+                </div>
+              </div>
+            )}
+
+            {pendiente > 0 ? (
+              <>
+                <div>
+                  <label className="jd-label">MONTO DEL ABONO *</label>
+                  <input className="jd-input" type="number" min="1" max={pendiente}
+                    value={monto} onChange={e => setMonto(e.target.value)}
+                    placeholder={`Máx: ${COP(pendiente)}`}
+                    autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+                  {/* Atajos rápidos */}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    {[pendiente, Math.round(pendiente / 2), Math.round(pendiente / 4)]
+                      .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
+                      .map(v => (
+                        <button key={v} type="button" onClick={() => setMonto(String(v))}
+                          style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
+                          {COP(v)}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="jd-label">NOTA (opcional)</label>
+                  <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
+                    placeholder="Ej: Pago en efectivo, transferencia..." />
+                </div>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
+                  <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
+                    {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : 'REGISTRAR ABONO'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <div style={{ fontSize: '2rem', marginBottom: 6 }}>✅</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: '#06d6a0', letterSpacing: '3px' }}>DEUDA SALDADA</div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>
+                  Este vendedor no tiene deuda pendiente.
+                </div>
+                <button className="btn-jordyn-outline" onClick={onClose} style={{ marginTop: 16 }}>CERRAR</button>
+              </div>
+            )}
           </>
         )}
       </div>
