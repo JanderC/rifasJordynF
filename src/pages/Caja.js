@@ -49,6 +49,9 @@ export default function Caja() {
   // Estado local de pagos: { 'vendedorId|numero|serie': true/false }
   const [pagosLocal,   setPagosLocal]   = useState({});
   const [guardando,    setGuardando]    = useState({});
+  // cuadreLocal: { vendedorId: true|false } — persiste en BD via PUT /cuadre/:vendedorId
+  const [cuadreLocal,  setCuadreLocal]  = useState({});
+  const [guardandoCuadre, setGuardandoCuadre] = useState({});
   const [modalDeudas,        setModalDeudas]        = useState(false);
   const [deudasVencidas,     setDeudasVencidas]     = useState([]);
   const [deudasConfirmadas,  setDeudasConfirmadas]  = useState(false);
@@ -92,15 +95,16 @@ export default function Caja() {
       // Verde (true) por defecto — todos los números asignados ya están vendidos.
       // Solo quedan rojos los que fueron marcados explícitamente como no pagados (pagado=false en BD).
       const map = {};
+      const cuadreMap = {};
       for (const v of (r.data.vendedores || [])) {
         for (const n of (v.numeros || [])) {
-          // Si el servidor devuelve pagado=false significa que fue marcado manualmente como rojo.
-          // Si pagado=true O si no hay registro aún (también viene true del endpoint por defecto),
-          // el número arranca en verde.
           map[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado !== false;
         }
+        // Cargar estado de cuadre desde el servidor
+        cuadreMap[v.vendedor_id] = v.cuadrado || false;
       }
       setPagosLocal(map);
+      setCuadreLocal(cuadreMap);
     } catch {
       toast.error('Error cargando vendedores');
     } finally {
@@ -131,6 +135,24 @@ export default function Caja() {
       toast.error('Error actualizando número');
     } finally {
       setGuardando(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  /* ── Toggle cuadre de vendedor (persiste en BD) ── */
+  const handleToggleCuadre = async (vendedorId, estadoActual) => {
+    if (!rifaActiva?.id) return;
+    const nuevo = !estadoActual;
+    // Optimistic update
+    setCuadreLocal(prev => ({ ...prev, [vendedorId]: nuevo }));
+    setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: true }));
+    try {
+      await API.put(`/caja/rifas/${rifaActiva.id}/cuadre/${vendedorId}`, { cuadrado: nuevo });
+    } catch {
+      // Revertir si falla
+      setCuadreLocal(prev => ({ ...prev, [vendedorId]: estadoActual }));
+      toast.error('Error guardando estado de cuadre');
+    } finally {
+      setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: false }));
     }
   };
 
@@ -293,10 +315,13 @@ export default function Caja() {
                     pagosLocal={pagosLocal}
                     guardando={guardando}
                     esSim={rifaActiva.tipo === 'simultanea'}
+                    cuadrado={cuadreLocal[v.vendedor_id] || false}
+                    guardandoCuadre={guardandoCuadre[v.vendedor_id] || false}
                     calcularTotales={() => calcularTotalesVendedor(v)}
                     onToggleNumero={(numero, serie, estadoActual) =>
                       handleToggleNumero(v.vendedor_id, rifaActiva.id, numero, serie, estadoActual)
                     }
+                    onToggleCuadre={() => handleToggleCuadre(v.vendedor_id, cuadreLocal[v.vendedor_id] || false)}
                     onAbono={() => setModalAbono(v)}
                     onHistorial={() => setModalHistorial(v)}
                   />
@@ -466,7 +491,7 @@ function ResumenGlobal({ totales, totalVendedores, porcentaje, onCambiarPct, pre
 /* ═══════════════════════════════════════════
    TARJETA DE VENDEDOR — con números interactivos
 ═══════════════════════════════════════════ */
-function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando, esSim, calcularTotales, onToggleNumero, onAbono, onHistorial }) {
+function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando, esSim, cuadrado: cuadradoProp, guardandoCuadre, calcularTotales, onToggleNumero, onToggleCuadre, onAbono, onHistorial }) {
   const [expandida, setExpandida] = useState(false);
   const t = calcularTotales();
 
@@ -498,9 +523,12 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
   const estadoColor = t.deuda === 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
   const estadoLabel = t.deuda === 0 ? 'PAGADO' : t.cobrado > 0 ? 'PARCIAL' : 'PENDIENTE';
 
-  // ── Indicador visual de cuadre (solo cosmético) ──
-  const cuadrado  = t.deuda === 0;          // ✅ pagó todo
-  const debiendo  = t.deuda > 0;            // 🚨 queda debiendo
+  // ── Indicador visual de cuadre ──
+  // cuadradoProp = estado guardado en BD (el usuario lo confirmó manualmente)
+  // Si fue confirmado en BD → siempre verde aunque quede deuda calculada
+  // Si no fue confirmado → se basa en la deuda calculada en tiempo real
+  const cuadrado = cuadradoProp;            // ✅ confirmado en BD
+  const debiendo = !cuadradoProp && t.deuda > 0;  // 🚨 no confirmado Y tiene deuda
 
   return (
     <div style={{
@@ -605,7 +633,41 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
         </div>
 
         {/* Botones acción */}
-        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+
+          {/* BOTÓN CONFIRMAR / DESCONFIRMAR CUADRE */}
+          <button
+            onClick={onToggleCuadre}
+            disabled={guardandoCuadre}
+            title={cuadrado ? 'Cuadre confirmado — Click para desconfirmar' : 'Confirmar cuadre con este vendedor'}
+            style={{
+              background: cuadrado
+                ? 'linear-gradient(135deg, #059669, #06d6a0)'
+                : 'rgba(5,150,105,0.07)',
+              border: `1.5px solid ${cuadrado ? 'rgba(6,214,160,0.6)' : 'rgba(5,150,105,0.3)'}`,
+              color: cuadrado ? '#fff' : '#059669',
+              borderRadius: 6,
+              padding: '5px 12px',
+              cursor: guardandoCuadre ? 'wait' : 'pointer',
+              fontSize: '.72rem',
+              fontFamily: "'Share Tech Mono',monospace",
+              fontWeight: 700,
+              letterSpacing: '.5px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              opacity: guardandoCuadre ? 0.6 : 1,
+              transition: 'all .2s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {guardandoCuadre
+              ? <><span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2 }} /> GUARDANDO</>
+              : cuadrado
+                ? <><i className="bi bi-check2-circle" /> CUADRADO</>
+                : <><i className="bi bi-check-circle" /> CONFIRMAR</>}
+          </button>
+
           <button onClick={onAbono} title="Registrar abono"
             style={{ background: 'rgba(6,214,160,.08)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: '.75rem' }}>
             <i className="bi bi-plus-circle" />
