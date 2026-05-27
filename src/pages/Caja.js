@@ -7,7 +7,7 @@
 //   - Contabilidad en tiempo real: baja al marcar no pagado
 //   - Sin zonas, solo vendedores de la rifa
 // ============================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
@@ -192,6 +192,28 @@ export default function Caja() {
     }
   };
 
+  /* ── Toggle TODOS los números de un vendedor de una vez ── */
+  const handleToggleTodos = useCallback(async (vendedorId, rifaId, numeros, nuevoEstado) => {
+    if (!numeros.length) return;
+    // Optimistic update masivo
+    setPagosLocal(prev => {
+      const next = { ...prev };
+      for (const n of numeros) {
+        next[`${vendedorId}|${n.numero}|${n.serie}`] = nuevoEstado;
+      }
+      return next;
+    });
+    // Guardar en BD en paralelo (fire & forget con retry individual)
+    const promises = numeros.map(n =>
+      API.post(`/caja/rifas/${rifaId}/cobro-vendedores/${vendedorId}/pagar-numero`, {
+        numero: n.numero,
+        serie:  n.serie,
+        pagado: nuevoEstado,
+      }).catch(() => null)
+    );
+    await Promise.all(promises);
+  }, []); // eslint-disable-line
+
   /* ── Toggle cuadre de vendedor (persiste en BD) ── */
   const handleToggleCuadre = async (vendedorId, estadoActual) => {
     if (!rifaActiva?.id) return;
@@ -371,6 +393,7 @@ export default function Caja() {
                     onToggleNumero={(numero, serie, estadoActual) =>
                       handleToggleNumero(v.vendedor_id, rifaActiva.id, numero, serie, estadoActual)
                     }
+                    onToggleTodos={(numeros, estado) => handleToggleTodos(v.vendedor_id, rifaActiva.id, numeros, estado)}
                     onToggleCuadre={() => handleToggleCuadre(v.vendedor_id, cuadreLocal[v.vendedor_id] || false)}
                     onAbono={() => setModalAbono(v)}
                     onHistorial={() => setModalHistorial(v)}
@@ -689,7 +712,7 @@ function ResumenGlobal({ totales, totalVendedores, porcentaje, onCambiarPct, pre
 /* ═══════════════════════════════════════════
    TARJETA DE VENDEDOR — con números interactivos
 ═══════════════════════════════════════════ */
-function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando, esSim, cuadrado: cuadradoProp, guardandoCuadre, calcularTotales, onToggleNumero, onToggleCuadre, onAbono, onHistorial }) {
+function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando, esSim, cuadrado: cuadradoProp, guardandoCuadre, calcularTotales, onToggleNumero, onToggleTodos, onToggleCuadre, onAbono, onHistorial }) {
   const [expandida, setExpandida] = useState(false);
   const t = calcularTotales();
 
@@ -890,11 +913,22 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
       {expandida && (
         <div style={{ padding: '14px 16px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)' }}>
 
-          {/* Instrucción */}
-          <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ background: 'rgba(6,214,160,0.12)', border: '1px solid rgba(6,214,160,0.3)', color: '#06d6a0', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>VERDE = JUGÓ / PAGA</span>
-            <span style={{ background: 'rgba(230,57,70,0.1)', border: '1px solid rgba(230,57,70,0.3)', color: '#e63946', borderRadius: 4, padding: '1px 8px', fontSize: '.48rem', fontWeight: 700 }}>ROJO = NO JUGÓ / NO PAGÓ</span>
-            <span style={{ opacity: .6 }}>· Toca un número para cambiarlo</span>
+          {/* Instrucción + botones masivos */}
+          <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+            <span style={{ background: 'rgba(6,214,160,0.12)', border: '1px solid rgba(6,214,160,0.3)', color: '#06d6a0', borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>VERDE = JUGÓ</span>
+            <span style={{ background: 'rgba(230,57,70,0.1)', border: '1px solid rgba(230,57,70,0.3)', color: '#e63946', borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>ROJO = NO PAGÓ</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <button type="button"
+                onClick={() => onToggleTodos(vendedor.numeros || [], true)}
+                style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', fontWeight: 700, letterSpacing: '.5px', whiteSpace: 'nowrap' }}>
+                ✓ TODOS PAGAN
+              </button>
+              <button type="button"
+                onClick={() => onToggleTodos(vendedor.numeros || [], false)}
+                style={{ background: 'linear-gradient(135deg,#c0303a,#e63946)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', fontWeight: 700, letterSpacing: '.5px', whiteSpace: 'nowrap' }}>
+                ✗ NINGUNO PAGA
+              </button>
+            </div>
           </div>
 
           {/* Números por serie (en simultáneas se agrupan) */}
@@ -904,12 +938,24 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
               if (!nums.length) return null;
               return (
                 <div key={serie} style={{ marginBottom: 14 }}>
-                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', fontWeight: 800, letterSpacing: '1px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', fontWeight: 800, letterSpacing: '1px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ background: serie === 'A' ? '#f0f5ff' : '#fff0f5', border: `1px solid ${serie === 'A' ? '#4361ee30' : '#e91e8c30'}`, color: serie === 'A' ? '#4361ee' : '#e91e8c', borderRadius: 4, padding: '2px 9px', fontWeight: 900 }}>SERIE {serie}</span>
-                    <span style={{ color: 'var(--jordyn-muted)' }}>{nums.length} número{nums.length !== 1 ? 's' : ''}</span>
-                    <span style={{ color: '#06d6a0', marginLeft: 'auto' }}>
-                      {nums.filter(n => pagosLocal[`${vendedor.vendedor_id}|${n.numero}|${n.serie}`] !== false).length} jugaron
+                    <span style={{ color: 'var(--jordyn-muted)' }}>{nums.length} nums</span>
+                    <span style={{ color: '#06d6a0' }}>
+                      · {nums.filter(n => pagosLocal[`${vendedor.vendedor_id}|${n.numero}|${n.serie}`] !== false).length} jugaron
                     </span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                      <button type="button"
+                        onClick={() => onToggleTodos(nums, true)}
+                        style={{ background: '#059669', border: 'none', color: '#fff', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        ✓ Todos
+                      </button>
+                      <button type="button"
+                        onClick={() => onToggleTodos(nums, false)}
+                        style={{ background: '#e63946', border: 'none', color: '#fff', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        ✗ Ninguno
+                      </button>
+                    </div>
                   </div>
                   <GridNumeros
                     numeros={nums}
