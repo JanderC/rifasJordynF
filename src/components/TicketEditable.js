@@ -29,6 +29,84 @@ const px = (pt) => Math.round((Number(pt) || 0) * PT_TO_PX);
 const DRAG_THRESHOLD = 5;
 const SNAP_GRID = 10;
 
+// ── Subida de imagen desde galería ──────────────────────
+// Lee un File (de <input type="file">), lo dibuja en un canvas,
+// detecta si tiene transparencia (PNG/WebP sin fondo) y lo devuelve
+// como dataURL (base64). Reescala a MAX_DIM para no inflar el JSON.
+const MAX_IMG_DIM   = 1000;   // px del lado más largo
+const MAX_DATAURL_KB = 2200;  // aviso si pasa de ~2.2 MB
+
+function detectTransparency(ctx, w, h) {
+  // Muestrea el canal alfa; si hay píxeles con alfa < 250 => tiene fondo transparente
+  try {
+    const { data } = ctx.getImageData(0, 0, w, h);
+    let transparentes = 0;
+    const total = w * h;
+    // saltamos píxeles para que sea rápido en imágenes grandes
+    const paso = Math.max(1, Math.floor(total / 40000));
+    let muestreados = 0;
+    for (let i = 3; i < data.length; i += 4 * paso) {
+      muestreados++;
+      if (data[i] < 250) transparentes++;
+    }
+    // se considera "sin fondo" si al menos ~0.5% de la muestra es transparente
+    return muestreados > 0 && transparentes / muestreados > 0.005;
+  } catch (e) {
+    return false; // canvas "tainted" o error => asumimos sin transparencia
+  }
+}
+
+function processImageFile(file, { maxDim = MAX_IMG_DIM } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('No se recibió archivo'));
+    if (!file.type || !file.type.startsWith('image/')) {
+      return reject(new Error('El archivo no es una imagen'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      const imgEl = new Image();
+      imgEl.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+      imgEl.onload = () => {
+        let { naturalWidth: w, naturalHeight: h } = imgEl;
+        if (!w || !h) return reject(new Error('Imagen inválida'));
+
+        // reescalado proporcional
+        const escala = Math.min(1, maxDim / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * escala));
+        const ch = Math.max(1, Math.round(h * escala));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgEl, 0, 0, cw, ch);
+
+        // ¿PNG / WebP sin fondo? (JPEG nunca tiene alfa)
+        const puedeTenerAlfa = /png|webp|gif/i.test(file.type);
+        const transparente = puedeTenerAlfa && detectTransparency(ctx, cw, ch);
+
+        // Si es transparente => PNG (conserva el fondo recortado).
+        // Si no => JPEG comprimido (mucho más liviano).
+        const dataUrl = transparente
+          ? canvas.toDataURL('image/png')
+          : canvas.toDataURL('image/jpeg', 0.85);
+
+        resolve({
+          dataUrl,
+          transparente,
+          width: cw,
+          height: ch,
+          aspect: cw / ch,
+          sizeKB: Math.round((dataUrl.length * 0.75) / 1024),
+        });
+      };
+      imgEl.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const FUENTES = [
   { label: 'Poppins',      val: "'Poppins', sans-serif" },
   { label: 'Arial Black',  val: "'Arial Black', sans-serif" },
@@ -744,6 +822,9 @@ function ElementPanel({
   onHideBuiltin, onLayerToggle, onClose,
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [replaceErr, setReplaceErr] = useState('');
+  const replaceFileRef = useRef(null);
   if (!selection) return null;
 
   // ── Determinar tipo y meta ──
@@ -929,15 +1010,73 @@ function ElementPanel({
               borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
         </div>
         <div style={{ padding: 14, overflowY: 'auto' }}>
-          {/* URL */}
-          <label style={labelStyle}>🔗 URL de la imagen</label>
-          <input type="text" value={img.src || ''}
-            onChange={e => onUpdateImage(img.id, { src: e.target.value })}
-            placeholder="https://..."
+          {/* Reemplazar imagen */}
+          <input
+            ref={replaceFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files && e.target.files[0];
+              e.target.value = '';
+              if (!file) return;
+              setReplaceErr('');
+              setReplacing(true);
+              try {
+                const r = await processImageFile(file);
+                if (r.sizeKB > MAX_DATAURL_KB) {
+                  setReplaceErr(`Pesa ~${(r.sizeKB / 1024).toFixed(1)} MB; puede tardar en guardar.`);
+                }
+                onUpdateImage(img.id, {
+                  src: r.dataUrl,
+                  transparente: r.transparente,
+                  objectFit: r.transparente ? 'contain' : (img.objectFit || 'cover'),
+                });
+              } catch (err) {
+                setReplaceErr(err.message || 'No se pudo procesar la imagen');
+              } finally {
+                setReplacing(false);
+              }
+            }}
+          />
+          <button
+            onClick={() => replaceFileRef.current && replaceFileRef.current.click()}
+            disabled={replacing}
+            style={{
+              width: '100%', padding: '11px',
+              background: replacing ? '#9ad8e3' : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+              color: '#fff', border: 'none', borderRadius: 7,
+              cursor: replacing ? 'wait' : 'pointer',
+              fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+              marginBottom: 8, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 8,
+            }}>
+            {replacing ? '⏳ Procesando…' : '📁 Cambiar imagen (galería)'}
+          </button>
+
+          {img.transparente && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#ecfeff', border: '1px solid #a5f3fc',
+              borderRadius: 6, padding: '6px 8px', marginBottom: 10,
+              fontSize: 11, color: '#0e7490', fontWeight: 600,
+            }}>
+              ✨ PNG sin fondo detectado — se conserva la transparencia
+            </div>
+          )}
+
+          {replaceErr && (
+            <p style={{ fontSize: 11, color: '#d92626', margin: '0 0 10px', fontWeight: 600 }}>
+              ⚠️ {replaceErr}
+            </p>
+          )}
+
+          {/* URL (opcional / avanzado) */}
+          <label style={labelStyle}>🔗 …o pega una URL</label>
+          <input type="text" value={(img.src || '').startsWith('data:') ? '' : (img.src || '')}
+            onChange={e => onUpdateImage(img.id, { src: e.target.value, transparente: false })}
+            placeholder={(img.src || '').startsWith('data:') ? 'Imagen subida desde galería' : 'https://...'}
             style={{ ...inputStyle, marginBottom: 12 }} />
-          <p style={{ fontSize: 11, color: '#999', margin: '-6px 0 12px' }}>
-            Usa URLs públicas (Imgur, Cloudinary, etc.)
-          </p>
 
           {/* Tamaño */}
           <NumberSlider label="↔ Ancho" suffix="px" min={20} max={600}
@@ -1524,6 +1663,30 @@ function FormasPanel({ onAdd, onClose }) {
 ═════════════════════════════════════════════════════════════ */
 function ImagenPanel({ onAdd, onClose }) {
   const [url, setUrl] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // permite re-subir el mismo archivo
+    if (!file) return;
+    setError('');
+    setCargando(true);
+    try {
+      const r = await processImageFile(file);
+      if (r.sizeKB > MAX_DATAURL_KB) {
+        setError(`La imagen pesa ~${(r.sizeKB / 1024).toFixed(1)} MB. Puede tardar en guardar; prueba con una más pequeña.`);
+      }
+      // onAdd recibe el dataURL + metadatos (transparencia, aspecto)
+      onAdd(r.dataUrl, { transparente: r.transparente, aspect: r.aspect });
+    } catch (err) {
+      setError(err.message || 'No se pudo procesar la imagen');
+    } finally {
+      setCargando(false);
+    }
+  };
+
   return (
     <div style={{
       width: 280, background: '#fff',
@@ -1545,25 +1708,64 @@ function ImagenPanel({ onAdd, onClose }) {
             borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
       </div>
       <div style={{ padding: 14 }}>
-        <label style={labelStyle}>🔗 URL pública de la imagen</label>
+        {/* ── Subir desde galería ── */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={handleFile}
+          style={{ display: 'none' }}
+        />
+        <button
+          onClick={() => fileRef.current && fileRef.current.click()}
+          disabled={cargando}
+          style={{
+            width: '100%', padding: '14px',
+            background: cargando ? '#9ad8e3' : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+            color: '#fff', border: 'none', borderRadius: 8,
+            cursor: cargando ? 'wait' : 'pointer',
+            fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+            marginBottom: 8, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 8,
+          }}>
+          {cargando ? '⏳ Procesando…' : '📁 Subir desde mi galería'}
+        </button>
+        <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
+          PNG, JPG o WebP. Si el PNG no tiene fondo, se detecta solo y se
+          conserva la transparencia. ✨
+        </p>
+
+        {error && (
+          <p style={{ fontSize: 11, color: '#d92626', margin: '6px 0 0', fontWeight: 600 }}>
+            ⚠️ {error}
+          </p>
+        )}
+
+        {/* ── Alternativa: URL ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          margin: '14px 0 10px', color: '#bbb', fontSize: 11,
+        }}>
+          <div style={{ flex: 1, height: 1, background: '#eee' }} />
+          o pega una URL
+          <div style={{ flex: 1, height: 1, background: '#eee' }} />
+        </div>
+        <label style={labelStyle}>🔗 URL pública</label>
         <input type="text" value={url}
           onChange={e => setUrl(e.target.value)}
           placeholder="https://i.imgur.com/..."
           style={{ ...inputStyle, marginBottom: 8 }} />
-        <p style={{ fontSize: 11, color: '#888', margin: '0 0 12px' }}>
-          Sube tu imagen a <strong>Imgur</strong>, <strong>Cloudinary</strong>,
-          o usa una URL directa terminada en .jpg/.png/.webp
-        </p>
         <button onClick={() => { if (url.trim()) { onAdd(url.trim()); setUrl(''); } }}
           disabled={!url.trim()}
           style={{
-            width: '100%', padding: '10px',
-            background: url.trim() ? '#06b6d4' : '#ccc',
-            color: '#fff', border: 'none', borderRadius: 6,
+            width: '100%', padding: '9px',
+            background: url.trim() ? '#fff' : '#f5f5f5',
+            color: url.trim() ? '#06b6d4' : '#bbb',
+            border: '1.5px solid ' + (url.trim() ? '#06b6d4' : '#ddd'),
+            borderRadius: 6,
             cursor: url.trim() ? 'pointer' : 'not-allowed',
-            fontSize: 13, fontWeight: 700,
-            fontFamily: 'inherit',
-          }}>+ Agregar imagen</button>
+            fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+          }}>+ Agregar desde URL</button>
       </div>
     </div>
   );
@@ -1962,16 +2164,30 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
   };
 
   // ── Agregar imagen ──
-  const handleAddImage = (src) => {
+  // src puede ser una URL o un dataURL (base64) venido de la galería.
+  // meta?: { transparente, aspect }
+  const handleAddImage = (src, meta = {}) => {
     const newId = `img_${Date.now()}`;
+    const transparente = !!meta.transparente;
+
+    // dimensión inicial respetando proporción (máx 200px de lado largo)
+    let w = 160, h = 120;
+    if (meta.aspect && meta.aspect > 0) {
+      if (meta.aspect >= 1) { w = 200; h = Math.round(200 / meta.aspect); }
+      else { h = 200; w = Math.round(200 * meta.aspect); }
+    }
+
     const nuevaImg = {
       id: newId, src,
-      x: Math.round(D.ticketWidth / 2 - 80),
-      y: Math.round(D.ticketHeight / 2 - 60),
-      width: 160, height: 120,
+      x: Math.round(D.ticketWidth / 2 - w / 2),
+      y: Math.round(D.ticketHeight / 2 - h / 2),
+      width: w, height: h,
       rotation: 0, opacity: 1,
       blendMode: 'normal', borderRadius: 0,
-      layer: 'back', objectFit: 'cover',
+      layer: 'back',
+      // si no tiene fondo, "contain" evita recortar el recorte transparente
+      objectFit: transparente ? 'contain' : 'cover',
+      transparente,                 // bandera para mostrarlo en el panel
       grayscale: 0, sepia: 0, blur: 0, brightness: 1,
     };
     onUpdate('customImages', [...customImages, nuevaImg]);
