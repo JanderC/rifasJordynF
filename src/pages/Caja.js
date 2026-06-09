@@ -1140,4 +1140,4 @@ function ModalBase({ title, onClose, children, wide }) {
       </div>
     </div>
   );
-}ue 
+} 
