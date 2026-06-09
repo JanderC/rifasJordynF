@@ -1,11 +1,9 @@
 // ============================================================
-//   RIFAS JORDYN — Caja.js (v5 — Remodelación completa)
-//   - Muestra vendedores de la rifa activa con sus números
-//   - Precio al 50% aplicado automáticamente
-//   - Números arrancan en VERDE (todos asignados = vendidos por defecto)
-//   - Solo se marca ROJO si al cuadrar un número no jugó / no pagaron
-//   - Contabilidad en tiempo real: baja al marcar no pagado
-//   - Sin zonas, solo vendedores de la rifa
+//   RIFAS JORDYN — Caja.js (v6 — Refactorización: Sin grilla de números)
+//   - Los números se usan SOLO para calcular el total a cobrar
+//   - Botón VENTA: el dueño ingresa manualmente el monto que recibió
+//   - Botón ABONAR: descuenta de la deuda del vendedor
+//   - Sin toggle de números individuales — cuadre es por monto, no por número
 // ============================================================
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
@@ -51,20 +49,26 @@ export default function Caja() {
   const [loadingVends, setLoadingVends] = useState(false);
   const [buscar,       setBuscar]       = useState('');
 
-  const [pagosLocal,      setPagosLocal]      = useState({});
-  const [guardando,       setGuardando]       = useState({});
+  // ── Estado de cuadre por vendedor ──
   const [cuadreLocal,     setCuadreLocal]     = useState({});
   const [guardandoCuadre, setGuardandoCuadre] = useState({});
 
+  // ── Deudas / modales ──
   const [modalDeudas,       setModalDeudas]       = useState(false);
   const [deudasVencidas,    setDeudasVencidas]    = useState([]);
   const [deudasConfirmadas, setDeudasConfirmadas] = useState(false);
   const [deudasAnteriores,  setDeudasAnteriores]  = useState([]);
-  const [modalAbono,        setModalAbono]        = useState(null);
-  const [modalHistorial,    setModalHistorial]    = useState(null);
   const [detalleSemana,     setDetalleSemana]     = useState(null);
 
-  /* ── Carga lista de rifas activas para el selector ── */
+  // ── Modales de cobro ──
+  const [modalVenta,   setModalVenta]   = useState(null); // vendedor para registrar venta
+  const [modalAbono,   setModalAbono]   = useState(null); // vendedor para abonar
+  const [modalDetalle, setModalDetalle] = useState(null); // historial / detalle
+
+  // ── Mapa de pagos de lotes: vendedorId → { por_pagar, abono, pendiente, lote_id } ──
+  const [lotesMap, setLotesMap] = useState({});
+
+  /* ── Carga lista de rifas ── */
   useEffect(() => {
     (async () => {
       setLoadingRifas(true);
@@ -72,7 +76,6 @@ export default function Caja() {
         const r = await API.get('/rifas');
         const activas = (r.data || []).filter(rf => rf.activa && rf.estado !== 'archivada');
         setRifasDisponibles(activas);
-        // Datos de deudas
         try {
           const ra = await API.get('/caja/rifa-activa');
           setDeudasAnteriores(ra.data.deudas_anteriores || []);
@@ -82,7 +85,6 @@ export default function Caja() {
           }
           if (ra.data.semana) setDetalleSemana(ra.data.semana);
         } catch {}
-        // Pre-seleccionar si solo hay una rifa activa
         if (activas.length === 1) setRifaActiva(activas[0]);
       } catch {
         toast.error('Error cargando rifas');
@@ -92,47 +94,35 @@ export default function Caja() {
     })();
   }, []); // eslint-disable-line
 
-  /* ── Al seleccionar una rifa, limpiar y cargar sus vendedores ── */
+  /* ── Al seleccionar una rifa, limpiar y cargar vendedores ── */
   useEffect(() => {
     if (!rifaActiva?.id) return;
     setBuscar('');
-    setPagosLocal({});
     setCuadreLocal({});
     setVendedores([]);
+    setLotesMap({});
     cargarVendedores(rifaActiva.id, 50);
   }, [rifaActiva?.id]); // eslint-disable-line
 
   const cargarVendedores = async (rifaId, pct) => {
     setLoadingVends(true);
     try {
-      // Fuente correcta: boleteria-vendedores trae EXACTAMENTE los vendedores
-      // de esta rifa (rifa_vendedores_sel + numeros_vendedor + extras)
-      // 1. Vendedores exactos de esta rifa
-      const bolRes = await API.get(`/rifas/${rifaId}/boleteria-vendedores`);
-
-      // 2. Estados de pago y cuadre (cobro-vendedores — solo para leer pagosMap y cuadreMap)
+      // 1. Vendedores con sus números (para calcular total a cobrar)
+      const bolRes  = await API.get(`/rifas/${rifaId}/boleteria-vendedores`);
+      // 2. Precio y cuadre
       const pagosRes = await API.get(`/caja/rifas/${rifaId}/cobro-vendedores?porcentaje=${pct}`).catch(() => null);
 
-      // Precio con porcentaje (viene del endpoint de cobro, o lo calculamos del rifaActiva)
       const precioEfectivo = pagosRes?.data?.precio_boleto_efectivo || 0;
       setPrecioPorNum(precioEfectivo);
       setPorcentaje(pagosRes?.data?.porcentaje || pct);
 
-      // Mapa de pagos desde la BD (caja_pagos_numero) — keyed por vendedorId|numero|serie
-      const pagosMap = {};
-      for (const v of (pagosRes?.data?.vendedores || [])) {
-        for (const n of (v.numeros || [])) {
-          pagosMap[`${v.vendedor_id}|${n.numero}|${n.serie}`] = n.pagado !== false;
-        }
-      }
-
-      // Mapa de cuadre confirmado en BD
+      // Mapa de cuadre
       const cuadreMap = {};
       for (const v of (pagosRes?.data?.vendedores || [])) {
         cuadreMap[v.vendedor_id] = v.cuadrado || false;
       }
 
-      // Vendedores desde boleteria (fuente correcta)
+      // Construir vendedores — guardamos los números internamente para el cálculo
       const vends = (bolRes.data.vendedores || []).map(v => {
         const numeros = (v.numeros_fijos || []).map(n => ({
           numero: String(n.numero).padStart(3, '0'),
@@ -143,23 +133,27 @@ export default function Caja() {
           vendedor_id:     v.vendedor_id,
           vendedor_nombre: v.vendedor_nombre,
           cedula:          v.cedula,
-          numeros,
+          numeros,        // usados solo para contar
           cuadrado:        cuadreMap[v.vendedor_id] || false,
         };
       });
 
       setVendedores(vends);
-
-      // Inicializar pagos: verde por defecto, rojo solo si fue marcado explícitamente
-      const map = {};
-      for (const v of vends) {
-        for (const n of v.numeros) {
-          const key = `${v.vendedor_id}|${n.numero}|${n.serie}`;
-          map[key] = pagosMap.hasOwnProperty(key) ? pagosMap[key] : true;
-        }
-      }
-      setPagosLocal(map);
       setCuadreLocal(cuadreMap);
+
+      // 3. Cargar los lotes de la semana para obtener por_pagar / abono / pendiente
+      if (detalleSemana?.id) {
+        await cargarLotes(detalleSemana.id, vends);
+      } else {
+        // Intentar obtener la semana
+        try {
+          const ra = await API.get('/caja/rifa-activa');
+          if (ra.data.semana) {
+            setDetalleSemana(ra.data.semana);
+            await cargarLotes(ra.data.semana.id, vends);
+          }
+        } catch {}
+      }
     } catch (err) {
       toast.error('Error cargando vendedores');
       console.error(err);
@@ -168,96 +162,39 @@ export default function Caja() {
     }
   };
 
-  /* ── Toggle número (verde ↔ rojo) ── */
-  const handleToggleNumero = async (vendedorId, rifaId, numero, serie, estadoActual) => {
-    const key = `${vendedorId}|${numero}|${serie}`;
-    const nuevoPagado = !estadoActual;
-
-    // Optimistic update
-    setPagosLocal(prev => ({ ...prev, [key]: nuevoPagado }));
-    setGuardando(prev => ({ ...prev, [key]: true }));
-
+  const cargarLotes = async (semanaId, vends) => {
     try {
-      await API.post(`/caja/rifas/${rifaId}/cobro-vendedores/${vendedorId}/pagar-numero`, {
-        numero,
-        serie,
-        pagado: nuevoPagado,
-      });
-    } catch {
-      // Revertir si falla
-      setPagosLocal(prev => ({ ...prev, [key]: estadoActual }));
-      toast.error('Error actualizando número');
-    } finally {
-      setGuardando(prev => ({ ...prev, [key]: false }));
-    }
-  };
-
-  /* ── Toggle TODOS los números de un vendedor de una vez ── */
-  const handleToggleTodos = useCallback(async (vendedorId, rifaId, numeros, nuevoEstado) => {
-    if (!numeros.length) return;
-    // Optimistic update masivo
-    setPagosLocal(prev => {
-      const next = { ...prev };
-      for (const n of numeros) {
-        next[`${vendedorId}|${n.numero}|${n.serie}`] = nuevoEstado;
+      const r = await API.get(`/caja/semanas/${semanaId}`);
+      const lotes = r.data.lotes || [];
+      const map = {};
+      for (const lote of lotes) {
+        if (lote.vendedor_id) {
+          map[lote.vendedor_id] = {
+            lote_id:    lote.id,
+            por_pagar:  Number(lote.por_pagar  || 0),
+            abono:      Number(lote.abono      || 0),
+            pendiente:  Number(lote.pendiente  || 0),
+            estado:     lote.estado,
+          };
+        }
       }
-      return next;
-    });
-    // Guardar en BD en paralelo (fire & forget con retry individual)
-    const promises = numeros.map(n =>
-      API.post(`/caja/rifas/${rifaId}/cobro-vendedores/${vendedorId}/pagar-numero`, {
-        numero: n.numero,
-        serie:  n.serie,
-        pagado: nuevoEstado,
-      }).catch(() => null)
-    );
-    await Promise.all(promises);
-  }, []); // eslint-disable-line
-
-  /* ── Toggle cuadre de vendedor (persiste en BD) ── */
-  const handleToggleCuadre = async (vendedorId, estadoActual) => {
-    if (!rifaActiva?.id) return;
-    const nuevo = !estadoActual;
-    // Optimistic update
-    setCuadreLocal(prev => ({ ...prev, [vendedorId]: nuevo }));
-    setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: true }));
-    try {
-      await API.put(`/caja/rifas/${rifaActiva.id}/cuadre/${vendedorId}`, { cuadrado: nuevo });
-    } catch {
-      // Revertir si falla
-      setCuadreLocal(prev => ({ ...prev, [vendedorId]: estadoActual }));
-      toast.error('Error guardando estado de cuadre');
-    } finally {
-      setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: false }));
-    }
-  };
-
-  /* ── Cambiar porcentaje ── */
-  const handleCambiarPct = async (nuevoPct) => {
-    if (!rifaActiva?.id) return;
-    setPorcentaje(nuevoPct);
-    await cargarVendedores(rifaActiva.id, nuevoPct);
-    // Guardar en backend
-    try {
-      await API.put(`/caja/rifas/${rifaActiva.id}/cobro-vendedores/porcentaje`, { porcentaje: nuevoPct });
+      setLotesMap(map);
     } catch {}
   };
 
-  /* ── Calcular totales en tiempo real usando pagosLocal ── */
-  const calcularTotalesVendedor = (vendedor) => {
-    const nums = vendedor.numeros || [];
-    let pagados = 0;
-    for (const n of nums) {
-      const key = `${vendedor.vendedor_id}|${n.numero}|${n.serie}`;
-      if (pagosLocal[key] === true) pagados++;
-    }
-    const total       = nums.length;
-    const noPagados   = total - pagados;
-    const deuda       = +(precioPorNum * noPagados).toFixed(2);
-    const cobrado     = +(precioPorNum * pagados).toFixed(2);
-    const totalCobrar = +(precioPorNum * total).toFixed(2);
-    return { total, pagados, noPagados, deuda, cobrado, totalCobrar };
-  };
+  /* ── Calcular totales de un vendedor usando precioPorNum × cantidad ── */
+  const calcularTotalesVendedor = useCallback((vendedor, precioOverride) => {
+    const precio    = precioOverride ?? precioPorNum;
+    const cantidad  = (vendedor.numeros || []).length;
+    const totalCobrar = +(precio * cantidad).toFixed(2);
+
+    // Monto cobrado / deuda vienen del lote real (más fidedigno)
+    const lote      = lotesMap[vendedor.vendedor_id];
+    const cobrado   = lote ? lote.abono      : 0;
+    const deuda     = lote ? lote.pendiente  : totalCobrar;
+
+    return { cantidad, totalCobrar, cobrado, deuda };
+  }, [precioPorNum, lotesMap]);
 
   /* ── Totales globales ── */
   const totalesGlobales = (() => {
@@ -270,6 +207,49 @@ export default function Caja() {
     }
     return { totalCobrar, totalDeuda, totalCobrado };
   })();
+
+  /* ── Toggle cuadre ── */
+  const handleToggleCuadre = async (vendedorId, estadoActual) => {
+    if (!rifaActiva?.id) return;
+    const nuevo = !estadoActual;
+    setCuadreLocal(prev => ({ ...prev, [vendedorId]: nuevo }));
+    setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: true }));
+    try {
+      await API.put(`/caja/rifas/${rifaActiva.id}/cuadre/${vendedorId}`, { cuadrado: nuevo });
+    } catch {
+      setCuadreLocal(prev => ({ ...prev, [vendedorId]: estadoActual }));
+      toast.error('Error guardando estado de cuadre');
+    } finally {
+      setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: false }));
+    }
+  };
+
+  /* ── Cambiar porcentaje ── */
+  const handleCambiarPct = async (nuevoPct) => {
+    if (!rifaActiva?.id) return;
+    setPorcentaje(nuevoPct);
+    await cargarVendedores(rifaActiva.id, nuevoPct);
+    try {
+      await API.put(`/caja/rifas/${rifaActiva.id}/cobro-vendedores/porcentaje`, { porcentaje: nuevoPct });
+    } catch {}
+  };
+
+  /* ── Guardar venta (monto recibido del vendedor) ── */
+  const handleGuardarVenta = async ({ lote_id, monto, nota }) => {
+    await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Venta' });
+    toast.success(`Venta de ${COP(monto)} registrada`);
+    setModalVenta(null);
+    // Refrescar lotes
+    if (detalleSemana?.id) await cargarLotes(detalleSemana.id, vendedores);
+  };
+
+  /* ── Guardar abono ── */
+  const handleGuardarAbono = async ({ lote_id, monto, nota }) => {
+    await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Abono' });
+    toast.success(`Abono de ${COP(monto)} registrado`);
+    setModalAbono(null);
+    if (detalleSemana?.id) await cargarLotes(detalleSemana.id, vendedores);
+  };
 
   /* ── Filtro búsqueda ── */
   const vendedoresFiltrados = buscar.trim()
@@ -316,10 +296,8 @@ export default function Caja() {
         {/* ══ CONTENIDO DE LA RIFA SELECCIONADA ══ */}
         {rifaActiva && (
           <>
-            {/* Banner rifa */}
             <BannerRifaActiva rifa={rifaActiva} />
 
-            {/* Deudas anteriores */}
             {deudasAnteriores.length > 0 && (
               <SeccionDeudasAnteriores
                 deudas={deudasAnteriores}
@@ -334,7 +312,6 @@ export default function Caja() {
               />
             )}
 
-            {/* ── Resumen global ── */}
             <ResumenGlobal
               totales={totalesGlobales}
               totalVendedores={vendedores.length}
@@ -382,21 +359,15 @@ export default function Caja() {
                   <TarjetaVendedor
                     key={v.vendedor_id}
                     vendedor={v}
-                    rifaId={rifaActiva.id}
                     precioPorNum={precioPorNum}
-                    pagosLocal={pagosLocal}
-                    guardando={guardando}
-                    esSim={rifaActiva.tipo === 'simultanea'}
+                    lote={lotesMap[v.vendedor_id] || null}
                     cuadrado={cuadreLocal[v.vendedor_id] || false}
                     guardandoCuadre={guardandoCuadre[v.vendedor_id] || false}
                     calcularTotales={() => calcularTotalesVendedor(v)}
-                    onToggleNumero={(numero, serie, estadoActual) =>
-                      handleToggleNumero(v.vendedor_id, rifaActiva.id, numero, serie, estadoActual)
-                    }
-                    onToggleTodos={(numeros, estado) => handleToggleTodos(v.vendedor_id, rifaActiva.id, numeros, estado)}
                     onToggleCuadre={() => handleToggleCuadre(v.vendedor_id, cuadreLocal[v.vendedor_id] || false)}
+                    onVenta={() => setModalVenta(v)}
                     onAbono={() => setModalAbono(v)}
-                    onHistorial={() => setModalHistorial(v)}
+                    onDetalle={() => setModalDetalle(v)}
                   />
                 ))}
               </div>
@@ -406,25 +377,33 @@ export default function Caja() {
       </div>
 
       {/* ══ MODALES ══ */}
-      {modalAbono && (
-        <ModalAbono
-          vendedor={modalAbono}
-          detalleSemana={detalleSemana}
-          onClose={() => setModalAbono(null)}
-          onSave={async ({ lote_id, monto, nota }) => {
-            await API.post('/caja/abonos', { lote_id, monto, nota });
-            toast.success(`Abono de ${COP(monto)} registrado`);
-            setModalAbono(null);
-          }}
+      {modalVenta && (
+        <ModalVenta
+          vendedor={modalVenta}
+          lote={lotesMap[modalVenta.vendedor_id] || null}
+          precioPorNum={precioPorNum}
+          onClose={() => setModalVenta(null)}
+          onSave={handleGuardarVenta}
         />
       )}
 
-      {modalHistorial && (
-        <ModalHistorialVendedor
-          vendedor={modalHistorial}
+      {modalAbono && (
+        <ModalAbono
+          vendedor={modalAbono}
+          lote={lotesMap[modalAbono.vendedor_id] || null}
           precioPorNum={precioPorNum}
-          calcularTotales={() => calcularTotalesVendedor(modalHistorial)}
-          onClose={() => setModalHistorial(null)}
+          onClose={() => setModalAbono(null)}
+          onSave={handleGuardarAbono}
+        />
+      )}
+
+      {modalDetalle && (
+        <ModalDetalleVendedor
+          vendedor={modalDetalle}
+          lote={lotesMap[modalDetalle.vendedor_id] || null}
+          precioPorNum={precioPorNum}
+          calcularTotales={() => calcularTotalesVendedor(modalDetalle)}
+          onClose={() => setModalDetalle(null)}
         />
       )}
     </Layout>
@@ -453,121 +432,40 @@ function SelectorRifa({ rifas, rifaSeleccionada, loading, onSeleccionar }) {
     );
   }
 
-  if (!rifas.length) return null;
-
-  // Si solo hay una, mostrar solo el banner sin selector
-  if (rifas.length === 1) return null;
+  if (!rifas.length || rifas.length === 1) return null;
 
   return (
-    <div style={{
-      background: 'var(--jordyn-bg2)',
-      border: '1.5px solid rgba(124,58,237,0.25)',
-      borderRadius: 12,
-      padding: '14px 18px',
-    }}>
-      <div style={{
-        fontFamily: "'Share Tech Mono',monospace",
-        fontSize: '.55rem',
-        color: '#a78bfa',
-        letterSpacing: '2px',
-        fontWeight: 700,
-        marginBottom: 10,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-      }}>
+    <div style={{ background: 'var(--jordyn-bg2)', border: '1.5px solid rgba(124,58,237,0.25)', borderRadius: 12, padding: '14px 18px' }}>
+      <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
         <i className="bi bi-collection-fill" />
         SELECCIONAR RIFA A CUADRAR
-        <span style={{ color: 'var(--jordyn-muted)', fontWeight: 400, marginLeft: 4 }}>
-          · {rifas.length} rifas activas
-        </span>
+        <span style={{ color: 'var(--jordyn-muted)', fontWeight: 400, marginLeft: 4 }}>· {rifas.length} rifas activas</span>
       </div>
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rifas.map(rifa => {
           const seleccionada = rifaSeleccionada?.id === rifa.id;
           return (
-            <button
-              key={rifa.id}
-              type="button"
-              onClick={() => onSeleccionar(rifa)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                background: seleccionada
-                  ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(124,58,237,0.06))'
-                  : '#fff',
-                border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`,
-                borderRadius: 9,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                textAlign: 'left',
-                transition: 'all .15s',
-                boxShadow: seleccionada ? '0 2px 12px rgba(124,58,237,0.15)' : 'none',
-              }}
-              onMouseEnter={e => {
-                if (!seleccionada) e.currentTarget.style.borderColor = 'rgba(124,58,237,0.4)';
-              }}
-              onMouseLeave={e => {
-                if (!seleccionada) e.currentTarget.style.borderColor = 'var(--jordyn-border)';
-              }}
-            >
-              {/* Indicador seleccionada */}
-              <div style={{
-                width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                background: seleccionada ? '#7c3aed' : 'var(--jordyn-border)',
-                border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {seleccionada && (
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />
-                )}
+            <button key={rifa.id} type="button" onClick={() => onSeleccionar(rifa)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: seleccionada ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(124,58,237,0.06))' : '#fff', border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`, borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .15s', boxShadow: seleccionada ? '0 2px 12px rgba(124,58,237,0.15)' : 'none' }}>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: seleccionada ? '#7c3aed' : 'var(--jordyn-border)', border: `2px solid ${seleccionada ? '#7c3aed' : 'var(--jordyn-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {seleccionada && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />}
               </div>
-
-              {/* Info rifa */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontFamily: "'Oswald',sans-serif",
-                  fontSize: '.95rem',
-                  fontWeight: 700,
-                  color: seleccionada ? '#7c3aed' : 'var(--jordyn-text)',
-                  lineHeight: 1.1,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {rifa.nombre}
-                </div>
-                <div style={{
-                  fontFamily: "'Share Tech Mono',monospace",
-                  fontSize: '.5rem',
-                  color: 'var(--jordyn-muted)',
-                  marginTop: 3,
-                  display: 'flex', gap: 8, flexWrap: 'wrap',
-                }}>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: '.95rem', fontWeight: 700, color: seleccionada ? '#7c3aed' : 'var(--jordyn-text)', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rifa.nombre}</div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <span>🏆 {rifa.premio}</span>
                   <span>📅 {fmtFechaCorta(rifa.fecha_sorteo)}</span>
                   {rifa.tipo === 'simultanea' && <span style={{ color: '#a78bfa' }}>⚡ Simultánea</span>}
                 </div>
               </div>
-
-              {/* Precio */}
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>PRECIO</div>
                 <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: seleccionada ? '#7c3aed' : 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>
                   {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(rifa.precio || 0)}
                 </div>
               </div>
-
-              {/* Check activa */}
               {seleccionada && (
-                <div style={{
-                  background: '#7c3aed', color: '#fff',
-                  borderRadius: 6, padding: '4px 10px',
-                  fontFamily: "'Share Tech Mono',monospace",
-                  fontSize: '.52rem', fontWeight: 700, letterSpacing: '1px',
-                  flexShrink: 0,
-                }}>
+                <div style={{ background: '#7c3aed', color: '#fff', borderRadius: 6, padding: '4px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
                   ✓ ACTIVA
                 </div>
               )}
@@ -588,25 +486,12 @@ function BannerRifaActiva({ rifa }) {
   const diasRestantes = sorteo ? Math.ceil((sorteo - hoy) / (1000 * 60 * 60 * 24)) : null;
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, var(--jordyn-bg2), rgba(10,191,188,0.04))',
-      border: '1px solid rgba(10,191,188,0.2)',
-      borderRadius: 12,
-      padding: '16px 20px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 16,
-      flexWrap: 'wrap',
-    }}>
+    <div style={{ background: 'linear-gradient(135deg, var(--jordyn-bg2), rgba(10,191,188,0.04))', border: '1px solid rgba(10,191,188,0.2)', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
       <div style={{ flex: 1, minWidth: 200 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-          <span style={{ background: 'rgba(6,214,160,.12)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', borderRadius: 4, padding: '2px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', letterSpacing: '2px' }}>
-            🟢 EN CURSO
-          </span>
+          <span style={{ background: 'rgba(6,214,160,.12)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', borderRadius: 4, padding: '2px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', letterSpacing: '2px' }}>🟢 EN CURSO</span>
           {rifa.tipo === 'simultanea' && (
-            <span style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.25)', color: '#a78bfa', borderRadius: 4, padding: '2px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', letterSpacing: '1px' }}>
-              ⚡ SIMULTÁNEA
-            </span>
+            <span style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.25)', color: '#a78bfa', borderRadius: 4, padding: '2px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', letterSpacing: '1px' }}>⚡ SIMULTÁNEA</span>
           )}
           {diasRestantes !== null && (
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: diasRestantes <= 3 ? '#e63946' : 'var(--jordyn-muted)', letterSpacing: '1px' }}>
@@ -614,11 +499,9 @@ function BannerRifaActiva({ rifa }) {
             </span>
           )}
         </div>
-        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: 'var(--jordyn-primary)', letterSpacing: '3px', lineHeight: 1 }}>
-          {rifa.nombre}
-        </div>
+        <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: 'var(--jordyn-primary)', letterSpacing: '3px', lineHeight: 1 }}>{rifa.nombre}</div>
         <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>
-          {COP(rifa.precio)}/boleto · Sorteo: {fmtFecha(rifa.fecha_sorteo)}
+          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(rifa.precio || 0)}/boleto · Sorteo: {fmtFecha(rifa.fecha_sorteo)}
           {fmtHoraSorteo(rifa.hora_sorteo) && ` · 🕐 ${fmtHoraSorteo(rifa.hora_sorteo)}`}
           {rifa.loteria_ref && ` · ${rifa.loteria_ref}`}
         </div>
@@ -649,7 +532,6 @@ function ResumenGlobal({ totales, totalVendedores, porcentaje, onCambiarPct, pre
 
   return (
     <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 12, padding: '14px 18px' }}>
-      {/* Cards de totales */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 14 }}>
         {[
           { label: 'TOTAL A COBRAR', value: COP(totales.totalCobrar),  color: 'var(--jordyn-primary)', icon: 'bi-cash' },
@@ -676,14 +558,10 @@ function ResumenGlobal({ totales, totalVendedores, porcentaje, onCambiarPct, pre
         </div>
         {editandoPct ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="number" min="1" max="100"
-              value={pctInput}
-              onChange={e => setPctInput(e.target.value)}
+            <input type="number" min="1" max="100" value={pctInput} onChange={e => setPctInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleGuardarPct()}
               style={{ width: 60, padding: '4px 8px', border: '1.5px solid #a78bfa', borderRadius: 6, fontFamily: "'Share Tech Mono',monospace", fontSize: '.78rem', fontWeight: 700, textAlign: 'center', color: 'var(--jordyn-text)', background: '#fff' }}
-              autoFocus
-            />
+              autoFocus />
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>%</span>
             <button onClick={handleGuardarPct} style={{ background: '#7c3aed', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: '.72rem', fontWeight: 700, fontFamily: 'inherit' }}>OK</button>
             <button onClick={() => { setEditandoPct(false); setPctInput(String(porcentaje)); }} style={{ background: 'transparent', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: '.72rem' }}>✕</button>
@@ -708,22 +586,12 @@ function ResumenGlobal({ totales, totalVendedores, porcentaje, onCambiarPct, pre
 }
 
 /* ═══════════════════════════════════════════
-   TARJETA DE VENDEDOR — con números interactivos
+   TARJETA DE VENDEDOR — sin grid de números
 ═══════════════════════════════════════════ */
-function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando, esSim, cuadrado: cuadradoProp, guardandoCuadre, calcularTotales, onToggleNumero, onToggleTodos, onToggleCuadre, onAbono, onHistorial }) {
-  const [expandida, setExpandida] = useState(false);
+function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadrado, guardandoCuadre, calcularTotales, onToggleCuadre, onVenta, onAbono, onDetalle }) {
   const t = calcularTotales();
 
-  const numsPorSerie = { A: [], B: [] };
-  for (const n of (vendedor.numeros || [])) {
-    const serie = n.serie || 'A';
-    if (!numsPorSerie[serie]) numsPorSerie[serie] = [];
-    numsPorSerie[serie].push(n);
-  }
-
-  const pctCobrado = t.totalCobrar > 0 ? Math.round((t.cobrado / t.totalCobrar) * 100) : 0;
-
-  // Color del avatar
+  // Color del avatar por nombre
   const avatarColor = (() => {
     const paleta = [
       'linear-gradient(135deg,#7c3aed,#a855f7)',
@@ -739,15 +607,10 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
     return paleta[h % paleta.length];
   })();
 
-  const estadoColor = t.deuda === 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
-  const estadoLabel = t.deuda === 0 ? 'PAGADO' : t.cobrado > 0 ? 'PARCIAL' : 'PENDIENTE';
-
-  // ── Indicador visual de cuadre ──
-  // cuadradoProp = estado guardado en BD (el usuario lo confirmó manualmente)
-  // Si fue confirmado en BD → siempre verde aunque quede deuda calculada
-  // Si no fue confirmado → se basa en la deuda calculada en tiempo real
-  const cuadrado = cuadradoProp;            // ✅ confirmado en BD
-  const debiendo = !cuadradoProp && t.deuda > 0;  // 🚨 no confirmado Y tiene deuda
+  const pctCobrado = t.totalCobrar > 0 ? Math.round((t.cobrado / t.totalCobrar) * 100) : 0;
+  const estadoColor = t.deuda <= 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
+  const estadoLabel = t.deuda <= 0 ? 'PAGADO' : t.cobrado > 0 ? 'PARCIAL' : 'PENDIENTE';
+  const debiendo    = !cuadrado && t.deuda > 0;
 
   return (
     <div style={{
@@ -756,23 +619,12 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
       borderRadius: 12,
       overflow: 'hidden',
       transition: 'border-color .25s, box-shadow .25s',
-      boxShadow: cuadrado
-        ? '0 0 0 3px rgba(6,214,160,0.10)'
-        : debiendo
-          ? '0 0 0 3px rgba(230,57,70,0.07)'
-          : 'none',
+      boxShadow: cuadrado ? '0 0 0 3px rgba(6,214,160,0.10)' : debiendo ? '0 0 0 3px rgba(230,57,70,0.07)' : 'none',
     }}>
 
-      {/* ══ BANNER DE ALERTA — solo visual ══ */}
+      {/* Banner alerta */}
       {debiendo && (
-        <div style={{
-          background: 'linear-gradient(90deg, #7c0a14, #e63946)',
-          padding: '6px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          animation: 'none',
-        }}>
+        <div style={{ background: 'linear-gradient(90deg, #7c0a14, #e63946)', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: '1rem', flexShrink: 0 }}>🚨</span>
           <div style={{ flex: 1 }}>
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: '#fff', fontWeight: 700, letterSpacing: '1px' }}>
@@ -782,19 +634,12 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
               — DEBE {COP(t.deuda)}
             </span>
           </div>
-          <span style={{ fontSize: '.85rem', color: 'rgba(255,255,255,0.7)', flexShrink: 0 }}>⚠</span>
         </div>
       )}
 
-      {/* ══ BANNER CUADRADO ══ */}
-      {cuadrado && t.total > 0 && (
-        <div style={{
-          background: 'linear-gradient(90deg, #064e3b, #059669)',
-          padding: '5px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}>
+      {/* Banner cuadrado */}
+      {cuadrado && t.cantidad > 0 && (
+        <div style={{ background: 'linear-gradient(90deg, #064e3b, #059669)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '.95rem' }}>✅</span>
           <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#d1fae5', fontWeight: 700, letterSpacing: '1px' }}>
             {vendedor.vendedor_nombre.split(' ')[0].toUpperCase()} — CUADRADO · PAGÓ {COP(t.totalCobrar)}
@@ -802,24 +647,15 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
         </div>
       )}
 
-      {/* ── Cabecera ── */}
-      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
-        onClick={() => setExpandida(e => !e)}>
+      {/* Cabecera */}
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
 
-        {/* Avatar — con ícono de estado encima */}
+        {/* Avatar */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{ width: 40, height: 40, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1.1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
             {(vendedor.vendedor_nombre || '?').charAt(0).toUpperCase()}
           </div>
-          {/* Indicador de estado en la esquina del avatar */}
-          <div style={{
-            position: 'absolute', bottom: -2, right: -2,
-            width: 16, height: 16, borderRadius: '50%',
-            background: cuadrado ? '#06d6a0' : debiendo ? '#e63946' : '#f59e0b',
-            border: '2px solid var(--jordyn-bg2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '.45rem',
-          }}>
+          <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: cuadrado ? '#06d6a0' : debiendo ? '#e63946' : '#f59e0b', border: '2px solid var(--jordyn-bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.45rem' }}>
             {cuadrado ? '✓' : '!'}
           </div>
         </div>
@@ -834,12 +670,12 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
               {cuadrado ? '✅ CUADRADO' : estadoLabel}
             </span>
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>
-              {t.total} número{t.total !== 1 ? 's' : ''} · {t.noPagados} no pagaron
+              {t.cantidad} número{t.cantidad !== 1 ? 's' : ''} · {COP(precioPorNum)}/c.u.
             </span>
           </div>
         </div>
 
-        {/* Montos */}
+        {/* Montos clave */}
         <div style={{ display: 'flex', gap: 14, flexShrink: 0, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL A COBRAR</div>
@@ -851,326 +687,235 @@ function TarjetaVendedor({ vendedor, rifaId, precioPorNum, pagosLocal, guardando
           </div>
         </div>
 
-        {/* Botones acción */}
-        <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+        {/* Botones de acción */}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
 
-          {/* BOTÓN CONFIRMAR / DESCONFIRMAR CUADRE */}
-          <button
-            onClick={onToggleCuadre}
-            disabled={guardandoCuadre}
-            title={cuadrado ? 'Cuadre confirmado — Click para desconfirmar' : 'Confirmar cuadre con este vendedor'}
+          {/* BOTÓN VENTA — monto que me entregó */}
+          <button onClick={onVenta}
+            title="Registrar lo que me entregó el vendedor"
             style={{
-              background: cuadrado
-                ? 'linear-gradient(135deg, #059669, #06d6a0)'
-                : 'rgba(5,150,105,0.07)',
-              border: `1.5px solid ${cuadrado ? 'rgba(6,214,160,0.6)' : 'rgba(5,150,105,0.3)'}`,
-              color: cuadrado ? '#fff' : '#059669',
-              borderRadius: 6,
-              padding: '5px 12px',
-              cursor: guardandoCuadre ? 'wait' : 'pointer',
-              fontSize: '.72rem',
+              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+              border: 'none',
+              color: '#fff',
+              borderRadius: 7,
+              padding: '6px 14px',
+              cursor: 'pointer',
               fontFamily: "'Share Tech Mono',monospace",
+              fontSize: '.68rem',
               fontWeight: 700,
               letterSpacing: '.5px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 5,
-              opacity: guardandoCuadre ? 0.6 : 1,
-              transition: 'all .2s',
               whiteSpace: 'nowrap',
-            }}
-          >
-            {guardandoCuadre
-              ? <><span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2 }} /> GUARDANDO</>
-              : cuadrado
-                ? <><i className="bi bi-check2-circle" /> CUADRADO</>
-                : <><i className="bi bi-check-circle" /> CONFIRMAR</>}
+              boxShadow: '0 2px 8px rgba(124,58,237,0.3)',
+            }}>
+            <i className="bi bi-cash-coin" /> VENTA
           </button>
 
-          <button onClick={onAbono} title="Registrar abono"
-            style={{ background: 'rgba(6,214,160,.08)', border: '1px solid rgba(6,214,160,.3)', color: '#06d6a0', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: '.75rem' }}>
-            <i className="bi bi-plus-circle" />
-          </button>
-          <button onClick={onHistorial} title="Historial"
-            style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: '.75rem' }}>
-            <i className="bi bi-clock-history" />
-          </button>
-          <button onClick={() => setExpandida(e => !e)}
-            style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: '.75rem' }}>
-            <i className={`bi bi-chevron-${expandida ? 'up' : 'down'}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Barra progreso */}
-      <div style={{ height: 4, background: 'rgba(0,0,0,0.06)', margin: '0 0' }}>
-        <div style={{ height: '100%', width: `${Math.min(pctCobrado, 100)}%`, background: pctCobrado >= 100 ? '#06d6a0' : 'var(--jordyn-primary)', transition: 'width .5s', borderRadius: 2 }} />
-      </div>
-
-      {/* ── Panel expandido: grid de números ── */}
-      {expandida && (
-        <div style={{ padding: '14px 16px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)' }}>
-
-          {/* Instrucción + botones masivos */}
-          <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-            <span style={{ background: 'rgba(6,214,160,0.12)', border: '1px solid rgba(6,214,160,0.3)', color: '#06d6a0', borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>VERDE = JUGÓ</span>
-            <span style={{ background: 'rgba(230,57,70,0.1)', border: '1px solid rgba(230,57,70,0.3)', color: '#e63946', borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>ROJO = NO PAGÓ</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <button type="button"
-                onClick={() => onToggleTodos(vendedor.numeros || [], true)}
-                style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', fontWeight: 700, letterSpacing: '.5px', whiteSpace: 'nowrap' }}>
-                ✓ TODOS PAGAN
-              </button>
-              <button type="button"
-                onClick={() => onToggleTodos(vendedor.numeros || [], false)}
-                style={{ background: 'linear-gradient(135deg,#c0303a,#e63946)', border: 'none', color: '#fff', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', fontWeight: 700, letterSpacing: '.5px', whiteSpace: 'nowrap' }}>
-                ✗ NINGUNO PAGA
-              </button>
-            </div>
-          </div>
-
-          {/* Números por serie (en simultáneas se agrupan) */}
-          {esSim ? (
-            ['A', 'B'].map(serie => {
-              const nums = numsPorSerie[serie] || [];
-              if (!nums.length) return null;
-              return (
-                <div key={serie} style={{ marginBottom: 14 }}>
-                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', fontWeight: 800, letterSpacing: '1px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ background: serie === 'A' ? '#f0f5ff' : '#fff0f5', border: `1px solid ${serie === 'A' ? '#4361ee30' : '#e91e8c30'}`, color: serie === 'A' ? '#4361ee' : '#e91e8c', borderRadius: 4, padding: '2px 9px', fontWeight: 900 }}>SERIE {serie}</span>
-                    <span style={{ color: 'var(--jordyn-muted)' }}>{nums.length} nums</span>
-                    <span style={{ color: '#06d6a0' }}>
-                      · {nums.filter(n => pagosLocal[`${vendedor.vendedor_id}|${n.numero}|${n.serie}`] !== false).length} jugaron
-                    </span>
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                      <button type="button"
-                        onClick={() => onToggleTodos(nums, true)}
-                        style={{ background: '#059669', border: 'none', color: '#fff', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        ✓ Todos
-                      </button>
-                      <button type="button"
-                        onClick={() => onToggleTodos(nums, false)}
-                        style={{ background: '#e63946', border: 'none', color: '#fff', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        ✗ Ninguno
-                      </button>
-                    </div>
-                  </div>
-                  <GridNumeros
-                    numeros={nums}
-                    vendedorId={vendedor.vendedor_id}
-                    pagosLocal={pagosLocal}
-                    guardando={guardando}
-                    onToggle={(numero, serie, actual) => onToggleNumero(numero, serie, actual)}
-                  />
-                </div>
-              );
-            })
-          ) : (
-            <GridNumeros
-              numeros={vendedor.numeros || []}
-              vendedorId={vendedor.vendedor_id}
-              pagosLocal={pagosLocal}
-              guardando={guardando}
-              onToggle={(numero, serie, actual) => onToggleNumero(numero, serie, actual)}
-            />
-          )}
-
-          {/* Resumen contable */}
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--jordyn-bg)', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {[
-                ['TOTAL', COP(t.totalCobrar), 'var(--jordyn-text)'],
-                ['COBRADO', COP(t.cobrado), '#06d6a0'],
-                ['DEUDA', COP(t.deuda), t.deuda > 0 ? '#e63946' : '#06d6a0'],
-              ].map(([k, v, c]) => (
-                <div key={k}>
-                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>{k}</div>
-                  <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: c, letterSpacing: '2px', lineHeight: 1 }}>{v}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)' }}>
-              {pctCobrado}% cobrado
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   GRID DE NÚMEROS INTERACTIVOS
-═══════════════════════════════════════════ */
-function GridNumeros({ numeros, vendedorId, pagosLocal, guardando, onToggle }) {
-  if (!numeros.length) {
-    return (
-      <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', fontStyle: 'italic', padding: '8px 0' }}>
-        Sin números asignados
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-      {numeros.map(n => {
-        const key    = `${vendedorId}|${n.numero}|${n.serie}`;
-        const pagado = pagosLocal[key] === true;
-        const saving = guardando[key] === true;
-        const esExtra = n.origen === 'extra';
-
-        return (
-          <button
-            key={`${n.numero}-${n.serie}`}
-            type="button"
-            onClick={() => !saving && onToggle(n.numero, n.serie, pagado)}
-            disabled={saving}
-            title={`${n.numero}${n.serie ? ` (${n.serie})` : ''} — ${pagado ? 'JUGÓ / PAGA · Click para marcar que NO pagó' : 'NO PAGÓ · Click para marcar que sí pagó'}`}
+          {/* BOTÓN ABONAR — descuenta de la deuda */}
+          <button onClick={onAbono}
+            title="Registrar abono — descuenta de la deuda"
             style={{
+              background: t.deuda > 0 ? 'linear-gradient(135deg, #059669, #06d6a0)' : 'rgba(6,214,160,.08)',
+              border: t.deuda > 0 ? 'none' : '1.5px solid rgba(6,214,160,.35)',
+              color: '#fff',
+              borderRadius: 7,
+              padding: '6px 14px',
+              cursor: 'pointer',
+              fontFamily: "'Share Tech Mono',monospace",
+              fontSize: '.68rem',
+              fontWeight: 700,
+              letterSpacing: '.5px',
               display: 'inline-flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              gap: 2,
-              background: saving
-                ? 'rgba(180,180,180,0.15)'
-                : pagado
-                  ? 'linear-gradient(135deg, #06d6a0, #059669)'
-                  : 'linear-gradient(135deg, #e63946, #c0303a)',
-              border: `2px solid ${saving ? 'rgba(180,180,180,0.3)' : pagado ? 'rgba(6,214,160,0.5)' : 'rgba(230,57,70,0.5)'}`,
-              borderRadius: 8,
-              padding: '5px 6px',
-              cursor: saving ? 'wait' : 'pointer',
-              minWidth: 46,
-              transition: 'all .15s ease',
-              opacity: saving ? 0.6 : 1,
-              transform: saving ? 'scale(0.95)' : 'scale(1)',
-              boxShadow: pagado && !saving ? '0 2px 8px rgba(6,214,160,0.3)' : !pagado && !saving ? '0 2px 8px rgba(230,57,70,0.2)' : 'none',
-              userSelect: 'none',
-            }}
-          >
-            {saving ? (
-              <span style={{ fontSize: '.7rem', color: '#aaa' }}>⟳</span>
-            ) : (
-              <>
-                <span style={{ fontFamily: "'Share Tech Mono',monospace", fontWeight: 900, fontSize: '.78rem', color: '#fff', letterSpacing: 1, lineHeight: 1 }}>
-                  {n.numero}
-                </span>
-                {esExtra && (
-                  <span style={{ fontSize: '.45rem', color: 'rgba(255,255,255,0.8)', fontFamily: "'Share Tech Mono',monospace", letterSpacing: 0.5, lineHeight: 1 }}>
-                    EXTRA
-                  </span>
-                )}
-                <span style={{ fontSize: '.5rem', color: 'rgba(255,255,255,0.75)', fontFamily: "'Share Tech Mono',monospace", lineHeight: 1 }}>
-                  {pagado ? '✓ JUGÓ' : '✗ NO JUGÓ'}
-                </span>
-              </>
-            )}
+              gap: 5,
+              whiteSpace: 'nowrap',
+              boxShadow: t.deuda > 0 ? '0 2px 8px rgba(6,214,160,0.25)' : 'none',
+            }}>
+            <i className="bi bi-plus-circle" /> ABONAR
           </button>
-        );
-      })}
+
+          {/* CONFIRMAR CUADRE */}
+          <button onClick={onToggleCuadre} disabled={guardandoCuadre}
+            title={cuadrado ? 'Cuadre confirmado — Click para desconfirmar' : 'Confirmar cuadre con este vendedor'}
+            style={{ background: cuadrado ? 'linear-gradient(135deg, #059669, #06d6a0)' : 'rgba(5,150,105,0.07)', border: `1.5px solid ${cuadrado ? 'rgba(6,214,160,0.6)' : 'rgba(5,150,105,0.3)'}`, color: cuadrado ? '#fff' : '#059669', borderRadius: 6, padding: '5px 10px', cursor: guardandoCuadre ? 'wait' : 'pointer', fontSize: '.78rem', fontFamily: "'Share Tech Mono',monospace", fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, opacity: guardandoCuadre ? 0.6 : 1 }}>
+            {guardandoCuadre
+              ? <span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
+              : cuadrado ? <i className="bi bi-check2-circle" /> : <i className="bi bi-check-circle" />}
+          </button>
+
+          {/* DETALLE */}
+          <button onClick={onDetalle} title="Ver detalle"
+            style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: '.75rem' }}>
+            <i className="bi bi-eye" />
+          </button>
+        </div>
+      </div>
+
+      {/* Barra de progreso */}
+      <div style={{ height: 5, background: 'rgba(0,0,0,0.06)' }}>
+        <div style={{ height: '100%', width: `${Math.min(pctCobrado, 100)}%`, background: pctCobrado >= 100 ? '#06d6a0' : 'var(--jordyn-primary)', transition: 'width .5s' }} />
+      </div>
+
+      {/* Resumen contable inferior */}
+      <div style={{ padding: '10px 16px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)', display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+          {[
+            ['TOTAL',   COP(t.totalCobrar), 'var(--jordyn-text)'],
+            ['COBRADO', COP(t.cobrado),     '#06d6a0'],
+            ['DEUDA',   COP(t.deuda),       t.deuda > 0 ? '#e63946' : '#06d6a0'],
+          ].map(([k, v, c]) => (
+            <div key={k}>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>{k}</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: c, letterSpacing: '2px', lineHeight: 1 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)' }}>
+          {pctCobrado}% cobrado
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════
-   MODAL: ABONO
+   MODAL: VENTA
+   El dueño ingresa el monto que le entregó el vendedor.
+   Se guarda como abono con nota "Venta".
 ═══════════════════════════════════════════ */
-function ModalAbono({ vendedor, detalleSemana, onClose, onSave }) {
-  const [monto,       setMonto]       = useState('');
-  const [nota,        setNota]        = useState('');
-  const [saving,      setSaving]      = useState(false);
-  const [lote,        setLote]        = useState(null);   // lote completo con por_pagar, abono, pendiente
-  const [loadingLote, setLoadingLote] = useState(true);
+function ModalVenta({ vendedor, lote, precioPorNum, onClose, onSave }) {
+  const [monto,  setMonto]  = useState('');
+  const [nota,   setNota]   = useState('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!detalleSemana?.id || !vendedor?.vendedor_id) { setLoadingLote(false); return; }
-    API.get(`/caja/semanas/${detalleSemana.id}`)
-      .then(r => {
-        const found = (r.data.lotes || []).find(l => l.vendedor_id === vendedor.vendedor_id);
-        setLote(found || null);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingLote(false));
-  }, [detalleSemana, vendedor]);
-
-  const porPagar  = Number(lote?.por_pagar  || 0);   // histórico — no cambia
-  const abonado   = Number(lote?.abono      || 0);   // lo que ya pagó
-  const pendiente = Number(lote?.pendiente  || 0);   // deuda viva = porPagar - abonado
+  const totalCobrar = lote ? lote.por_pagar : +(precioPorNum * (vendedor.numeros?.length || 0)).toFixed(2);
+  const yaAbonado   = lote ? lote.abono     : 0;
+  const pendiente   = lote ? lote.pendiente : totalCobrar;
 
   const handleSave = async () => {
-    if (!monto || Number(monto) <= 0) { toast.error('Ingresa un monto válido'); return; }
-    if (!lote?.id) { toast.error('No se encontró el lote del vendedor'); return; }
+    if (!monto || Number(monto) <= 0) { toast.error('Ingresa el monto que te entregó'); return; }
+    if (!lote?.lote_id) { toast.error('No se encontró el lote del vendedor'); return; }
     setSaving(true);
-    try { await onSave({ lote_id: lote.id, monto: Number(monto), nota }); }
+    try { await onSave({ lote_id: lote.lote_id, monto: Number(monto), nota: nota || 'Venta' }); }
     finally { setSaving(false); }
   };
 
   return (
-    <ModalBase title={`REGISTRAR ABONO — ${vendedor.vendedor_nombre}`} onClose={onClose}>
+    <ModalBase title={`REGISTRAR VENTA — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* Resumen del lote */}
-        {loadingLote ? (
-          <div style={{ textAlign: 'center', padding: 16 }}><div className="jd-spinner" style={{ width: 24, height: 24 }} /></div>
-        ) : !lote ? (
+        {/* Resumen */}
+        <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700 }}>
+            💰 COBRO DE ESTA RIFA
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <InfoCard label="TOTAL A COBRAR" value={COP(totalCobrar)} color="var(--jordyn-text)" />
+            <InfoCard label="YA COBRADO"     value={COP(yaAbonado)}   color="#06d6a0" />
+            <InfoCard label="PENDIENTE"      value={COP(pendiente)}   color={pendiente > 0 ? '#e63946' : '#06d6a0'} />
+          </div>
+          {totalCobrar > 0 && (
+            <div>
+              <div style={{ height: 6, background: 'var(--jordyn-border)', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
+                <div style={{ height: '100%', width: `${Math.min(100, (yaAbonado / totalCobrar) * 100)}%`, background: pendiente <= 0 ? '#06d6a0' : 'linear-gradient(90deg,#7c3aed,#06d6a0)', borderRadius: 3, transition: 'width .4s' }} />
+              </div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>
+                {Math.min(100, Math.round((yaAbonado / totalCobrar) * 100))}% cobrado de {COP(totalCobrar)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="jd-label">MONTO QUE ME ENTREGÓ *</label>
+          <input className="jd-input" type="number" min="1"
+            value={monto} onChange={e => setMonto(e.target.value)}
+            placeholder={`Ej: ${COP(pendiente)}`}
+            autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+          {/* Atajos */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            {[pendiente, Math.round(pendiente / 2), Math.round(pendiente / 4)]
+              .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
+              .map(v => (
+                <button key={v} type="button" onClick={() => setMonto(String(v))}
+                  style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
+                  {COP(v)}
+                </button>
+              ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="jd-label">NOTA (opcional)</label>
+          <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
+            placeholder="Ej: Entregó en efectivo, transfirió..." />
+        </div>
+
+        {monto > 0 && (
+          <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>
+            Después de registrar → Deuda restante: <strong style={{ color: Math.max(0, pendiente - Number(monto)) > 0 ? '#e63946' : '#06d6a0', fontSize: '.75rem' }}>{COP(Math.max(0, pendiente - Number(monto)))}</strong>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
+          <button className="btn-jordyn" onClick={handleSave} disabled={saving}
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', minWidth: 140 }}>
+            {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-cash-coin me-1" />REGISTRAR VENTA</>}
+          </button>
+        </div>
+      </div>
+    </ModalBase>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MODAL: ABONAR
+   Descuenta directamente de la deuda del vendedor.
+═══════════════════════════════════════════ */
+function ModalAbono({ vendedor, lote, precioPorNum, onClose, onSave }) {
+  const [monto,  setMonto]  = useState('');
+  const [nota,   setNota]   = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const totalCobrar = lote ? lote.por_pagar : +(precioPorNum * (vendedor.numeros?.length || 0)).toFixed(2);
+  const yaAbonado   = lote ? lote.abono     : 0;
+  const pendiente   = lote ? lote.pendiente : totalCobrar;
+
+  const handleSave = async () => {
+    if (!monto || Number(monto) <= 0) { toast.error('Ingresa un monto válido'); return; }
+    if (!lote?.lote_id) { toast.error('No se encontró el lote del vendedor'); return; }
+    setSaving(true);
+    try { await onSave({ lote_id: lote.lote_id, monto: Number(monto), nota: nota || 'Abono' }); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <ModalBase title={`ABONAR A DEUDA — ${vendedor.vendedor_nombre}`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        {!lote ? (
           <div style={{ background: 'rgba(230,57,70,0.08)', border: '1px solid rgba(230,57,70,0.25)', borderRadius: 8, padding: '10px 14px', fontSize: '.75rem', color: '#e63946', fontFamily: "'Share Tech Mono',monospace" }}>
             ⚠ Este vendedor no tiene un lote de caja asignado.
           </div>
         ) : (
           <>
-            {/* Cards de montos */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              {/* Total a cobrar — histórico fijo */}
-              <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1.5px', marginBottom: 4 }}>
-                  TOTAL A COBRAR
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-text)', letterSpacing: '2px', lineHeight: 1 }}>
-                  {COP(porPagar)}
-                </div>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>
-                  histórico · no cambia
-                </div>
-              </div>
-
-              {/* Ya abonado */}
-              <div style={{ background: 'rgba(6,214,160,0.06)', border: '1px solid rgba(6,214,160,0.25)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', letterSpacing: '1.5px', marginBottom: 4 }}>
-                  YA ABONADO
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
-                  {COP(abonado)}
-                </div>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: '#06d6a0', marginTop: 3, opacity: .7 }}>
-                  pagos acumulados
-                </div>
-              </div>
-
-              {/* Deuda viva */}
-              <div style={{ background: pendiente > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.06)', border: `1px solid ${pendiente > 0 ? 'rgba(230,57,70,0.3)' : 'rgba(6,214,160,0.25)'}`, borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', letterSpacing: '1.5px', marginBottom: 4 }}>
-                  DEUDA PENDIENTE
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
-                  {COP(pendiente)}
-                </div>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: pendiente > 0 ? '#e63946' : '#06d6a0', marginTop: 3, opacity: .7 }}>
-                  {pendiente <= 0 ? '✅ saldado' : 'baja con cada abono'}
-                </div>
-              </div>
+              <InfoCard label="TOTAL A COBRAR" value={COP(totalCobrar)} color="var(--jordyn-text)" sub="histórico" />
+              <InfoCard label="YA ABONADO"     value={COP(yaAbonado)}   color="#06d6a0"            sub="pagos acumulados" />
+              <InfoCard label="DEUDA PENDIENTE" value={COP(pendiente)}  color={pendiente > 0 ? '#e63946' : '#06d6a0'} sub={pendiente <= 0 ? '✅ saldado' : 'baja con cada abono'} />
             </div>
 
-            {/* Barra de progreso */}
-            {porPagar > 0 && (
+            {totalCobrar > 0 && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: "'Share Tech Mono',monospace", fontSize: '.46rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
                   <span>Progreso de cobro</span>
-                  <span style={{ color: '#06d6a0', fontWeight: 700 }}>
-                    {Math.min(100, Math.round((abonado / porPagar) * 100))}%
-                  </span>
+                  <span style={{ color: '#06d6a0', fontWeight: 700 }}>{Math.min(100, Math.round((yaAbonado / totalCobrar) * 100))}%</span>
                 </div>
                 <div style={{ height: 8, background: 'var(--jordyn-border)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.min(100, (abonado / porPagar) * 100)}%`, background: pendiente <= 0 ? '#06d6a0' : 'linear-gradient(90deg,var(--jordyn-primary),#06d6a0)', borderRadius: 4, transition: 'width .4s' }} />
+                  <div style={{ height: '100%', width: `${Math.min(100, (yaAbonado / totalCobrar) * 100)}%`, background: pendiente <= 0 ? '#06d6a0' : 'linear-gradient(90deg,var(--jordyn-primary),#06d6a0)', borderRadius: 4, transition: 'width .4s' }} />
                 </div>
               </div>
             )}
@@ -1183,7 +928,6 @@ function ModalAbono({ vendedor, detalleSemana, onClose, onSave }) {
                     value={monto} onChange={e => setMonto(e.target.value)}
                     placeholder={`Máx: ${COP(pendiente)}`}
                     autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
-                  {/* Atajos rápidos */}
                   <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                     {[pendiente, Math.round(pendiente / 2), Math.round(pendiente / 4)]
                       .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
@@ -1198,12 +942,19 @@ function ModalAbono({ vendedor, detalleSemana, onClose, onSave }) {
                 <div>
                   <label className="jd-label">NOTA (opcional)</label>
                   <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
-                    placeholder="Ej: Pago en efectivo, transferencia..." />
+                    placeholder="Ej: Transferencia, efectivo..." />
                 </div>
+
+                {monto > 0 && (
+                  <div style={{ background: 'rgba(6,214,160,0.05)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>
+                    Después de abonar → Deuda restante: <strong style={{ color: Math.max(0, pendiente - Number(monto)) > 0 ? '#e63946' : '#06d6a0', fontSize: '.75rem' }}>{COP(Math.max(0, pendiente - Number(monto)))}</strong>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                   <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
                   <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
-                    {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : 'REGISTRAR ABONO'}
+                    {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-plus-circle me-1" />REGISTRAR ABONO</>}
                   </button>
                 </div>
               </>
@@ -1225,81 +976,67 @@ function ModalAbono({ vendedor, detalleSemana, onClose, onSave }) {
 }
 
 /* ═══════════════════════════════════════════
-   MODAL: HISTORIAL VENDEDOR
+   MODAL: DETALLE VENDEDOR
 ═══════════════════════════════════════════ */
-function ModalHistorialVendedor({ vendedor, precioPorNum, calcularTotales, onClose }) {
+function ModalDetalleVendedor({ vendedor, lote, precioPorNum, calcularTotales, onClose }) {
   const t = calcularTotales();
-
-  const numsA  = (vendedor.numeros || []).filter(n => (n.serie || 'A') === 'A');
-  const numsB  = (vendedor.numeros || []).filter(n => n.serie === 'B');
-  const esSim  = numsB.length > 0;
 
   return (
     <ModalBase title={`DETALLE — ${vendedor.vendedor_nombre}`} onClose={onClose} wide>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Totales */}
-        <div style={{ background: 'var(--jordyn-bg)', borderRadius: 8, padding: '12px 16px', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          {[
-            ['Total números',  t.total,              'var(--jordyn-text)'],
-            ['Jugaron/Pagaron', t.pagados,            '#06d6a0'],
-            ['No pagan',       t.noPagados,           '#e63946'],
-            ['Total a cobrar', COP(t.totalCobrar),   'var(--jordyn-primary)'],
-            ['Cobrado',        COP(t.cobrado),        '#06d6a0'],
-            ['Deuda',          COP(t.deuda),          t.deuda > 0 ? '#e63946' : '#06d6a0'],
-          ].map(([k, v, c]) => (
-            <div key={k}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '2px' }}>{k}</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: c, letterSpacing: '2px', lineHeight: 1 }}>{v}</div>
-            </div>
-          ))}
+
+        {/* Resumen de números */}
+        <div style={{ background: 'var(--jordyn-bg)', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, marginBottom: 10 }}>
+            📋 RESUMEN DE COBRO
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px,1fr))', gap: 8 }}>
+            {[
+              ['Números asignados', t.cantidad,          'var(--jordyn-text)'],
+              ['Precio por número', COP(precioPorNum),   '#a78bfa'],
+              ['Total a cobrar',    COP(t.totalCobrar),  'var(--jordyn-primary)'],
+              ['Ya cobrado',        COP(t.cobrado),      '#06d6a0'],
+              ['Deuda actual',      COP(t.deuda),        t.deuda > 0 ? '#e63946' : '#06d6a0'],
+            ].map(([k, v, c]) => (
+              <div key={k} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 7, padding: '8px 10px' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', letterSpacing: '1px', marginBottom: 3 }}>{k}</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: c, letterSpacing: '2px', lineHeight: 1 }}>{v}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Listado números */}
-        {esSim ? (
-          ['A', 'B'].map(serie => {
-            const nums = serie === 'A' ? numsA : numsB;
-            if (!nums.length) return null;
-            return (
-              <div key={serie}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', letterSpacing: '2px', marginBottom: 8, color: serie === 'A' ? '#4361ee' : '#e91e8c', fontWeight: 800 }}>
-                  SERIE {serie} — {nums.length} NÚMEROS
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {nums.map(n => {
-                    const pagado = n.pagado;
-                    return (
-                      <span key={`${n.numero}-${n.serie}`} style={{ background: pagado ? 'rgba(6,214,160,0.12)' : 'rgba(230,57,70,0.1)', border: `1px solid ${pagado ? 'rgba(6,214,160,0.3)' : 'rgba(230,57,70,0.25)'}`, color: pagado ? '#06d6a0' : '#e63946', borderRadius: 5, padding: '3px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', fontWeight: 700 }}>
-                        {n.numero} {pagado ? '✓' : '✗'}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', letterSpacing: '2px', marginBottom: 8, color: 'var(--jordyn-muted)', fontWeight: 800 }}>
-              NÚMEROS ({vendedor.numeros?.length || 0})
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {(vendedor.numeros || []).map(n => {
-                const pagado = n.pagado;
-                return (
-                  <span key={`${n.numero}-${n.serie}`} style={{ background: pagado ? 'rgba(6,214,160,0.12)' : 'rgba(230,57,70,0.1)', border: `1px solid ${pagado ? 'rgba(6,214,160,0.3)' : 'rgba(230,57,70,0.25)'}`, color: pagado ? '#06d6a0' : '#e63946', borderRadius: 5, padding: '3px 10px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', fontWeight: 700 }}>
-                    {n.numero} {pagado ? '✓' : '✗'}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* Cálculo explicado */}
+        <div style={{ background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '12px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 1.8 }}>
+          <strong style={{ color: '#a78bfa' }}>CÁLCULO:</strong>{' '}
+          {t.cantidad} números × {COP(precioPorNum)} = <strong style={{ color: 'var(--jordyn-primary)' }}>{COP(t.totalCobrar)}</strong>
+          {lote && (
+            <>
+              <br />
+              <strong style={{ color: '#06d6a0' }}>Abonado:</strong> {COP(lote.abono)} ·{' '}
+              <strong style={{ color: t.deuda > 0 ? '#e63946' : '#06d6a0' }}>Pendiente: {COP(t.deuda)}</strong>
+            </>
+          )}
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-jordyn-outline" onClick={onClose}>CERRAR</button>
         </div>
       </div>
     </ModalBase>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   SUBCOMPONENTE: INFO CARD
+═══════════════════════════════════════════ */
+function InfoCard({ label, value, color, sub }) {
+  return (
+    <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '10px 12px' }}>
+      <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', letterSpacing: '1.5px', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color, letterSpacing: '2px', lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', marginTop: 3, opacity: .7 }}>{sub}</div>}
+    </div>
   );
 }
 
@@ -1392,7 +1129,7 @@ function ModalBase({ title, onClose, children, wide }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', borderRadius: 10, padding: 24, width: '100%', maxWidth: wide ? 660 : 440, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', borderRadius: 10, padding: 24, width: '100%', maxWidth: wide ? 660 : 460, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: 'var(--jordyn-primary)', letterSpacing: '3px' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--jordyn-muted)', cursor: 'pointer', fontSize: '1.1rem' }}>
@@ -1403,4 +1140,4 @@ function ModalBase({ title, onClose, children, wide }) {
       </div>
     </div>
   );
-}
+}ue 
