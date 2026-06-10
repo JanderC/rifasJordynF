@@ -194,18 +194,29 @@ export default function Caja() {
   };
 
   /* ── Totales de un vendedor ──
-     Usa lote.por_pagar como fuente de verdad (ya tiene el porcentaje).
-     Si no hay lote aún, calcula localmente como fallback.
+     Si está cuadrado, usa los valores del cierre (números realmente vendidos).
+     Si no, usa el lote (números asignados).
   */
   const calcularTotalesVendedor = useCallback((vendedor) => {
+    const lote   = lotesMap[vendedor.vendedor_id];
+    const cuadre = cuadreLocal[vendedor.vendedor_id] || {};
+
+    // Si fue cuadrado, los números reales son los del cierre
+    if (cuadre.cuadrado && cuadre.nums_cuadrados != null) {
+      const cantidad    = cuadre.nums_cuadrados;
+      const totalCobrar = cuadre.monto_cuadrado != null ? Number(cuadre.monto_cuadrado) : +(precioPorNum * cantidad).toFixed(2);
+      const cobrado     = cuadre.monto_entregado != null ? Number(cuadre.monto_entregado) : (lote?.abono ?? 0);
+      const deuda       = Math.max(totalCobrar - cobrado, 0);
+      return { cantidad, totalCobrar, cobrado, deuda };
+    }
+
+    // Sin cuadrar: usar el lote (números asignados)
     const cantidad    = (vendedor.numeros || []).length;
-    const lote        = lotesMap[vendedor.vendedor_id];
-    // por_pagar del lote ya tiene el porcentaje aplicado
     const totalCobrar = lote ? lote.por_pagar : +(precioPorNum * cantidad).toFixed(2);
     const cobrado     = lote ? lote.abono     : 0;
     const deuda       = lote ? lote.pendiente : totalCobrar;
     return { cantidad, totalCobrar, cobrado, deuda };
-  }, [precioPorNum, lotesMap]);
+  }, [precioPorNum, lotesMap, cuadreLocal]);
 
   /* ── Totales globales ── */
   const totalesGlobales = (() => {
@@ -702,34 +713,38 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
   const yaCuadrado = cuadreActual.cuadrado || false;
   const yaAbonado  = lote?.abono ?? 0;
 
-  const [numVendidos, setNumVendidos] = useState(String(lote?.total_numeros ?? ''));
-  const [meDio,       setMeDio]       = useState('');
+  // Input 1: cuántos números vendió realmente (los no vendidos desaparecen)
+  // Input 2: de esos, cuántos le pagó
+  const [numVendidos, setNumVendidos] = useState(String(cuadreActual.nums_cuadrados ?? lote?.total_numeros ?? ''));
+  const [numPagados,  setNumPagados]  = useState('');
   const [saving,      setSaving]      = useState(false);
 
-  const nums          = Math.max(0, parseInt(numVendidos) || 0);
-  const totalEsperado = +(precioPorNum * nums).toFixed(2);
-  const meDioNum      = Number(meDio) || 0;
+  const vendidos = Math.max(0, parseInt(numVendidos) || 0);
+  const pagados  = Math.max(0, parseInt(numPagados)  || 0);
 
-  // Total que ya tiene contabilizado = abonos previos + lo que da ahora
-  const totalEntregado = +(yaAbonado + meDioNum).toFixed(2);
-  // Diferencia: positivo = le queda debiendo, negativo = pagó de más
-  const saldo          = +(totalEsperado - totalEntregado).toFixed(2);
+  const totalEsperado = +(precioPorNum * vendidos).toFixed(2);  // 45 × precio
+  const totalPagado   = +(precioPorNum * pagados).toFixed(2);   // 40 × precio
+  const numsPendientes = Math.max(vendidos - pagados, 0);        // 5 números
+  const saldo          = +(precioPorNum * numsPendientes).toFixed(2); // 5 × precio
+
+  // Lo que falta registrar como abono = lo pagado ahora menos lo ya abonado antes
+  const abonoNuevo = Math.max(totalPagado - yaAbonado, 0);
 
   const handleConfirmar = async () => {
-    if (!nums) { toast.error('Ingresa cuántos números vendió'); return; }
+    if (!vendidos) { toast.error('Ingresa cuántos números vendió'); return; }
+    if (pagados > vendidos) { toast.error('No puede pagar más números de los que vendió'); return; }
     setSaving(true);
     try {
-      // Registrar lo que me dio ahora como abono (si dio algo)
-      if (meDioNum > 0 && lote?.lote_id) {
-        await onRegistrarAbono({ lote_id: lote.lote_id, monto: meDioNum, nota: 'Entrega al cuadrar' });
+      // Registrar el abono correspondiente a los números pagados
+      if (abonoNuevo > 0 && lote?.lote_id) {
+        await onRegistrarAbono({ lote_id: lote.lote_id, monto: abonoNuevo, nota: `Pagó ${pagados} de ${vendidos} números` });
       }
-      // Guardar cuadre con los datos del cierre
       await onGuardar({
         cuadrado:        true,
         pendiente_flag:  false,
         monto_cuadrado:  totalEsperado,
-        nums_cuadrados:  nums,
-        monto_entregado: meDioNum,
+        nums_cuadrados:  vendidos,
+        monto_entregado: totalPagado,
       });
     } finally { setSaving(false); }
   };
@@ -749,94 +764,86 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
           <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
             ¿CUÁNTOS NÚMEROS VENDIÓ?
           </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <input className="jd-input" type="number" min="0"
               value={numVendidos} onChange={e => setNumVendidos(e.target.value)}
-              placeholder="Ej: 20" autoFocus
-              style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 120, padding: '8px 12px' }} />
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
-              × {COP(precioPorNum)} / ticket
+              placeholder="Ej: 45" autoFocus
+              style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 110, padding: '8px 12px' }} />
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>
+              × {COP(precioPorNum)}
             </div>
-            {nums > 0 && (
+            {vendidos > 0 && (
               <div style={{ marginLeft: 'auto', fontFamily: "'Bebas Neue',cursive", fontSize: '1.4rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>
                 = {COP(totalEsperado)}
               </div>
             )}
           </div>
+          {lote?.total_numeros > 0 && vendidos < lote.total_numeros && (
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', marginTop: 6 }}>
+              Tenía {lote.total_numeros} asignados · {lote.total_numeros - vendidos} no se vendieron (no se cobran)
+            </div>
+          )}
         </div>
 
-        {/* ─── PASO 2: Cuánto me dio ─── */}
-        {nums > 0 && (
+        {/* ─── PASO 2: Números pagados ─── */}
+        {vendidos > 0 && (
           <div style={{ background: 'rgba(6,214,160,0.04)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 10, padding: '14px 16px' }}>
             <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
-              ¿CUÁNTO ME DIO AHORA?
+              ¿CUÁNTOS NÚMEROS ME PAGÓ?
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <input className="jd-input" type="number" min="0"
-                value={meDio} onChange={e => setMeDio(e.target.value)}
-                placeholder="Ej: 25000"
-                style={{ fontSize: '1.2rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 160, padding: '8px 12px' }} />
-              {yaAbonado > 0 && (
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: 'var(--jordyn-muted)' }}>
-                  + {COP(yaAbonado)} ya abonado
+              <input className="jd-input" type="number" min="0" max={vendidos}
+                value={numPagados} onChange={e => setNumPagados(e.target.value)}
+                placeholder={`Ej: ${vendidos}`}
+                style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 110, padding: '8px 12px' }} />
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>
+                × {COP(precioPorNum)}
+              </div>
+              {pagados > 0 && (
+                <div style={{ marginLeft: 'auto', fontFamily: "'Bebas Neue',cursive", fontSize: '1.4rem', color: '#06d6a0', letterSpacing: '2px' }}>
+                  = {COP(totalPagado)}
                 </div>
               )}
             </div>
-            {/* Atajos rápidos */}
-            {totalEsperado > yaAbonado && (
-              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                {[totalEsperado - yaAbonado, Math.round((totalEsperado - yaAbonado) / 2)]
-                  .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
-                  .map(v => (
-                    <button key={v} type="button" onClick={() => setMeDio(String(Math.round(v)))}
-                      style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                      {COP(v)}
-                    </button>
-                  ))}
-              </div>
-            )}
+            {/* Atajos */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setNumPagados(String(vendidos))}
+                style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem' }}>
+                Pagó todos ({vendidos})
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ─── RESUMEN FINAL ─── */}
-        {nums > 0 && (
+        {/* ─── RESUMEN ─── */}
+        {vendidos > 0 && numPagados !== '' && (
           <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 10, overflow: 'hidden' }}>
-            {/* Fila de cifras */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
               <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL COBRAR</div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>VENDIÓ ({vendidos})</div>
                 <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>{COP(totalEsperado)}</div>
               </div>
               <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>ME ENTREGÓ</div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(totalEntregado)}</div>
-                {yaAbonado > 0 && meDioNum > 0 && (
-                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
-                    {COP(yaAbonado)} + {COP(meDioNum)}
-                  </div>
-                )}
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>PAGÓ ({pagados})</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(totalPagado)}</div>
               </div>
-              {/* Saldo — el protagonista */}
               <div style={{
                 padding: '12px 14px', textAlign: 'center',
-                background: saldo > 0 ? 'rgba(230,57,70,0.06)' : saldo < 0 ? 'rgba(245,158,11,0.06)' : 'rgba(6,214,160,0.06)',
+                background: saldo > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(6,214,160,0.08)',
               }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: saldo > 0 ? '#e63946' : saldo < 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4, fontWeight: 700 }}>
-                  {saldo > 0 ? 'QUEDA DEBIENDO' : saldo < 0 ? 'PAGÓ DE MÁS' : '✓ CUADRADO'}
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4, fontWeight: 700 }}>
+                  {saldo > 0 ? `PENDIENTE (${numsPendientes})` : '✓ CUADRADO'}
                 </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: saldo > 0 ? '#e63946' : saldo < 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
-                  {saldo !== 0 ? `${saldo > 0 ? '-' : '+'}${COP(Math.abs(saldo))}` : COP(0)}
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+                  {COP(saldo)}
                 </div>
               </div>
             </div>
 
-            {/* Nota explicativa */}
             <div style={{ padding: '10px 14px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)', fontFamily: "'Share Tech Mono',monospace", fontSize: '.56rem', color: 'var(--jordyn-muted)', lineHeight: 1.8 }}>
               {saldo > 0
-                ? <>Se cierra la venta y queda <strong style={{ color: '#e63946' }}>{COP(saldo)} pendiente</strong>. Puedes seguir abonando desde el botón ABONAR.</>
-                : saldo < 0
-                ? <>Se cierra la venta. Pagó <strong style={{ color: '#f59e0b' }}>{COP(Math.abs(saldo))} de más</strong>.</>
-                : <>¡Todo cuadra! Se cierra la venta sin pendientes.</>}
+                ? <>Quedan <strong style={{ color: '#f59e0b' }}>{numsPendientes} números sin pagar = {COP(saldo)}</strong> pendiente. El vendedor queda en amarillo y puedes seguir cobrando.</>
+                : <>¡Pagó los {vendidos} números! Se cierra en verde sin pendientes.</>}
             </div>
           </div>
         )}
@@ -850,7 +857,7 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
           )}
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !nums}
+            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !vendidos || numPagados === ''}
               style={{ background: saldo > 0 ? 'linear-gradient(135deg,#d97706,#f59e0b)' : 'linear-gradient(135deg,#059669,#06d6a0)', minWidth: 140 }}>
               {saving
                 ? <span className="jd-spinner" style={{ width: 16, height: 16 }} />
@@ -872,14 +879,11 @@ function ModalDetalleVendedor({ vendedor, lote, cuadre, precioPorNum, calcularTo
   const t          = calcularTotales();
   const yaCuadrado = cuadre?.cuadrado || false;
 
-  // Si está cuadrado, mostrar los datos del cuadre; si no, los datos del lote
-  const nums           = yaCuadrado && cuadre.nums_cuadrados  ? cuadre.nums_cuadrados  : t.cantidad;
-  const totalEsperado  = yaCuadrado && cuadre.monto_cuadrado  ? cuadre.monto_cuadrado  : t.totalCobrar;
-  const totalEntregado = yaCuadrado && cuadre.monto_entregado ? Number(cuadre.monto_entregado) + (lote?.abono ?? 0) - (lote?.abono ?? 0)
-                                                               : lote?.abono ?? 0;
-  // Entregado = abonos en BD (incluye lo que dio al cuadrar)
-  const entregado      = lote?.abono ?? 0;
-  const saldo          = +(Number(totalEsperado) - entregado).toFixed(2);
+  // calcularTotales ya devuelve los valores correctos (del cuadre si está cuadrado)
+  const nums          = t.cantidad;
+  const totalEsperado = t.totalCobrar;
+  const entregado     = t.cobrado;
+  const saldo         = t.deuda;
 
   return (
     <ModalBase title={`DETALLE — ${vendedor.vendedor_nombre}`} onClose={onClose} wide>
