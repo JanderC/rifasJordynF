@@ -680,25 +680,31 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
       abono de la diferencia si la hay
 ═══════════════════════════════════════════ */
 function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onClose, onGuardar, onRegistrarAbono }) {
-  const yaCuadrado  = cuadreActual.cuadrado || false;
-  const yaAbonado   = lote?.abono ?? 0;
+  const yaCuadrado = cuadreActual.cuadrado || false;
+  const yaAbonado  = lote?.abono ?? 0;
 
-  // Input: números vendidos. Inicia con el total asignado del lote
   const [numVendidos, setNumVendidos] = useState(String(lote?.total_numeros ?? ''));
+  const [meDio,       setMeDio]       = useState('');
   const [saving,      setSaving]      = useState(false);
 
-  const nums           = Math.max(0, parseInt(numVendidos) || 0);
-  const totalEsperado  = +(precioPorNum * nums).toFixed(2);
-  const diferencia     = +(totalEsperado - yaAbonado).toFixed(2); // positivo = aún le falta, negativo = pagó de más
+  const nums          = Math.max(0, parseInt(numVendidos) || 0);
+  const totalEsperado = +(precioPorNum * nums).toFixed(2);
+  const meDioNum      = Number(meDio) || 0;
+
+  // Total que ya tiene contabilizado = abonos previos + lo que da ahora
+  const totalEntregado = +(yaAbonado + meDioNum).toFixed(2);
+  // Diferencia: positivo = le queda debiendo, negativo = pagó de más
+  const saldo          = +(totalEsperado - totalEntregado).toFixed(2);
 
   const handleConfirmar = async () => {
     if (!nums) { toast.error('Ingresa cuántos números vendió'); return; }
     setSaving(true);
     try {
-      // Si vendió más de lo abonado, registrar la diferencia como abono final
-      if (diferencia > 0 && lote?.lote_id) {
-        await onRegistrarAbono({ lote_id: lote.lote_id, monto: diferencia, nota: 'Cierre de venta' });
+      // Registrar lo que me dio ahora como abono (si dio algo)
+      if (meDioNum > 0 && lote?.lote_id) {
+        await onRegistrarAbono({ lote_id: lote.lote_id, monto: meDioNum, nota: 'Entrega al cuadrar' });
       }
+      // Marcar como cuadrado con el monto total esperado
       await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: totalEsperado });
     } finally { setSaving(false); }
   };
@@ -713,70 +719,100 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
     <ModalBase title={`${yaCuadrado ? 'EDITAR CIERRE' : 'CUADRAR'} — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Input principal: cuántos números vendió */}
+        {/* ─── PASO 1: Números vendidos ─── */}
         <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px' }}>
           <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
             ¿CUÁNTOS NÚMEROS VENDIÓ?
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input
-              className="jd-input"
-              type="number" min="0"
-              value={numVendidos}
-              onChange={e => setNumVendidos(e.target.value)}
-              placeholder="Ej: 20"
-              autoFocus
-              style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 120, padding: '8px 12px' }}
-            />
+            <input className="jd-input" type="number" min="0"
+              value={numVendidos} onChange={e => setNumVendidos(e.target.value)}
+              placeholder="Ej: 20" autoFocus
+              style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 120, padding: '8px 12px' }} />
             <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
               × {COP(precioPorNum)} / ticket
             </div>
+            {nums > 0 && (
+              <div style={{ marginLeft: 'auto', fontFamily: "'Bebas Neue',cursive", fontSize: '1.4rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>
+                = {COP(totalEsperado)}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Resultado del cálculo en tiempo real */}
+        {/* ─── PASO 2: Cuánto me dio ─── */}
         {nums > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            {/* Total esperado */}
-            <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL ESPERADO</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>{COP(totalEsperado)}</div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>{nums} × {COP(precioPorNum)}</div>
+          <div style={{ background: 'rgba(6,214,160,0.04)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 10, padding: '14px 16px' }}>
+            <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
+              ¿CUÁNTO ME DIO AHORA?
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <input className="jd-input" type="number" min="0"
+                value={meDio} onChange={e => setMeDio(e.target.value)}
+                placeholder="Ej: 25000"
+                style={{ fontSize: '1.2rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 160, padding: '8px 12px' }} />
+              {yaAbonado > 0 && (
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: 'var(--jordyn-muted)' }}>
+                  + {COP(yaAbonado)} ya abonado
+                </div>
+              )}
             </div>
-            {/* Ya abonó */}
-            <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>ABONÓ</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(yaAbonado)}</div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: '#06d6a0', marginTop: 3, opacity: .7 }}>acumulado</div>
-            </div>
-            {/* Diferencia */}
-            <div style={{
-              background: diferencia > 0 ? 'rgba(230,57,70,0.07)' : diferencia < 0 ? 'rgba(245,158,11,0.07)' : 'rgba(6,214,160,0.07)',
-              border: `1px solid ${diferencia > 0 ? 'rgba(230,57,70,0.25)' : diferencia < 0 ? 'rgba(245,158,11,0.25)' : 'rgba(6,214,160,0.25)'}`,
-              borderRadius: 8, padding: '12px', textAlign: 'center'
-            }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: diferencia > 0 ? '#e63946' : diferencia < 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4 }}>
-                {diferencia > 0 ? 'A COBRAR' : diferencia < 0 ? 'EXCESO' : 'CUADRADO'}
+            {/* Atajos rápidos */}
+            {totalEsperado > yaAbonado && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {[totalEsperado - yaAbonado, Math.round((totalEsperado - yaAbonado) / 2)]
+                  .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+                  .map(v => (
+                    <button key={v} type="button" onClick={() => setMeDio(String(Math.round(v)))}
+                      style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
+                      {COP(v)}
+                    </button>
+                  ))}
               </div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: diferencia > 0 ? '#e63946' : diferencia < 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px' }}>
-                {COP(Math.abs(diferencia))}
-              </div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>
-                {diferencia > 0 ? 'se registra como abono' : diferencia < 0 ? 'a favor del vendedor' : 'todo cuadra ✓'}
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Descripción de lo que va a pasar */}
+        {/* ─── RESUMEN FINAL ─── */}
         {nums > 0 && (
-          <div style={{ background: 'rgba(0,0,0,0.02)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 1.9 }}>
-            {diferencia > 0
-              ? <>Al cerrar, se registra un abono de <strong style={{ color: '#7c3aed' }}>{COP(diferencia)}</strong> y se marca como ✅ cuadrado.</>
-              : diferencia < 0
-              ? <>Se cierra con <strong style={{ color: '#f59e0b' }}>{COP(totalEsperado)}</strong>. Pagó <strong style={{ color: '#06d6a0' }}>{COP(Math.abs(diferencia))}</strong> de más.</>
-              : <>¡Todo cuadra perfecto! Se cierra con <strong style={{ color: '#06d6a0' }}>{COP(totalEsperado)}</strong>.</>
-            }
+          <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 10, overflow: 'hidden' }}>
+            {/* Fila de cifras */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+              <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL COBRAR</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>{COP(totalEsperado)}</div>
+              </div>
+              <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>ME ENTREGÓ</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(totalEntregado)}</div>
+                {yaAbonado > 0 && meDioNum > 0 && (
+                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
+                    {COP(yaAbonado)} + {COP(meDioNum)}
+                  </div>
+                )}
+              </div>
+              {/* Saldo — el protagonista */}
+              <div style={{
+                padding: '12px 14px', textAlign: 'center',
+                background: saldo > 0 ? 'rgba(230,57,70,0.06)' : saldo < 0 ? 'rgba(245,158,11,0.06)' : 'rgba(6,214,160,0.06)',
+              }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: saldo > 0 ? '#e63946' : saldo < 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4, fontWeight: 700 }}>
+                  {saldo > 0 ? 'QUEDA DEBIENDO' : saldo < 0 ? 'PAGÓ DE MÁS' : '✓ CUADRADO'}
+                </div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: saldo > 0 ? '#e63946' : saldo < 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+                  {saldo !== 0 ? `${saldo > 0 ? '-' : '+'}${COP(Math.abs(saldo))}` : COP(0)}
+                </div>
+              </div>
+            </div>
+
+            {/* Nota explicativa */}
+            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)', fontFamily: "'Share Tech Mono',monospace", fontSize: '.56rem', color: 'var(--jordyn-muted)', lineHeight: 1.8 }}>
+              {saldo > 0
+                ? <>Se cierra la venta y queda <strong style={{ color: '#e63946' }}>{COP(saldo)} pendiente</strong>. Puedes seguir abonando desde el botón ABONAR.</>
+                : saldo < 0
+                ? <>Se cierra la venta. Pagó <strong style={{ color: '#f59e0b' }}>{COP(Math.abs(saldo))} de más</strong>.</>
+                : <>¡Todo cuadra! Se cierra la venta sin pendientes.</>}
+            </div>
           </div>
         )}
 
@@ -790,10 +826,12 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
             <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !nums}
-              style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', minWidth: 140 }}>
+              style={{ background: saldo > 0 ? 'linear-gradient(135deg,#d97706,#f59e0b)' : 'linear-gradient(135deg,#059669,#06d6a0)', minWidth: 140 }}>
               {saving
                 ? <span className="jd-spinner" style={{ width: 16, height: 16 }} />
-                : <><i className="bi bi-check2-circle me-1" />CERRAR VENTA</>}
+                : saldo > 0
+                  ? <><i className="bi bi-check-circle me-1" />CERRAR CON PENDIENTE</>
+                  : <><i className="bi bi-check2-circle me-1" />CERRAR VENTA</>}
             </button>
           </div>
         </div>
