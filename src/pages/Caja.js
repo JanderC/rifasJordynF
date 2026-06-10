@@ -138,11 +138,12 @@ export default function Caja() {
       for (const l of (lotesRes?.data?.lotes || [])) {
         if (l.vendedor_id) {
           lMap[l.vendedor_id] = {
-            lote_id:   l.lote_id,
-            por_pagar: Number(l.por_pagar || 0),  // ya calculado con porcentaje
-            abono:     Number(l.abono     || 0),
-            pendiente: Number(l.pendiente || 0),
-            estado:    l.estado,
+            lote_id:       l.lote_id,
+            por_pagar:     Number(l.por_pagar     || 0),
+            abono:         Number(l.abono         || 0),
+            pendiente:     Number(l.pendiente     || 0),
+            total_numeros: Number(l.total_numeros || 0),
+            estado:        l.estado,
           };
         }
       }
@@ -176,11 +177,12 @@ export default function Caja() {
       for (const l of (r.data?.lotes || [])) {
         if (l.vendedor_id) {
           lMap[l.vendedor_id] = {
-            lote_id:   l.lote_id,
-            por_pagar: Number(l.por_pagar || 0),
-            abono:     Number(l.abono     || 0),
-            pendiente: Number(l.pendiente || 0),
-            estado:    l.estado,
+            lote_id:       l.lote_id,
+            por_pagar:     Number(l.por_pagar     || 0),
+            abono:         Number(l.abono         || 0),
+            pendiente:     Number(l.pendiente     || 0),
+            total_numeros: Number(l.total_numeros || 0),
+            estado:        l.estado,
           };
         }
       }
@@ -422,7 +424,7 @@ export default function Caja() {
           vendedor={modalCuadre}
           lote={lotesMap[modalCuadre.vendedor_id] || null}
           cuadreActual={cuadreLocal[modalCuadre.vendedor_id] || {}}
-          calcularTotales={() => calcularTotalesVendedor(modalCuadre)}
+          precioPorNum={precioPorNum}
           onClose={() => setModalCuadre(null)}
           onRegistrarAbono={async (payload) => {
             await API.post('/caja/abonos', payload);
@@ -432,7 +434,7 @@ export default function Caja() {
             await handleGuardarCuadre(modalCuadre.vendedor_id, payload);
             await refrescarLotes();
             setModalCuadre(null);
-            toast.success(`✅ Venta de ${modalCuadre.vendedor_nombre.split(' ')[0]} cerrada`);
+            toast.success(`✅ ${modalCuadre.vendedor_nombre.split(' ')[0]} cuadrado`);
           }}
         />
       )}
@@ -578,7 +580,8 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
 
   const totalCobrar = lote?.por_pagar ?? 0;
   const loEntregado = lote?.abono     ?? 0;
-  const leFalta     = lote?.pendiente ?? totalCobrar;
+  // Calculamos deuda real — nunca bloqueamos el abono aunque la BD diga pendiente=0
+  const leFalta     = totalCobrar > 0 ? Math.max(totalCobrar - loEntregado, 0) : 0;
 
   const handleSave = async () => {
     if (!monto || Number(monto) <= 0) { toast.error('Ingresa un monto válido'); return; }
@@ -591,86 +594,76 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
   return (
     <ModalBase title={`ABONAR — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {leFalta <= 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '3px' }}>DEUDA SALDADA</div>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 6 }}>
-              {vendedor.vendedor_nombre} no tiene deuda pendiente.
-            </div>
-            <button className="btn-jordyn-outline" onClick={onClose} style={{ marginTop: 16 }}>CERRAR</button>
+
+        {/* Resumen siempre visible */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+          <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(totalCobrar)}</div>
           </div>
-        ) : (
-          <>
-            {/* Resumen */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL</div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(totalCobrar)}</div>
-              </div>
-              <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>YA PAGÓ</div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(loEntregado)}</div>
-              </div>
-              <div style={{ background: 'rgba(230,57,70,0.07)', border: '1px solid rgba(230,57,70,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#e63946', marginBottom: 4 }}>ME DEBE</div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#e63946', letterSpacing: '2px' }}>{COP(leFalta)}</div>
-              </div>
+          <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>YA PAGÓ</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(loEntregado)}</div>
+          </div>
+          <div style={{ background: leFalta > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.07)', border: `1px solid ${leFalta > 0 ? 'rgba(230,57,70,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: leFalta > 0 ? '#e63946' : '#06d6a0', marginBottom: 4 }}>ME DEBE</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: leFalta > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px' }}>{COP(leFalta)}</div>
+          </div>
+        </div>
+
+        {totalCobrar > 0 && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: "'Share Tech Mono',monospace", fontSize: '.46rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
+              <span>Progreso</span>
+              <span style={{ color: '#06d6a0', fontWeight: 700 }}>{Math.min(100, Math.round((loEntregado / totalCobrar) * 100))}%</span>
             </div>
-
-            {totalCobrar > 0 && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: "'Share Tech Mono',monospace", fontSize: '.46rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
-                  <span>Progreso</span>
-                  <span style={{ color: '#06d6a0', fontWeight: 700 }}>{Math.min(100, Math.round((loEntregado / totalCobrar) * 100))}%</span>
-                </div>
-                <div style={{ height: 8, background: 'var(--jordyn-border)', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.min(100, (loEntregado / totalCobrar) * 100)}%`, background: 'linear-gradient(90deg,var(--jordyn-primary),#06d6a0)', borderRadius: 4, transition: 'width .4s' }} />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="jd-label">MONTO DEL ABONO *</label>
-              <input className="jd-input" type="number" min="1"
-                value={monto} onChange={e => setMonto(e.target.value)}
-                placeholder={`Máx: ${COP(leFalta)}`}
-                autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
-              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                {[leFalta, Math.round(leFalta / 2), Math.round(leFalta / 4)]
-                  .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
-                  .map(v => (
-                    <button key={v} type="button" onClick={() => setMonto(String(v))}
-                      style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                      {COP(v)}
-                    </button>
-                  ))}
-              </div>
+            <div style={{ height: 8, background: 'var(--jordyn-border)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${Math.min(100, (loEntregado / totalCobrar) * 100)}%`, background: 'linear-gradient(90deg,var(--jordyn-primary),#06d6a0)', borderRadius: 4, transition: 'width .4s' }} />
             </div>
-
-            <div>
-              <label className="jd-label">NOTA (opcional)</label>
-              <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
-                placeholder="Efectivo, transferencia..." />
-            </div>
-
-            {monto > 0 && (
-              <div style={{ background: 'rgba(6,214,160,0.05)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 13px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
-                Seguirá debiéndome:{' '}
-                <strong style={{ color: Math.max(0, leFalta - Number(monto)) > 0 ? '#e63946' : '#06d6a0', fontSize: '.75rem' }}>
-                  {COP(Math.max(0, leFalta - Number(monto)))}
-                </strong>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-              <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
-                {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-plus-circle me-1" />REGISTRAR ABONO</>}
-              </button>
-            </div>
-          </>
+          </div>
         )}
+
+        <div>
+          <label className="jd-label">MONTO DEL ABONO *</label>
+          <input className="jd-input" type="number" min="1"
+            value={monto} onChange={e => setMonto(e.target.value)}
+            placeholder={leFalta > 0 ? `Ej: ${COP(leFalta)}` : 'Ingresa el monto'}
+            autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+          {leFalta > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {[leFalta, Math.round(leFalta / 2), Math.round(leFalta / 4)]
+                .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+                .map(v => (
+                  <button key={v} type="button" onClick={() => setMonto(String(v))}
+                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
+                    {COP(v)}
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="jd-label">NOTA (opcional)</label>
+          <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
+            placeholder="Efectivo, transferencia..." />
+        </div>
+
+        {monto > 0 && (
+          <div style={{ background: 'rgba(6,214,160,0.05)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 13px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
+            Seguirá debiéndome:{' '}
+            <strong style={{ color: Math.max(0, leFalta - Number(monto)) > 0 ? '#e63946' : '#06d6a0', fontSize: '.75rem' }}>
+              {COP(Math.max(0, leFalta - Number(monto)))}
+            </strong>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
+          <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
+            {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-plus-circle me-1" />REGISTRAR ABONO</>}
+          </button>
+        </div>
       </div>
     </ModalBase>
   );
@@ -678,32 +671,35 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
 
 
 /* ═══════════════════════════════════════════
-   MODAL: CONFIRMAR CUADRE / CERRAR VENTA
-   - Muestra TOTAL / YA ABONADO / ME DEBE
-   - El monto de cierre puede diferir de lo abonado
-   - Si cierra con más de lo abonado → registra la diferencia como abono
-   - Marca al vendedor como cuadrado en la BD
+   MODAL: CUADRAR VENDEDOR
+   Flujo:
+   1. Input: ¿Cuántos números vendió?
+   2. Calcula: total esperado = números × precio ticket
+   3. Muestra: total esperado / abonado / diferencia
+   4. Botón CERRAR VENTA → marca cuadrado y registra
+      abono de la diferencia si la hay
 ═══════════════════════════════════════════ */
-function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, calcularTotales, onClose, onGuardar, onRegistrarAbono }) {
-  const t          = calcularTotales();
-  const yaCuadrado = cuadreActual.cuadrado || false;
-  const yaAbonado  = lote?.abono    ?? 0;
-  const totalCobrar = lote?.por_pagar ?? t.totalCobrar;
+function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onClose, onGuardar, onRegistrarAbono }) {
+  const yaCuadrado  = cuadreActual.cuadrado || false;
+  const yaAbonado   = lote?.abono ?? 0;
 
-  const [monto,  setMonto]  = useState(String(Math.round(yaAbonado) || Math.round(totalCobrar) || ''));
-  const [saving, setSaving] = useState(false);
+  // Input: números vendidos. Inicia con el total asignado del lote
+  const [numVendidos, setNumVendidos] = useState(String(lote?.total_numeros ?? ''));
+  const [saving,      setSaving]      = useState(false);
 
-  const montoNum   = Number(monto) || 0;
-  const diferencia = +(montoNum - yaAbonado).toFixed(2); // positivo = falta registrar
+  const nums           = Math.max(0, parseInt(numVendidos) || 0);
+  const totalEsperado  = +(precioPorNum * nums).toFixed(2);
+  const diferencia     = +(totalEsperado - yaAbonado).toFixed(2); // positivo = aún le falta, negativo = pagó de más
 
   const handleConfirmar = async () => {
-    if (!montoNum) { toast.error('Ingresa el monto de cierre'); return; }
+    if (!nums) { toast.error('Ingresa cuántos números vendió'); return; }
     setSaving(true);
     try {
+      // Si vendió más de lo abonado, registrar la diferencia como abono final
       if (diferencia > 0 && lote?.lote_id) {
         await onRegistrarAbono({ lote_id: lote.lote_id, monto: diferencia, nota: 'Cierre de venta' });
       }
-      await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: montoNum });
+      await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: totalEsperado });
     } finally { setSaving(false); }
   };
 
@@ -714,58 +710,77 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, calcularTotales, o
   };
 
   return (
-    <ModalBase title={`${yaCuadrado ? 'EDITAR CIERRE' : 'CERRAR VENTA'} — ${vendedor.vendedor_nombre}`} onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <ModalBase title={`${yaCuadrado ? 'EDITAR CIERRE' : 'CUADRAR'} — ${vendedor.vendedor_nombre}`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Resumen de cuenta */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL A COBRAR</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(totalCobrar)}</div>
-          </div>
-          <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>YA ABONADO</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(yaAbonado)}</div>
-          </div>
-          <div style={{ background: (lote?.pendiente ?? t.deuda) > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.07)', border: `1px solid ${(lote?.pendiente ?? t.deuda) > 0 ? 'rgba(230,57,70,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: (lote?.pendiente ?? t.deuda) > 0 ? '#e63946' : '#06d6a0', marginBottom: 4 }}>ME DEBE</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: (lote?.pendiente ?? t.deuda) > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px' }}>{COP(lote?.pendiente ?? t.deuda)}</div>
+        {/* Input principal: cuántos números vendió */}
+        <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px' }}>
+          <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
+            ¿CUÁNTOS NÚMEROS VENDIÓ?
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              className="jd-input"
+              type="number" min="0"
+              value={numVendidos}
+              onChange={e => setNumVendidos(e.target.value)}
+              placeholder="Ej: 20"
+              autoFocus
+              style={{ fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', maxWidth: 120, padding: '8px 12px' }}
+            />
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
+              × {COP(precioPorNum)} / ticket
+            </div>
           </div>
         </div>
 
-        {/* Input de cierre */}
-        <div>
-          <label className="jd-label">MONTO CON EL QUE CIERRA *</label>
-          <input className="jd-input" type="number" min="0"
-            value={monto} onChange={e => setMonto(e.target.value)}
-            placeholder={`Ej: ${COP(totalCobrar)}`}
-            autoFocus onKeyDown={e => e.key === 'Enter' && handleConfirmar()} />
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            {[Math.round(totalCobrar), Math.round(yaAbonado)]
-              .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
-              .map(v => (
-                <button key={v} type="button" onClick={() => setMonto(String(v))}
-                  style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                  {COP(v)}
-                </button>
-              ))}
-          </div>
-        </div>
-
-        {/* Qué va a pasar */}
-        {montoNum > 0 && (
-          <div style={{ background: diferencia > 0 ? 'rgba(124,58,237,0.05)' : 'rgba(6,214,160,0.05)', border: `1px solid ${diferencia > 0 ? 'rgba(124,58,237,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)', lineHeight: 1.9 }}>
-            {diferencia > 0 ? (
-              <>Se registrará un abono de <strong style={{ color: '#7c3aed', fontSize: '.7rem' }}>{COP(diferencia)}</strong> y se cerrará la venta.</>
-            ) : diferencia < 0 ? (
-              <>Se cerrará con <strong style={{ color: '#06d6a0', fontSize: '.7rem' }}>{COP(montoNum)}</strong>. Diferencia de <strong style={{ color: '#f59e0b', fontSize: '.7rem' }}>{COP(Math.abs(diferencia))}</strong> a favor del vendedor.</>
-            ) : (
-              <>Todo cuadra. Se cierra la venta con <strong style={{ color: '#06d6a0', fontSize: '.7rem' }}>{COP(montoNum)}</strong>.</>
-            )}
+        {/* Resultado del cálculo en tiempo real */}
+        {nums > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {/* Total esperado */}
+            <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL ESPERADO</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>{COP(totalEsperado)}</div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>{nums} × {COP(precioPorNum)}</div>
+            </div>
+            {/* Ya abonó */}
+            <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>ABONÓ</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(yaAbonado)}</div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: '#06d6a0', marginTop: 3, opacity: .7 }}>acumulado</div>
+            </div>
+            {/* Diferencia */}
+            <div style={{
+              background: diferencia > 0 ? 'rgba(230,57,70,0.07)' : diferencia < 0 ? 'rgba(245,158,11,0.07)' : 'rgba(6,214,160,0.07)',
+              border: `1px solid ${diferencia > 0 ? 'rgba(230,57,70,0.25)' : diferencia < 0 ? 'rgba(245,158,11,0.25)' : 'rgba(6,214,160,0.25)'}`,
+              borderRadius: 8, padding: '12px', textAlign: 'center'
+            }}>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: diferencia > 0 ? '#e63946' : diferencia < 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4 }}>
+                {diferencia > 0 ? 'A COBRAR' : diferencia < 0 ? 'EXCESO' : 'CUADRADO'}
+              </div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: diferencia > 0 ? '#e63946' : diferencia < 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px' }}>
+                {COP(Math.abs(diferencia))}
+              </div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>
+                {diferencia > 0 ? 'se registra como abono' : diferencia < 0 ? 'a favor del vendedor' : 'todo cuadra ✓'}
+              </div>
+            </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 }}>
+        {/* Descripción de lo que va a pasar */}
+        {nums > 0 && (
+          <div style={{ background: 'rgba(0,0,0,0.02)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 1.9 }}>
+            {diferencia > 0
+              ? <>Al cerrar, se registra un abono de <strong style={{ color: '#7c3aed' }}>{COP(diferencia)}</strong> y se marca como ✅ cuadrado.</>
+              : diferencia < 0
+              ? <>Se cierra con <strong style={{ color: '#f59e0b' }}>{COP(totalEsperado)}</strong>. Pagó <strong style={{ color: '#06d6a0' }}>{COP(Math.abs(diferencia))}</strong> de más.</>
+              : <>¡Todo cuadra perfecto! Se cierra con <strong style={{ color: '#06d6a0' }}>{COP(totalEsperado)}</strong>.</>
+            }
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
           {yaCuadrado && (
             <button onClick={handleAbrir} disabled={saving}
               style={{ background: 'transparent', border: '1.5px solid rgba(230,57,70,0.4)', color: '#e63946', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', fontWeight: 700 }}>
@@ -774,7 +789,7 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, calcularTotales, o
           )}
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !monto}
+            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !nums}
               style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', minWidth: 140 }}>
               {saving
                 ? <span className="jd-spinner" style={{ width: 16, height: 16 }} />
