@@ -713,64 +713,34 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
   const yaCuadrado = cuadreActual.cuadrado || false;
   const yaAbonado  = lote?.abono ?? 0;
 
-  // Modo: 'numeros' (vendió/pagó por números) o 'manual' (montos directos)
-  const [modo, setModo] = useState('numeros');
-
-  // ── Modo números ──
+  // Input: números vendidos (los no vendidos desaparecen)
   const [numVendidos, setNumVendidos] = useState(String(cuadreActual.nums_cuadrados ?? lote?.total_numeros ?? ''));
-  const [numPagados,  setNumPagados]  = useState('');
+  // Input: monto que me dio (manual, en dinero) — toma prioridad
+  const [montoDado,   setMontoDado]   = useState('');
+  const [saving,      setSaving]      = useState(false);
 
-  // ── Modo manual ──
-  const [montoTotal, setMontoTotal] = useState('');
-  const [montoDado,  setMontoDado]  = useState('');
+  const vendidos      = Math.max(0, parseInt(numVendidos) || 0);
+  const totalEsperado = +(precioPorNum * vendidos).toFixed(2);   // 25 × 2000 = 50000
+  const totalPagado   = +(Number(montoDado) || 0).toFixed(2);    // lo que realmente dio (ej: 42000)
+  const saldo         = +(Math.max(totalEsperado - totalPagado, 0)).toFixed(2); // pendiente
 
-  const [saving, setSaving] = useState(false);
-
-  const vendidos = Math.max(0, parseInt(numVendidos) || 0);
-  const pagados  = Math.max(0, parseInt(numPagados)  || 0);
-
-  // Cálculos según el modo activo
-  let totalEsperado, totalPagado, saldo, numsCuadrados, numsPendientes;
-
-  if (modo === 'numeros') {
-    totalEsperado  = +(precioPorNum * vendidos).toFixed(2);
-    totalPagado    = +(precioPorNum * pagados).toFixed(2);
-    numsPendientes = Math.max(vendidos - pagados, 0);
-    saldo          = +(precioPorNum * numsPendientes).toFixed(2);
-    numsCuadrados  = vendidos;
-  } else {
-    totalEsperado  = +(Number(montoTotal) || 0).toFixed(2);
-    totalPagado    = +(Number(montoDado)  || 0).toFixed(2);
-    saldo          = +(Math.max(totalEsperado - totalPagado, 0)).toFixed(2);
-    numsCuadrados  = null; // en modo manual no contamos números
-    numsPendientes = null;
-  }
-
-  const abonoNuevo  = Math.max(totalPagado - yaAbonado, 0);
-  const listoParaCerrar = modo === 'numeros'
-    ? (vendidos > 0 && numPagados !== '')
-    : (Number(montoTotal) > 0 && montoDado !== '');
+  // Lo que falta registrar como abono = lo pagado ahora menos lo ya abonado antes
+  const abonoNuevo = Math.max(totalPagado - yaAbonado, 0);
+  const listoParaCerrar = vendidos > 0 && montoDado !== '';
 
   const handleConfirmar = async () => {
-    if (modo === 'numeros') {
-      if (!vendidos) { toast.error('Ingresa cuántos números vendió'); return; }
-      if (pagados > vendidos) { toast.error('No puede pagar más números de los que vendió'); return; }
-    } else {
-      if (!totalEsperado) { toast.error('Ingresa el total a cobrar'); return; }
-    }
+    if (!vendidos) { toast.error('Ingresa cuántos números vendió'); return; }
+    if (montoDado === '') { toast.error('Ingresa cuánto te dio'); return; }
     setSaving(true);
     try {
       if (abonoNuevo > 0 && lote?.lote_id) {
-        const nota = modo === 'numeros'
-          ? `Pagó ${pagados} de ${vendidos} números`
-          : `Cierre manual: dio ${COP(totalPagado)}`;
-        await onRegistrarAbono({ lote_id: lote.lote_id, monto: abonoNuevo, nota });
+        await onRegistrarAbono({ lote_id: lote.lote_id, monto: abonoNuevo, nota: `Cuadre: ${vendidos} números, dio ${COP(totalPagado)}` });
       }
       await onGuardar({
         cuadrado:        true,
         pendiente_flag:  false,
         monto_cuadrado:  totalEsperado,
-        nums_cuadrados:  numsCuadrados,
+        nums_cuadrados:  vendidos,
         monto_entregado: totalPagado,
       });
     } finally { setSaving(false); }
@@ -782,146 +752,93 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
     finally { setSaving(false); }
   };
 
-  const inputBig = { fontSize: '1.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', padding: '8px 12px' };
+  // Estilos de inputs grandes
+  const inputNum   = { fontSize: '2.6rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '3px', textAlign: 'center', padding: '12px 16px', maxWidth: 160 };
+  const inputMonto = { fontSize: '2.4rem', fontFamily: "'Bebas Neue',cursive", letterSpacing: '2px', textAlign: 'center', padding: '12px 16px', width: '100%' };
 
   return (
     <ModalBase title={`${yaCuadrado ? 'EDITAR CIERRE' : 'CUADRAR'} — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* ─── Toggle de modo ─── */}
-        <div style={{ display: 'flex', gap: 4, background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 9, padding: 4 }}>
-          {[
-            { key: 'numeros', label: '🔢 POR NÚMEROS' },
-            { key: 'manual',  label: '✏️ MONTO MANUAL' },
-          ].map(m => (
-            <button key={m.key} onClick={() => setModo(m.key)}
-              style={{ flex: 1, background: modo === m.key ? 'var(--jordyn-primary)' : 'transparent', color: modo === m.key ? '#fff' : 'var(--jordyn-muted)', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.62rem', fontWeight: 700, letterSpacing: '.5px', transition: 'all .15s' }}>
-              {m.label}
-            </button>
-          ))}
+        {/* ─── Números vendidos ─── */}
+        <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '16px' }}>
+          <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 10 }}>
+            ¿CUÁNTOS NÚMEROS VENDIÓ?
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <input className="jd-input" type="number" min="0"
+              value={numVendidos} onChange={e => setNumVendidos(e.target.value)}
+              placeholder="25" autoFocus style={inputNum} />
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.3rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>
+              × {COP(precioPorNum)}
+            </div>
+            {vendidos > 0 && (
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>SON</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.9rem', color: 'var(--jordyn-primary)', letterSpacing: '2px', lineHeight: 1 }}>
+                  {COP(totalEsperado)}
+                </div>
+              </div>
+            )}
+          </div>
+          {lote?.total_numeros > 0 && vendidos < lote.total_numeros && vendidos > 0 && (
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', marginTop: 8 }}>
+              Tenía {lote.total_numeros} asignados · {lote.total_numeros - vendidos} no se vendieron (no se cobran)
+            </div>
+          )}
         </div>
 
-        {/* ════════ MODO NÚMEROS ════════ */}
-        {modo === 'numeros' && (
-          <>
-            {/* Números vendidos */}
-            <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px' }}>
-              <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
-                ¿CUÁNTOS NÚMEROS VENDIÓ?
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <input className="jd-input" type="number" min="0"
-                  value={numVendidos} onChange={e => setNumVendidos(e.target.value)}
-                  placeholder="Ej: 45" autoFocus
-                  style={{ ...inputBig, maxWidth: 110 }} />
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>× {COP(precioPorNum)}</div>
-                {vendidos > 0 && (
-                  <div style={{ marginLeft: 'auto', fontFamily: "'Bebas Neue',cursive", fontSize: '1.4rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>= {COP(totalEsperado)}</div>
-                )}
-              </div>
-              {lote?.total_numeros > 0 && vendidos < lote.total_numeros && (
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', marginTop: 6 }}>
-                  Tenía {lote.total_numeros} asignados · {lote.total_numeros - vendidos} no se vendieron (no se cobran)
-                </div>
-              )}
+        {/* ─── Cuánto me dio (monto manual) ─── */}
+        {vendidos > 0 && (
+          <div style={{ background: 'rgba(6,214,160,0.04)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 10, padding: '16px' }}>
+            <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 4 }}>
+              ¿CUÁNTO ME DIO?
+            </label>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', marginBottom: 10 }}>
+              El monto según el ticket es {COP(totalEsperado)} — escribe lo que entregó
             </div>
-
-            {/* Números pagados */}
-            {vendidos > 0 && (
-              <div style={{ background: 'rgba(6,214,160,0.04)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 10, padding: '14px 16px' }}>
-                <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
-                  ¿CUÁNTOS NÚMEROS ME PAGÓ?
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <input className="jd-input" type="number" min="0" max={vendidos}
-                    value={numPagados} onChange={e => setNumPagados(e.target.value)}
-                    placeholder={`Ej: ${vendidos}`}
-                    style={{ ...inputBig, maxWidth: 110 }} />
-                  <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)' }}>× {COP(precioPorNum)}</div>
-                  {pagados > 0 && (
-                    <div style={{ marginLeft: 'auto', fontFamily: "'Bebas Neue',cursive", fontSize: '1.4rem', color: '#06d6a0', letterSpacing: '2px' }}>= {COP(totalPagado)}</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setNumPagados(String(vendidos))}
-                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem' }}>
-                    Pagó todos ({vendidos})
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+            <input className="jd-input" type="number" min="0"
+              value={montoDado} onChange={e => setMontoDado(e.target.value)}
+              placeholder={`Ej: ${Math.round(totalEsperado)}`}
+              style={inputMonto} />
+            {/* Atajos */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setMontoDado(String(Math.round(totalEsperado)))}
+                style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', fontWeight: 700 }}>
+                Pagó todo ({COP(totalEsperado)})
+              </button>
+              {[Math.round(totalEsperado / 2)].filter(v => v > 0).map(v => (
+                <button key={v} type="button" onClick={() => setMontoDado(String(v))}
+                  style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem' }}>
+                  Mitad ({COP(v)})
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
-        {/* ════════ MODO MANUAL ════════ */}
-        {modo === 'manual' && (
-          <>
-            {/* Total a cobrar */}
-            <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px' }}>
-              <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
-                TOTAL A COBRAR (monto exacto)
-              </label>
-              <input className="jd-input" type="number" min="0"
-                value={montoTotal} onChange={e => setMontoTotal(e.target.value)}
-                placeholder="Ej: 50000" autoFocus
-                style={{ ...inputBig, width: '100%' }} />
-              {lote?.total_numeros > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setMontoTotal(String(Math.round(precioPorNum * lote.total_numeros)))}
-                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem' }}>
-                    {lote.total_numeros} núm = {COP(precioPorNum * lote.total_numeros)}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Cuánto me dio */}
-            {Number(montoTotal) > 0 && (
-              <div style={{ background: 'rgba(6,214,160,0.04)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 10, padding: '14px 16px' }}>
-                <label style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700, display: 'block', marginBottom: 8 }}>
-                  ¿CUÁNTO ME DIO? (monto exacto)
-                </label>
-                <input className="jd-input" type="number" min="0"
-                  value={montoDado} onChange={e => setMontoDado(e.target.value)}
-                  placeholder="Ej: 48000"
-                  style={{ ...inputBig, width: '100%' }} />
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setMontoDado(montoTotal)}
-                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem' }}>
-                    Pagó todo ({COP(Number(montoTotal))})
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ════════ RESUMEN (ambos modos) ════════ */}
+        {/* ─── RESUMEN ─── */}
         {listoParaCerrar && (
           <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
-              <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>
-                  {modo === 'numeros' ? `VENDIÓ (${vendidos})` : 'TOTAL'}
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: 'var(--jordyn-primary)', letterSpacing: '2px' }}>{COP(totalEsperado)}</div>
+              <div style={{ padding: '16px 12px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', marginBottom: 6 }}>TOTAL ({vendidos})</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.8rem', color: 'var(--jordyn-primary)', letterSpacing: '2px', lineHeight: 1 }}>{COP(totalEsperado)}</div>
               </div>
-              <div style={{ padding: '12px 14px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>
-                  {modo === 'numeros' ? `PAGÓ (${pagados})` : 'ME DIO'}
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(totalPagado)}</div>
+              <div style={{ padding: '16px 12px', textAlign: 'center', borderRight: '1px solid var(--jordyn-border)' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: '#06d6a0', marginBottom: 6 }}>ME DIO</div>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.8rem', color: '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>{COP(totalPagado)}</div>
               </div>
-              <div style={{ padding: '12px 14px', textAlign: 'center', background: saldo > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(6,214,160,0.08)' }}>
-                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', marginBottom: 4, fontWeight: 700 }}>
-                  {saldo > 0 ? (modo === 'numeros' ? `PENDIENTE (${numsPendientes})` : 'PENDIENTE') : '✓ CUADRADO'}
+              <div style={{ padding: '16px 12px', textAlign: 'center', background: saldo > 0 ? 'rgba(245,158,11,0.08)' : 'rgba(6,214,160,0.08)' }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', marginBottom: 6, fontWeight: 700 }}>
+                  {saldo > 0 ? 'PENDIENTE' : '✓ CUADRADO'}
                 </div>
-                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.5rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+                <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '2rem', color: saldo > 0 ? '#f59e0b' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
                   {COP(saldo)}
                 </div>
               </div>
             </div>
-            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)', fontFamily: "'Share Tech Mono',monospace", fontSize: '.56rem', color: 'var(--jordyn-muted)', lineHeight: 1.8 }}>
+            <div style={{ padding: '11px 14px', borderTop: '1px solid var(--jordyn-border)', background: 'rgba(0,0,0,0.01)', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 1.8 }}>
               {saldo > 0
                 ? <>Queda <strong style={{ color: '#f59e0b' }}>{COP(saldo)} pendiente</strong>. El vendedor queda en amarillo y puedes seguir cobrando.</>
                 : <>¡Cuadra perfecto! Se cierra en verde sin pendientes.</>}
