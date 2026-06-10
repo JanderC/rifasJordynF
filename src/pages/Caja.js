@@ -63,7 +63,6 @@ export default function Caja() {
   // por_pagar ya viene calculado con el porcentaje desde el backend
   const [lotesMap, setLotesMap] = useState({});
 
-  const [modalVenta,   setModalVenta]   = useState(null);
   const [modalAbono,   setModalAbono]   = useState(null);
   const [modalDetalle, setModalDetalle] = useState(null);
   const [modalCuadre,  setModalCuadre]  = useState(null);
@@ -240,14 +239,6 @@ export default function Caja() {
     await cargarTodo(rifaActiva.id, nuevoPct);
   };
 
-  /* ── Guardar venta ── */
-  const handleGuardarVenta = async ({ lote_id, monto, nota }) => {
-    await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Venta' });
-    toast.success(`Venta de ${COP(monto)} registrada`);
-    setModalVenta(null);
-    await refrescarLotes();
-  };
-
   /* ── Guardar abono ── */
   const handleGuardarAbono = async ({ lote_id, monto, nota }) => {
     await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Abono' });
@@ -389,7 +380,6 @@ export default function Caja() {
                     cuadre={cuadreLocal[v.vendedor_id] || {}}
                     guardandoCuadre={guardandoCuadre[v.vendedor_id] || false}
                     calcularTotales={() => calcularTotalesVendedor(v)}
-                    onVenta={() => setModalVenta(v)}
                     onAbono={() => setModalAbono(v)}
                     onDetalle={() => setModalDetalle(v)}
                     onCuadrar={() => setModalCuadre(v)}
@@ -410,15 +400,6 @@ export default function Caja() {
       </div>
 
       {/* MODALES */}
-      {modalVenta && (
-        <ModalVenta
-          vendedor={modalVenta}
-          lote={lotesMap[modalVenta.vendedor_id] || null}
-          precioPorNum={precioPorNum}
-          onClose={() => setModalVenta(null)}
-          onSave={handleGuardarVenta}
-        />
-      )}
       {modalAbono && (
         <ModalAbono
           vendedor={modalAbono}
@@ -443,9 +424,15 @@ export default function Caja() {
           cuadreActual={cuadreLocal[modalCuadre.vendedor_id] || {}}
           calcularTotales={() => calcularTotalesVendedor(modalCuadre)}
           onClose={() => setModalCuadre(null)}
+          onRegistrarAbono={async (payload) => {
+            await API.post('/caja/abonos', payload);
+            await refrescarLotes();
+          }}
           onGuardar={async (payload) => {
             await handleGuardarCuadre(modalCuadre.vendedor_id, payload);
+            await refrescarLotes();
             setModalCuadre(null);
+            toast.success(`✅ Venta de ${modalCuadre.vendedor_nombre.split(' ')[0]} cerrada`);
           }}
         />
       )}
@@ -455,8 +442,12 @@ export default function Caja() {
 
 /* ═══════════════════════════════════════════
    TARJETA DE VENDEDOR
+   - Sin montos visibles en la tarjeta
+   - ABONAR: abonos durante la semana
+   - CUADRAR (checkbox): cierra el vendedor con monto final
+   - PRIOR. (checkbox): marca como prioritario
 ═══════════════════════════════════════════ */
-function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre, calcularTotales, onVenta, onAbono, onDetalle, onCuadrar, onTogglePendiente }) {
+function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre, calcularTotales, onAbono, onDetalle, onCuadrar, onTogglePendiente }) {
   const t = calcularTotales();
   const cuadrado      = cuadre.cuadrado       || false;
   const pendienteFlag = cuadre.pendiente_flag || false;
@@ -477,35 +468,17 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
   })();
 
   const pctCobrado  = t.totalCobrar > 0 ? Math.round((t.cobrado / t.totalCobrar) * 100) : 0;
-  const debiendo    = !cuadrado && t.deuda > 0;
   const estadoColor = cuadrado ? '#06d6a0' : pendienteFlag ? '#f59e0b' : t.deuda <= 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
-  const estadoLabel = cuadrado ? '✅ CUADRADO' : pendienteFlag ? '⚡ PRIORITARIO' : t.deuda <= 0 ? 'PAGADO' : t.cobrado > 0 ? 'PARCIAL' : 'PENDIENTE';
+  const estadoLabel = cuadrado ? '✅ CUADRADO' : pendienteFlag ? '⚡ PRIORITARIO' : t.deuda <= 0 ? 'PAGADO' : t.cobrado > 0 ? 'ABONANDO' : 'PENDIENTE';
 
   return (
     <div style={{
       background: 'var(--jordyn-bg2)',
-      border: `2px solid ${cuadrado ? 'rgba(6,214,160,0.5)' : pendienteFlag ? 'rgba(245,158,11,0.5)' : 'rgba(230,57,70,0.2)'}`,
+      border: `2px solid ${cuadrado ? 'rgba(6,214,160,0.45)' : pendienteFlag ? 'rgba(245,158,11,0.45)' : 'rgba(200,200,200,0.2)'}`,
       borderRadius: 12, overflow: 'hidden', transition: 'border-color .2s',
     }}>
 
-      {/* Banners */}
-      {debiendo && !pendienteFlag && (
-        <div style={{ background: 'linear-gradient(90deg,#7c0a14,#e63946)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🚨</span>
-          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#fff', fontWeight: 700 }}>
-            {vendedor.vendedor_nombre.split(' ')[0].toUpperCase()} — DEBE{' '}
-            <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '.9rem', letterSpacing: '2px' }}>{COP(t.deuda)}</span>
-          </span>
-        </div>
-      )}
-      {pendienteFlag && !cuadrado && (
-        <div style={{ background: 'linear-gradient(90deg,#92400e,#f59e0b)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>⚡</span>
-          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#fff', fontWeight: 700 }}>
-            PRIORITARIO — DEBE {COP(t.deuda)}
-          </span>
-        </div>
-      )}
+      {/* Banner cuadrado */}
       {cuadrado && (
         <div style={{ background: 'linear-gradient(90deg,#064e3b,#059669)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>✅</span>
@@ -514,31 +487,35 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
           </span>
         </div>
       )}
+      {pendienteFlag && !cuadrado && (
+        <div style={{ background: 'linear-gradient(90deg,#92400e,#f59e0b)', padding: '4px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '.85rem' }}>⚡</span>
+          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#fff', fontWeight: 700 }}>PRIORITARIO</span>
+        </div>
+      )}
 
-      {/* Cabecera */}
-      <div style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      {/* Fila principal */}
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
 
         {/* Avatar */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1.1rem' }}>
+          <div style={{ width: 42, height: 42, borderRadius: '50%', background: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem' }}>
             {(vendedor.vendedor_nombre || '?').charAt(0).toUpperCase()}
           </div>
-          <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: '50%', background: estadoColor, border: '2px solid var(--jordyn-bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.45rem', color: '#fff' }}>
-            {cuadrado ? '✓' : '!'}
-          </div>
+          <div style={{ position: 'absolute', bottom: -2, right: -2, width: 14, height: 14, borderRadius: '50%', background: estadoColor, border: '2px solid var(--jordyn-bg2)' }} />
         </div>
 
-        {/* Nombre */}
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: '.95rem', color: 'var(--jordyn-text)', fontWeight: 600 }}>
+        {/* Nombre + estado */}
+        <div style={{ flex: 1, minWidth: 120 }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: '.95rem', color: 'var(--jordyn-text)', fontWeight: 600, lineHeight: 1.1 }}>
             {vendedor.vendedor_nombre}
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '1px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700 }}>
+            <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '1px 7px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>
               {estadoLabel}
             </span>
-            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>
-              {t.cantidad} núm · {COP(precioPorNum)}/c.u.
+            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', color: 'var(--jordyn-muted)' }}>
+              {t.cantidad} números
             </span>
           </div>
         </div>
@@ -546,34 +523,31 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
         {/* Acciones */}
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
 
-          <button onClick={onVenta} title="Registrar lo que me entregó"
-            style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', border: 'none', color: '#fff', borderRadius: 7, padding: '6px 13px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.68rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
-            <i className="bi bi-cash-coin" /> VENTA
-          </button>
-
-          <button onClick={onAbono} title="Abonar a la deuda"
-            style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', border: 'none', color: '#fff', borderRadius: 7, padding: '6px 13px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.68rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(6,214,160,0.25)' }}>
+          {/* ABONAR */}
+          <button onClick={onAbono}
+            style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', border: 'none', color: '#fff', borderRadius: 7, padding: '7px 15px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.68rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(6,214,160,0.25)' }}>
             <i className="bi bi-plus-circle" /> ABONAR
           </button>
 
-          {/* Checkboxes */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '4px 10px' }}>
+          {/* Checkboxes CUADRAR / PRIOR. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '5px 10px' }}>
+
             {/* ✅ CUADRAR */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} onClick={onCuadrar} title="Confirmar cuadre">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }} onClick={onCuadrar}>
               <div style={{ width: 20, height: 20, borderRadius: 5, background: cuadrado ? 'linear-gradient(135deg,#059669,#06d6a0)' : 'var(--jordyn-bg2)', border: `2px solid ${cuadrado ? '#06d6a0' : 'var(--jordyn-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s', flexShrink: 0 }}>
                 {cuadrado && <i className="bi bi-check2" style={{ color: '#fff', fontSize: '.7rem' }} />}
               </div>
-              <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: cuadrado ? '#06d6a0' : 'var(--jordyn-muted)', fontWeight: 700, userSelect: 'none' }}>CUADRAR</span>
+              <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: cuadrado ? '#06d6a0' : 'var(--jordyn-muted)', fontWeight: 700 }}>CUADRAR</span>
             </div>
 
             <div style={{ width: 1, height: 18, background: 'var(--jordyn-border)' }} />
 
-            {/* ⚡ PENDIENTE */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} onClick={onTogglePendiente} title="Marcar como prioritario">
+            {/* ⚡ PRIOR. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none' }} onClick={onTogglePendiente}>
               <div style={{ width: 20, height: 20, borderRadius: 5, background: pendienteFlag ? 'linear-gradient(135deg,#d97706,#f59e0b)' : 'var(--jordyn-bg2)', border: `2px solid ${pendienteFlag ? '#f59e0b' : 'var(--jordyn-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s', flexShrink: 0 }}>
                 {pendienteFlag && <i className="bi bi-lightning-fill" style={{ color: '#fff', fontSize: '.65rem' }} />}
               </div>
-              <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: pendienteFlag ? '#f59e0b' : 'var(--jordyn-muted)', fontWeight: 700, userSelect: 'none' }}>PRIOR.</span>
+              <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: pendienteFlag ? '#f59e0b' : 'var(--jordyn-muted)', fontWeight: 700 }}>PRIOR.</span>
             </div>
           </div>
 
@@ -584,151 +558,13 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
         </div>
       </div>
 
-      {/* Barra progreso */}
-      <div style={{ height: 5, background: 'rgba(0,0,0,0.06)' }}>
-        <div style={{ height: '100%', width: `${Math.min(pctCobrado, 100)}%`, background: pctCobrado >= 100 ? '#06d6a0' : pendienteFlag ? '#f59e0b' : 'var(--jordyn-primary)', transition: 'width .4s' }} />
-      </div>
-
-      {/* Footer — DEBE es la cifra principal */}
-      <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.01)', display: 'flex', gap: 0, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end' }}>
-          {/* DEBE — protagonista */}
-          <div>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '1px', fontWeight: 700 }}>
-              {t.deuda > 0 ? 'ME DEBE' : '✓ SALDADO'}
-            </div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.3rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
-              {COP(t.deuda)}
-            </div>
-          </div>
-          {/* COBRADO y TOTAL — secundarios */}
-          <div style={{ display: 'flex', gap: 14, paddingBottom: 2 }}>
-            <div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.38rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>COBRADO</div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.72rem', color: '#06d6a0', fontWeight: 700 }}>{COP(t.cobrado)}</div>
-            </div>
-            <div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.38rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL</div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.72rem', color: 'var(--jordyn-muted)', fontWeight: 700 }}>{COP(t.totalCobrar)}</div>
-            </div>
-          </div>
+      {/* Barra progreso — solo si tiene abonos */}
+      {t.cobrado > 0 && (
+        <div style={{ height: 3, background: 'rgba(0,0,0,0.06)' }}>
+          <div style={{ height: '100%', width: `${Math.min(pctCobrado, 100)}%`, background: pctCobrado >= 100 ? '#06d6a0' : cuadrado ? '#06d6a0' : pendienteFlag ? '#f59e0b' : 'var(--jordyn-primary)', transition: 'width .4s' }} />
         </div>
-        <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>{pctCobrado}% cobrado</div>
-      </div>
+      )}
     </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   MODAL: VENTA
-   Muestra: TOTAL A COBRAR / LO QUE YA DIO / LO QUE FALTA
-   El vendedor entrega un monto y se registra como abono.
-═══════════════════════════════════════════ */
-function ModalVenta({ vendedor, lote, precioPorNum, onClose, onSave }) {
-  const [monto,  setMonto]  = useState('');
-  const [nota,   setNota]   = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // Usar lote.por_pagar como fuente de verdad (ya tiene el porcentaje aplicado)
-  const totalCobrar = lote?.por_pagar ?? +(precioPorNum * (vendedor.numeros?.length || 0)).toFixed(2);
-  const loEntregado = lote?.abono     ?? 0;
-  const leFalta     = lote?.pendiente ?? totalCobrar;
-
-  const handleSave = async () => {
-    if (!monto || Number(monto) <= 0) { toast.error('Ingresa el monto que te entregó'); return; }
-    if (!lote?.lote_id) { toast.error('No se pudo identificar el lote. Actualiza la página.'); return; }
-    setSaving(true);
-    try { await onSave({ lote_id: lote.lote_id, monto: Number(monto), nota: nota || 'Venta' }); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <ModalBase title={`REGISTRAR VENTA — ${vendedor.vendedor_nombre}`} onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-        {/* Resumen de cobro — lo que importa */}
-        <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: 10, padding: '14px 16px' }}>
-          <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700, marginBottom: 10 }}>
-            ESTADO DE CUENTA — {vendedor.vendedor_nombre.split(' ')[0].toUpperCase()}
-          </div>
-
-          {/* 3 cifras clave */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-            <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL A COBRAR</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.15rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(totalCobrar)}</div>
-            </div>
-            <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>YA ME DIO</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.15rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(loEntregado)}</div>
-            </div>
-            <div style={{ background: leFalta > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.07)', border: `1px solid ${leFalta > 0 ? 'rgba(230,57,70,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: leFalta > 0 ? '#e63946' : '#06d6a0', marginBottom: 4 }}>ME DEBE</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.15rem', color: leFalta > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px' }}>{COP(leFalta)}</div>
-            </div>
-          </div>
-
-          {/* Barra */}
-          {totalCobrar > 0 && (
-            <div>
-              <div style={{ height: 6, background: 'var(--jordyn-border)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.min(100, (loEntregado / totalCobrar) * 100)}%`, background: leFalta <= 0 ? '#06d6a0' : 'linear-gradient(90deg,#7c3aed,#06d6a0)', borderRadius: 3, transition: 'width .3s' }} />
-              </div>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>
-                {Math.min(100, Math.round((loEntregado / totalCobrar) * 100))}% cobrado
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input del monto */}
-        <div>
-          <label className="jd-label">¿CUÁNTO TE ENTREGÓ AHORA? *</label>
-          <input className="jd-input" type="number" min="1"
-            value={monto} onChange={e => setMonto(e.target.value)}
-            placeholder={`Ej: ${COP(leFalta)}`}
-            autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
-          {/* Atajos */}
-          {leFalta > 0 && (
-            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-              {[leFalta, Math.round(leFalta / 2), Math.round(leFalta / 4)]
-                .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
-                .map(v => (
-                  <button key={v} type="button" onClick={() => setMonto(String(v))}
-                    style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                    {COP(v)}
-                  </button>
-                ))}
-            </div>
-          )}
-        </div>
-
-        {/* Nota */}
-        <div>
-          <label className="jd-label">NOTA (opcional)</label>
-          <input className="jd-input" value={nota} onChange={e => setNota(e.target.value)}
-            placeholder="Efectivo, transferencia..." />
-        </div>
-
-        {/* Preview de lo que quedaría */}
-        {monto > 0 && leFalta > 0 && (
-          <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)' }}>
-            Después de registrar → me seguirá debiendo:{' '}
-            <strong style={{ color: Math.max(0, leFalta - Number(monto)) > 0 ? '#e63946' : '#06d6a0', fontSize: '.75rem' }}>
-              {COP(Math.max(0, leFalta - Number(monto)))}
-            </strong>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-          <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-          <button className="btn-jordyn" onClick={handleSave} disabled={saving || !lote}
-            style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', minWidth: 150 }}>
-            {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-cash-coin me-1" />REGISTRAR</>}
-          </button>
-        </div>
-      </div>
-    </ModalBase>
   );
 }
 
@@ -840,64 +676,109 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
   );
 }
 
+
 /* ═══════════════════════════════════════════
-   MODAL: CONFIRMAR CUADRE
+   MODAL: CONFIRMAR CUADRE / CERRAR VENTA
+   - Muestra TOTAL / YA ABONADO / ME DEBE
+   - El monto de cierre puede diferir de lo abonado
+   - Si cierra con más de lo abonado → registra la diferencia como abono
+   - Marca al vendedor como cuadrado en la BD
 ═══════════════════════════════════════════ */
-function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, calcularTotales, onClose, onGuardar }) {
-  const t = calcularTotales();
+function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, calcularTotales, onClose, onGuardar, onRegistrarAbono }) {
+  const t          = calcularTotales();
   const yaCuadrado = cuadreActual.cuadrado || false;
-  const [monto, setMonto] = useState(
-    yaCuadrado && cuadreActual.monto_cuadrado
-      ? String(cuadreActual.monto_cuadrado)
-      : String(lote?.abono || Math.round(t.totalCobrar) || '')
-  );
+  const yaAbonado  = lote?.abono    ?? 0;
+  const totalCobrar = lote?.por_pagar ?? t.totalCobrar;
+
+  const [monto,  setMonto]  = useState(String(Math.round(yaAbonado) || Math.round(totalCobrar) || ''));
   const [saving, setSaving] = useState(false);
 
+  const montoNum   = Number(monto) || 0;
+  const diferencia = +(montoNum - yaAbonado).toFixed(2); // positivo = falta registrar
+
   const handleConfirmar = async () => {
+    if (!montoNum) { toast.error('Ingresa el monto de cierre'); return; }
     setSaving(true);
-    try { await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: Number(monto) || t.totalCobrar }); }
-    finally { setSaving(false); }
+    try {
+      if (diferencia > 0 && lote?.lote_id) {
+        await onRegistrarAbono({ lote_id: lote.lote_id, monto: diferencia, nota: 'Cierre de venta' });
+      }
+      await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: montoNum });
+    } finally { setSaving(false); }
   };
-  const handleDesconfirmar = async () => {
+
+  const handleAbrir = async () => {
     setSaving(true);
     try { await onGuardar({ cuadrado: false, pendiente_flag: cuadreActual.pendiente_flag || false, monto_cuadrado: null }); }
     finally { setSaving(false); }
   };
 
   return (
-    <ModalBase title={`${yaCuadrado ? 'EDITAR' : 'CONFIRMAR'} CUADRE — ${vendedor.vendedor_nombre}`} onClose={onClose}>
+    <ModalBase title={`${yaCuadrado ? 'EDITAR CIERRE' : 'CERRAR VENTA'} — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        {/* Resumen de cuenta */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-          <InfoCard label="A COBRAR" value={COP(t.totalCobrar)} color="var(--jordyn-text)" />
-          <InfoCard label="YA PAGÓ"  value={COP(lote?.abono || 0)} color="#06d6a0" />
-          <InfoCard label="DEBE"     value={COP(t.deuda)} color={t.deuda > 0 ? '#e63946' : '#06d6a0'} />
-        </div>
-        <div>
-          <label className="jd-label">MONTO CON EL QUE CERRÓ *</label>
-          <input className="jd-input" type="number" min="0"
-            value={monto} onChange={e => setMonto(e.target.value)}
-            autoFocus onKeyDown={e => e.key === 'Enter' && handleConfirmar()} />
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            {[lote?.abono, t.totalCobrar].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map(v => (
-              <button key={v} type="button" onClick={() => setMonto(String(v))}
-                style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
-                {COP(v)}
-              </button>
-            ))}
+          <div style={{ background: 'var(--jordyn-bg2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>TOTAL A COBRAR</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(totalCobrar)}</div>
+          </div>
+          <div style={{ background: 'rgba(6,214,160,0.07)', border: '1px solid rgba(6,214,160,0.2)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: '#06d6a0', marginBottom: 4 }}>YA ABONADO</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '2px' }}>{COP(yaAbonado)}</div>
+          </div>
+          <div style={{ background: (lote?.pendiente ?? t.deuda) > 0 ? 'rgba(230,57,70,0.07)' : 'rgba(6,214,160,0.07)', border: `1px solid ${(lote?.pendiente ?? t.deuda) > 0 ? 'rgba(230,57,70,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: (lote?.pendiente ?? t.deuda) > 0 ? '#e63946' : '#06d6a0', marginBottom: 4 }}>ME DEBE</div>
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: (lote?.pendiente ?? t.deuda) > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px' }}>{COP(lote?.pendiente ?? t.deuda)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+
+        {/* Input de cierre */}
+        <div>
+          <label className="jd-label">MONTO CON EL QUE CIERRA *</label>
+          <input className="jd-input" type="number" min="0"
+            value={monto} onChange={e => setMonto(e.target.value)}
+            placeholder={`Ej: ${COP(totalCobrar)}`}
+            autoFocus onKeyDown={e => e.key === 'Enter' && handleConfirmar()} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+            {[Math.round(totalCobrar), Math.round(yaAbonado)]
+              .filter((v, i, a) => v > 0 && a.indexOf(v) === i)
+              .map(v => (
+                <button key={v} type="button" onClick={() => setMonto(String(v))}
+                  style={{ background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 5, padding: '3px 10px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem' }}>
+                  {COP(v)}
+                </button>
+              ))}
+          </div>
+        </div>
+
+        {/* Qué va a pasar */}
+        {montoNum > 0 && (
+          <div style={{ background: diferencia > 0 ? 'rgba(124,58,237,0.05)' : 'rgba(6,214,160,0.05)', border: `1px solid ${diferencia > 0 ? 'rgba(124,58,237,0.2)' : 'rgba(6,214,160,0.2)'}`, borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', color: 'var(--jordyn-muted)', lineHeight: 1.9 }}>
+            {diferencia > 0 ? (
+              <>Se registrará un abono de <strong style={{ color: '#7c3aed', fontSize: '.7rem' }}>{COP(diferencia)}</strong> y se cerrará la venta.</>
+            ) : diferencia < 0 ? (
+              <>Se cerrará con <strong style={{ color: '#06d6a0', fontSize: '.7rem' }}>{COP(montoNum)}</strong>. Diferencia de <strong style={{ color: '#f59e0b', fontSize: '.7rem' }}>{COP(Math.abs(diferencia))}</strong> a favor del vendedor.</>
+            ) : (
+              <>Todo cuadra. Se cierra la venta con <strong style={{ color: '#06d6a0', fontSize: '.7rem' }}>{COP(montoNum)}</strong>.</>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 }}>
           {yaCuadrado && (
-            <button onClick={handleDesconfirmar} disabled={saving}
+            <button onClick={handleAbrir} disabled={saving}
               style={{ background: 'transparent', border: '1.5px solid rgba(230,57,70,0.4)', color: '#e63946', borderRadius: 7, padding: '6px 14px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', fontWeight: 700 }}>
-              ✗ DESCONFIRMAR
+              ✗ ABRIR VENTA
             </button>
           )}
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             <button className="btn-jordyn-outline" onClick={onClose}>CANCELAR</button>
-            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving}
+            <button className="btn-jordyn" onClick={handleConfirmar} disabled={saving || !monto}
               style={{ background: 'linear-gradient(135deg,#059669,#06d6a0)', minWidth: 140 }}>
-              {saving ? <span className="jd-spinner" style={{ width: 16, height: 16 }} /> : <><i className="bi bi-check2-circle me-1" />CONFIRMAR</>}
+              {saving
+                ? <span className="jd-spinner" style={{ width: 16, height: 16 }} />
+                : <><i className="bi bi-check2-circle me-1" />CERRAR VENTA</>}
             </button>
           </div>
         </div>
