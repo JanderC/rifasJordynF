@@ -543,18 +543,6 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
           </div>
         </div>
 
-        {/* Montos */}
-        <div style={{ display: 'flex', gap: 12, flexShrink: 0, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>A COBRAR</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: 'var(--jordyn-text)', letterSpacing: '2px' }}>{COP(t.totalCobrar)}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>DEBE</div>
-            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.2rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px' }}>{COP(t.deuda)}</div>
-          </div>
-        </div>
-
         {/* Acciones */}
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
 
@@ -601,19 +589,29 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
         <div style={{ height: '100%', width: `${Math.min(pctCobrado, 100)}%`, background: pctCobrado >= 100 ? '#06d6a0' : pendienteFlag ? '#f59e0b' : 'var(--jordyn-primary)', transition: 'width .4s' }} />
       </div>
 
-      {/* Footer */}
-      <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.01)', display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 18 }}>
-          {[
-            ['TOTAL',   COP(t.totalCobrar), 'var(--jordyn-text)'],
-            ['COBRADO', COP(t.cobrado),     '#06d6a0'],
-            ['DEBE',    COP(t.deuda),       t.deuda > 0 ? '#e63946' : '#06d6a0'],
-          ].map(([k, v, c]) => (
-            <div key={k}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.4rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>{k}</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '.95rem', color: c, letterSpacing: '2px' }}>{v}</div>
+      {/* Footer — DEBE es la cifra principal */}
+      <div style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.01)', display: 'flex', gap: 0, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-end' }}>
+          {/* DEBE — protagonista */}
+          <div>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '1px', fontWeight: 700 }}>
+              {t.deuda > 0 ? 'ME DEBE' : '✓ SALDADO'}
             </div>
-          ))}
+            <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.3rem', color: t.deuda > 0 ? '#e63946' : '#06d6a0', letterSpacing: '2px', lineHeight: 1 }}>
+              {COP(t.deuda)}
+            </div>
+          </div>
+          {/* COBRADO y TOTAL — secundarios */}
+          <div style={{ display: 'flex', gap: 14, paddingBottom: 2 }}>
+            <div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.38rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>COBRADO</div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.72rem', color: '#06d6a0', fontWeight: 700 }}>{COP(t.cobrado)}</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.38rem', color: 'var(--jordyn-muted)', letterSpacing: '1px' }}>TOTAL</div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.72rem', color: 'var(--jordyn-muted)', fontWeight: 700 }}>{COP(t.totalCobrar)}</div>
+            </div>
+          </div>
         </div>
         <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)' }}>{pctCobrado}% cobrado</div>
       </div>
@@ -748,7 +746,7 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
 
   const handleSave = async () => {
     if (!monto || Number(monto) <= 0) { toast.error('Ingresa un monto válido'); return; }
-    if (!lote?.lote_id) { toast.error('No se pudo identificar el lote. Actualiza la página.'); return; }
+    if (!lote?.lote_id) { toast.error('Error: no se encontró el lote. Pulsa ACTUALIZAR y vuelve a intentar.'); return; }
     setSaving(true);
     try { await onSave({ lote_id: lote.lote_id, monto: Number(monto), nota: nota || 'Abono' }); }
     finally { setSaving(false); }
@@ -757,12 +755,7 @@ function ModalAbono({ vendedor, lote, onClose, onSave }) {
   return (
     <ModalBase title={`ABONAR — ${vendedor.vendedor_nombre}`} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-        {!lote ? (
-          <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '12px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.65rem', color: '#f59e0b' }}>
-            ⚠ Cargando datos del vendedor... intenta de nuevo en un momento.
-          </div>
-        ) : leFalta <= 0 ? (
+        {leFalta <= 0 ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>✅</div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: '#06d6a0', letterSpacing: '3px' }}>DEUDA SALDADA</div>
