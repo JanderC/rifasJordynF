@@ -126,9 +126,11 @@ export default function Caja() {
       const cuadreMap = {};
       for (const v of (cuadreRes?.data?.vendedores || [])) {
         cuadreMap[v.vendedor_id] = {
-          cuadrado:       v.cuadrado       || false,
-          pendiente_flag: v.pendiente_flag || false,
-          monto_cuadrado: v.monto_cuadrado || null,
+          cuadrado:        v.cuadrado        || false,
+          pendiente_flag:  v.pendiente_flag  || false,
+          monto_cuadrado:  v.monto_cuadrado  || null,
+          nums_cuadrados:  v.nums_cuadrados  || null,
+          monto_entregado: v.monto_entregado || null,
         };
       }
       setCuadreLocal(cuadreMap);
@@ -414,6 +416,7 @@ export default function Caja() {
         <ModalDetalleVendedor
           vendedor={modalDetalle}
           lote={lotesMap[modalDetalle.vendedor_id] || null}
+          cuadre={cuadreLocal[modalDetalle.vendedor_id] || {}}
           precioPorNum={precioPorNum}
           calcularTotales={() => calcularTotalesVendedor(modalDetalle)}
           onClose={() => setModalDetalle(null)}
@@ -469,23 +472,39 @@ function TarjetaVendedor({ vendedor, precioPorNum, lote, cuadre, guardandoCuadre
     return paleta[h % paleta.length];
   })();
 
-  const pctCobrado  = t.totalCobrar > 0 ? Math.round((t.cobrado / t.totalCobrar) * 100) : 0;
-  const estadoColor = cuadrado ? '#06d6a0' : pendienteFlag ? '#f59e0b' : t.deuda <= 0 ? '#06d6a0' : t.cobrado > 0 ? '#f59e0b' : '#e63946';
-  const estadoLabel = cuadrado ? '✅ CUADRADO' : pendienteFlag ? '⚡ PRIORITARIO' : t.deuda <= 0 ? 'PAGADO' : t.cobrado > 0 ? 'ABONANDO' : 'PENDIENTE';
+  const pctCobrado = t.totalCobrar > 0 ? Math.round((t.cobrado / t.totalCobrar) * 100) : 0;
+
+  // Cuadrado con saldo pendiente → amarillo (cerró pero queda debiendo)
+  // Cuadrado sin saldo → verde
+  const cuadradoConPendiente = cuadrado && t.deuda > 0;
+  const estadoColor = cuadrado
+    ? (cuadradoConPendiente ? '#f59e0b' : '#06d6a0')
+    : pendienteFlag ? '#f59e0b'
+    : t.deuda <= 0 ? '#06d6a0'
+    : t.cobrado > 0 ? '#f59e0b'
+    : '#e63946';
+  const estadoLabel = cuadrado
+    ? (cuadradoConPendiente ? '⚠ CUADRADO · PENDIENTE' : '✅ CUADRADO')
+    : pendienteFlag ? '⚡ PRIORITARIO'
+    : t.deuda <= 0 ? 'PAGADO'
+    : t.cobrado > 0 ? 'ABONANDO'
+    : 'PENDIENTE';
 
   return (
     <div style={{
       background: 'var(--jordyn-bg2)',
-      border: `2px solid ${cuadrado ? 'rgba(6,214,160,0.45)' : pendienteFlag ? 'rgba(245,158,11,0.45)' : 'rgba(200,200,200,0.2)'}`,
+      border: `2px solid ${cuadrado ? (cuadradoConPendiente ? 'rgba(245,158,11,0.5)' : 'rgba(6,214,160,0.45)') : pendienteFlag ? 'rgba(245,158,11,0.45)' : 'rgba(200,200,200,0.2)'}`,
       borderRadius: 12, overflow: 'hidden', transition: 'border-color .2s',
     }}>
 
       {/* Banner cuadrado */}
       {cuadrado && (
-        <div style={{ background: 'linear-gradient(90deg,#064e3b,#059669)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>✅</span>
-          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#d1fae5', fontWeight: 700 }}>
-            CUADRADO · CERRÓ CON {COP(cuadre.monto_cuadrado ?? t.totalCobrar)}
+        <div style={{ background: cuadradoConPendiente ? 'linear-gradient(90deg,#92400e,#d97706)' : 'linear-gradient(90deg,#064e3b,#059669)', padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{cuadradoConPendiente ? '⚠️' : '✅'}</span>
+          <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: '#fff', fontWeight: 700 }}>
+            {cuadradoConPendiente
+              ? `CUADRADO · PENDIENTE ${COP(t.deuda)}`
+              : `CUADRADO · CERRÓ CON ${COP(cuadre.monto_cuadrado ?? t.totalCobrar)}`}
           </span>
         </div>
       )}
@@ -704,8 +723,14 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
       if (meDioNum > 0 && lote?.lote_id) {
         await onRegistrarAbono({ lote_id: lote.lote_id, monto: meDioNum, nota: 'Entrega al cuadrar' });
       }
-      // Marcar como cuadrado con el monto total esperado
-      await onGuardar({ cuadrado: true, pendiente_flag: false, monto_cuadrado: totalEsperado });
+      // Guardar cuadre con los datos del cierre
+      await onGuardar({
+        cuadrado:        true,
+        pendiente_flag:  false,
+        monto_cuadrado:  totalEsperado,
+        nums_cuadrados:  nums,
+        monto_entregado: meDioNum,
+      });
     } finally { setSaving(false); }
   };
 
@@ -843,29 +868,64 @@ function ModalConfirmarCuadre({ vendedor, lote, cuadreActual, precioPorNum, onCl
 /* ═══════════════════════════════════════════
    MODAL: DETALLE
 ═══════════════════════════════════════════ */
-function ModalDetalleVendedor({ vendedor, lote, precioPorNum, calcularTotales, onClose }) {
-  const t = calcularTotales();
+function ModalDetalleVendedor({ vendedor, lote, cuadre, precioPorNum, calcularTotales, onClose }) {
+  const t          = calcularTotales();
+  const yaCuadrado = cuadre?.cuadrado || false;
+
+  // Si está cuadrado, mostrar los datos del cuadre; si no, los datos del lote
+  const nums           = yaCuadrado && cuadre.nums_cuadrados  ? cuadre.nums_cuadrados  : t.cantidad;
+  const totalEsperado  = yaCuadrado && cuadre.monto_cuadrado  ? cuadre.monto_cuadrado  : t.totalCobrar;
+  const totalEntregado = yaCuadrado && cuadre.monto_entregado ? Number(cuadre.monto_entregado) + (lote?.abono ?? 0) - (lote?.abono ?? 0)
+                                                               : lote?.abono ?? 0;
+  // Entregado = abonos en BD (incluye lo que dio al cuadrar)
+  const entregado      = lote?.abono ?? 0;
+  const saldo          = +(Number(totalEsperado) - entregado).toFixed(2);
+
   return (
     <ModalBase title={`DETALLE — ${vendedor.vendedor_nombre}`} onClose={onClose} wide>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 8 }}>
+
+        {/* Badge de estado */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {yaCuadrado ? (
+            <span style={{ background: saldo > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(6,214,160,0.12)', border: `1px solid ${saldo > 0 ? 'rgba(245,158,11,0.3)' : 'rgba(6,214,160,0.3)'}`, color: saldo > 0 ? '#f59e0b' : '#06d6a0', borderRadius: 6, padding: '3px 12px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', fontWeight: 700 }}>
+              {saldo > 0 ? '⚠️ CUADRADO CON PENDIENTE' : '✅ CUADRADO'}
+            </span>
+          ) : (
+            <span style={{ background: 'rgba(200,200,200,0.1)', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '3px 12px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', fontWeight: 700 }}>
+              SIN CUADRAR
+            </span>
+          )}
+        </div>
+
+        {/* Datos del cuadre o del lote */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
           {[
-            ['Números', t.cantidad, 'var(--jordyn-text)'],
-            ['Precio/núm', COP(precioPorNum), '#a78bfa'],
-            ['Total cobrar', COP(t.totalCobrar), 'var(--jordyn-primary)'],
-            ['Ya pagó', COP(t.cobrado), '#06d6a0'],
-            ['Me debe', COP(t.deuda), t.deuda > 0 ? '#e63946' : '#06d6a0'],
+            ['NÚMEROS VENDIDOS',  nums,                   'var(--jordyn-text)'],
+            ['PRECIO / TICKET',   COP(precioPorNum),      '#a78bfa'],
+            ['TOTAL A COBRAR',    COP(totalEsperado),     'var(--jordyn-primary)'],
+            ['ME ENTREGÓ',        COP(entregado),         '#06d6a0'],
+            ['PENDIENTE',         COP(Math.max(saldo, 0)),saldo > 0 ? '#e63946' : '#06d6a0'],
           ].map(([k, v, c]) => (
-            <div key={k} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 7, padding: '8px 10px' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginBottom: 3 }}>{k}</div>
-              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.1rem', color: c, letterSpacing: '2px' }}>{v}</div>
+            <div key={k} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 7, padding: '10px 12px' }}>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginBottom: 4, letterSpacing: '1px' }}>{k}</div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.15rem', color: c, letterSpacing: '2px', lineHeight: 1 }}>{v}</div>
             </div>
           ))}
         </div>
-        <div style={{ background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 1.9 }}>
-          <strong style={{ color: '#a78bfa' }}>CÁLCULO:</strong> {t.cantidad} × {COP(precioPorNum)} = <strong style={{ color: 'var(--jordyn-primary)' }}>{COP(t.totalCobrar)}</strong>
-          {lote && <><br /><strong style={{ color: '#06d6a0' }}>Ya pagó:</strong> {COP(lote.abono)} · <strong style={{ color: t.deuda > 0 ? '#e63946' : '#06d6a0' }}>Me debe: {COP(t.deuda)}</strong></>}
+
+        {/* Línea de cálculo */}
+        <div style={{ background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '10px 14px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', lineHeight: 2 }}>
+          <strong style={{ color: '#a78bfa' }}>CÁLCULO:</strong>{' '}
+          {nums} núm × {COP(precioPorNum)} = <strong style={{ color: 'var(--jordyn-primary)' }}>{COP(totalEsperado)}</strong>
+          <br />
+          <strong style={{ color: '#06d6a0' }}>Entregó:</strong>{' '}{COP(entregado)}{' '}·{' '}
+          <strong style={{ color: saldo > 0 ? '#e63946' : '#06d6a0' }}>
+            {saldo > 0 ? `Pendiente: ${COP(saldo)}` : 'Saldado ✓'}
+          </strong>
+          {!yaCuadrado && <><br /><span style={{ color: '#f59e0b' }}>⚠ Aún no cuadrado</span></>}
         </div>
+
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn-jordyn-outline" onClick={onClose}>CERRAR</button>
         </div>
