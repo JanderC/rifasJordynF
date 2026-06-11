@@ -938,7 +938,7 @@ function TabConversaciones() {
 }
 
 // ─────────────────────────────────────────────
-// PÁGINA PRINCIPAL
+// PÁGINA PRINCIPAL//
 // ─────────────────────────────────────────────
 export default function WhatsApp() {
   const [tab, setTab] = useState('conexion');
