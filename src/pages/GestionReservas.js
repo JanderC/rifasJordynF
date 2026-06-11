@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
@@ -295,8 +294,10 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   const [cargandoTpl,     setCargandoTpl]    = useState(false);
 
   // ── NUEVO ──
-  const [urlsTicket,     setUrlsTicket]     = useState([]);
-  const [subiendoTicket, setSubiendoTicket] = useState(false);
+  const [urlsTicket,       setUrlsTicket]       = useState([]);
+  const [subiendoTicket,   setSubiendoTicket]   = useState(false);
+  const [enviandoBaileys,  setEnviandoBaileys]  = useState(false);
+  const [baileysStatus,    setBaileysStatus]    = useState(null); // 'ok' | 'error' | null
 
   const est       = EST[reserva.estado] || EST.pendiente;
   const pendiente = reserva.estado === 'pendiente';
@@ -342,16 +343,89 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   const handleAccion = async (estado) => {
     const hermanasPendientes = hermanas.filter(h => h.estado === 'pendiente');
     const todasPendientes    = [reserva, ...hermanasPendientes].filter(r => r.estado === 'pendiente');
-    let ok;
-    if (todasPendientes.length > 1) {
-      ok = await onAccion(todasPendientes.map(r => r.id), estado, nota, true);
-    } else {
-      ok = await onAccion(reserva.id, estado, nota, false);
+
+    // ── Si es rechazo, flujo normal ──────────────────────────────
+    if (estado !== 'aprobado') {
+      let ok;
+      if (todasPendientes.length > 1)
+        ok = await onAccion(todasPendientes.map(r => r.id), estado, nota, true);
+      else
+        ok = await onAccion(reserva.id, estado, nota, false);
+      if (ok) { setReserva(p => ({ ...p, estado, nota_admin: nota })); setMostrandoPreview(false); }
+      return;
     }
-    if (ok) {
-      setReserva(p => ({ ...p, estado, nota_admin: nota }));
-      setMostrandoPreview(false);
-      if (estado === 'aprobado') await enviarWAConTicket();
+
+    // ── APROBADO: intentar Baileys primero ───────────────────────
+    setEnviandoBaileys(true);
+    setBaileysStatus(null);
+    try {
+      // 1. Generar imágenes de tickets
+      const rifaPara = rifaCompleta || {
+        id: reserva.rifa_id, nombre: reserva.rifa_nombre, premio: reserva.premio,
+        precio: reserva.precio, fecha_sorteo: reserva.fecha_sorteo,
+        loteria_ref: reserva.loteria_ref, hora_sorteo: reserva.hora_sorteo,
+      };
+      const ticketsBase64 = [];
+      const urlsCloud     = [];
+
+      for (const num of todosNumeros) {
+        const imgDataUrl = await generarImagenTicketTemplate({ rifa: rifaPara, numero: num, plantilla });
+        if (imgDataUrl) {
+          ticketsBase64.push(imgDataUrl);
+          const urlPublica = await subirTicketACloudinary(imgDataUrl, `ticket-${reserva.id?.slice(0,8)}-${num}.png`);
+          if (urlPublica) urlsCloud.push(urlPublica);
+        }
+      }
+
+      if (urlsCloud.length > 0) setUrlsTicket(urlsCloud);
+
+      // 2. Construir mensaje de confirmación
+      const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas, urlsCloud);
+
+      // 3. Llamar al endpoint de Baileys que aprueba en BD y envía WA
+      const token = localStorage.getItem('token');
+      const resp  = await fetch(`${API_BASE}/api/baileys/reservas/${reserva.id}/confirmar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ nota, ticketsBase64, mensajeTexto: msg }),
+      });
+      const data = await resp.json();
+
+      if (resp.ok && data.ok) {
+        setBaileysStatus('ok');
+        setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota }));
+        setMostrandoPreview(false);
+        onAccion && onAccion.__refreshOnly && onAccion.__refreshOnly(); // recargar lista
+        if (data.waSent) {
+          toast.success(`✅ Aprobada y ticket enviado por WhatsApp (Baileys) 🎉`);
+        } else if (data.sinTelefono) {
+          toast.success('✅ Aprobada — sin teléfono, no se envió WA');
+        } else if (data.waError) {
+          toast.warn(`✅ Aprobada en BD, pero error WA: ${data.waError}`);
+        }
+        // Refrescar lista en el padre
+        await onAccion(reserva.id, 'aprobado', nota, false, true /* skipBD */);
+      } else {
+        throw new Error(data.error || 'Error en Baileys');
+      }
+
+    } catch (baileysErr) {
+      console.warn('[GestionReservas] Baileys falló, usando flujo legacy:', baileysErr.message);
+      setBaileysStatus('error');
+      // Fallback: aprobar en BD y abrir WA web manualmente
+      let ok;
+      if (todasPendientes.length > 1)
+        ok = await onAccion(todasPendientes.map(r => r.id), 'aprobado', nota, true);
+      else
+        ok = await onAccion(reserva.id, 'aprobado', nota, false);
+      if (ok) {
+        setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota }));
+        setMostrandoPreview(false);
+        toast.warn('Baileys no disponible — se abrirá WhatsApp Web');
+        await enviarWAConTicket();
+      }
+    } finally {
+      setEnviandoBaileys(false);
     }
   };
 
@@ -600,11 +674,17 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
               </button>
               {reserva.telefono && (
                 <button onClick={enviarWAConTicket} disabled={generandoWA}
+                  title="Reenviar ticket por WhatsApp Web (fallback)"
                   style={{ background:'linear-gradient(135deg,#25d366,#128c7e)', border:'none', color:'#fff', borderRadius:9, padding:'9px 16px', cursor:'pointer', fontSize:'.82rem', fontWeight:700, display:'flex', alignItems:'center', gap:6 }}>
                   {generandoWA
                     ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Generando...</>
-                    : <><WaIcon size={15}/> WA + Ticket</>}
+                    : <><WaIcon size={15}/> WA Web</>}
                 </button>
+              )}
+              {baileysStatus === 'ok' && (
+                <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:'.78rem', color:'#059669', fontWeight:700, padding:'9px 14px', background:'rgba(6,214,160,.08)', border:'1px solid rgba(6,214,160,.3)', borderRadius:9 }}>
+                  <i className="bi bi-send-check-fill"></i> Enviado por Baileys
+                </span>
               )}
             </>
           )}
@@ -677,15 +757,17 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
               </div>
 
               <div style={{ padding:14, background:'#f0f0f0', borderTop:'1px solid #ddd', display:'flex', gap:10, justifyContent:'flex-end' }}>
-                <button onClick={() => setMostrandoPreview(false)} disabled={saving||generandoWA}
+                <button onClick={() => setMostrandoPreview(false)} disabled={saving||generandoWA||enviandoBaileys}
                   style={{ padding:'10px 18px', background:'#fff', color:'#666', border:'1.5px solid #ccc', borderRadius:8, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>← Volver</button>
-                <button onClick={() => handleAccion('aprobado')} disabled={saving||generandoWA}
-                  style={{ padding:'10px 22px', background:'linear-gradient(135deg,#25d366,#128c7e)', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:800, cursor:(saving||generandoWA)?'not-allowed':'pointer', opacity:(saving||generandoWA)?.6:1, fontFamily:'inherit', boxShadow:'0 3px 10px rgba(37,211,102,.4)', display:'flex', alignItems:'center', gap:6 }}>
+                <button onClick={() => handleAccion('aprobado')} disabled={saving||generandoWA||enviandoBaileys}
+                  style={{ padding:'10px 22px', background:'linear-gradient(135deg,#25d366,#128c7e)', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:800, cursor:(saving||generandoWA||enviandoBaileys)?'not-allowed':'pointer', opacity:(saving||generandoWA||enviandoBaileys)?.6:1, fontFamily:'inherit', boxShadow:'0 3px 10px rgba(37,211,102,.4)', display:'flex', alignItems:'center', gap:6 }}>
                   {saving
                     ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Aprobando…</>
-                    : generandoWA
-                      ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Generando ticket…</>
-                      : <><WaIcon size={14}/> Confirmar y enviar por WhatsApp</>}
+                    : enviandoBaileys
+                      ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Enviando ticket…</>
+                      : generandoWA
+                        ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Generando ticket…</>
+                        : <><i className="bi bi-send-fill me-1"></i> Confirmar y enviar ticket</>}
                 </button>
               </div>
             </div>
@@ -764,15 +846,17 @@ export default function GestionReservas() {
     setSelR(r); setSelHerm(hermanas);
   };
 
-  const handleAccion = async (idOrIds, estado, nota, bulk=false) => {
+  const handleAccion = async (idOrIds, estado, nota, bulk = false, skipBD = false) => {
+    // skipBD=true cuando Baileys ya aprobó en BD y solo queremos refrescar la lista
+    if (skipBD) { load(); loadTodas(); return true; }
     setSaving(true);
     try {
-      if (bulk) await API.put('/publico/admin/reservas-bulk', { ids:idOrIds, estado, nota_admin:nota });
-      else      await API.put(`/publico/admin/reservas/${idOrIds}`, { estado, nota_admin:nota });
-      toast.success(estado==='aprobado' ? '✅ Aprobada — se abrirá WhatsApp con el ticket' : '❌ Rechazada — número liberado');
+      if (bulk) await API.put('/publico/admin/reservas-bulk', { ids: idOrIds, estado, nota_admin: nota });
+      else      await API.put(`/publico/admin/reservas/${idOrIds}`, { estado, nota_admin: nota });
+      if (estado !== 'aprobado') toast.success('❌ Rechazada — número liberado');
       load(); loadTodas();
       return true;
-    } catch(e) {
+    } catch (e) {
       toast.error(e.response?.data?.error || 'Error procesando reserva');
       return false;
     } finally { setSaving(false); }
@@ -857,6 +941,7 @@ export default function GestionReservas() {
                   <div style={{ fontWeight:700, fontSize:'.92rem', color:'var(--jordyn-text)', marginBottom:1, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                     {r.nombre_cliente}
                     {r.comprobante_base64 && <span style={{ fontSize:'.7rem', color:'var(--jordyn-primary)', fontWeight:600 }}><i className="bi bi-paperclip me-1"></i>Comprobante</span>}
+                    {r.origen === 'whatsapp' && <span style={{ fontSize:'.65rem', fontWeight:700, background:'rgba(37,211,102,.12)', color:'#128c7e', border:'1px solid rgba(37,211,102,.3)', borderRadius:20, padding:'1px 8px', display:'inline-flex', alignItems:'center', gap:3 }}><WaIcon size={10}/> WhatsApp</span>}
                     {esGrupo && <span style={{ fontSize:'.68rem', background:'rgba(10,191,188,.1)', color:'var(--jordyn-primary)', border:'1px solid rgba(10,191,188,.25)', borderRadius:20, padding:'1px 8px', fontWeight:700 }}>🎟 {numeros.length} números</span>}
                   </div>
                   <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)' }}>

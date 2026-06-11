@@ -1,31 +1,24 @@
+/**
+ * WhatsApp.js — Panel de control del bot Baileys + IA (Groq)
+ *
+ * Tabs:
+ *  1. Conexión    — QR, estado, cerrar sesión, reset
+ *  2. Chat directo— Enviar texto/imagen a cualquier número
+ *  3. Guión       — Ver y editar los triggers del fallback (hardcoded)
+ *  4. Entrenar IA — Editar el system prompt del modelo Groq
+ *  5. Conversaciones — Historial de mensajes del bot
+ */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 
-const TipoBadge = ({ tipo }) => {
-  const map = {
-    text:       { label: 'Texto',       color: '#0abed4' },
-    image:      { label: 'Imagen',      color: '#a855f7' },
-    video:      { label: 'Video',       color: '#ef4444' },
-    image_text: { label: 'Img+Texto',   color: '#f59e0b' },
-    button:     { label: 'Botones',     color: '#22c55e' },
-  };
-  const { label, color } = map[tipo] || { label: tipo, color: '#6b7280' };
-  return (
-    <span style={{
-      background: `${color}22`, color,
-      border: `1px solid ${color}44`,
-      borderRadius: 6, padding: '2px 8px',
-      fontSize: '0.62rem', fontWeight: 800,
-      letterSpacing: 1, textTransform: 'uppercase',
-    }}>
-      {label}
-    </span>
-  );
-};
+const API_BASE = process.env.REACT_APP_API_URL || 'https://rifasjordynb-production.up.railway.app';
 
+// ─────────────────────────────────────────────
+// HELPERS DE ESTILO COMPARTIDOS
+// ─────────────────────────────────────────────
 const Tabs = ({ tabs, activo, onChange }) => (
   <div style={{
     display: 'flex', gap: 2, flexWrap: 'wrap',
@@ -38,9 +31,7 @@ const Tabs = ({ tabs, activo, onChange }) => (
         padding: '0.65rem 1rem', fontFamily: 'inherit',
         fontSize: '0.78rem', fontWeight: 700,
         color: activo === t.key ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)',
-        borderBottom: activo === t.key
-          ? '2px solid var(--jordyn-primary)'
-          : '2px solid transparent',
+        borderBottom: activo === t.key ? '2px solid var(--jordyn-primary)' : '2px solid transparent',
         transition: 'all .15s', whiteSpace: 'nowrap',
       }}>
         <i className={`bi ${t.icon} me-1`}></i>{t.label}
@@ -49,41 +40,12 @@ const Tabs = ({ tabs, activo, onChange }) => (
   </div>
 );
 
-/* ── Modal genérico ── */
-const Modal = ({ title, children, onClose, size = '600px' }) => (
-  <div style={{
-    position: 'fixed', inset: 0, zIndex: 1050,
-    background: 'rgba(0,0,0,0.75)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '1rem',
-  }} onClick={onClose}>
-    <div onClick={e => e.stopPropagation()} style={{
-      background: 'var(--jordyn-surface)',
-      border: '1px solid var(--jordyn-border)',
-      borderRadius: 14, padding: '1.5rem',
-      width: '100%', maxWidth: size,
-      maxHeight: '90vh', overflowY: 'auto',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
-        <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1rem', color: 'var(--jordyn-text)' }}>{title}</h3>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--jordyn-muted)', cursor: 'pointer', fontSize: '1.2rem' }}>
-          <i className="bi bi-x-lg"></i>
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>
-);
-
-/* ── Inputs reutilizables ── */
 const FldLabel = ({ children }) => (
   <label style={{
     display: 'block', fontSize: '0.7rem', fontWeight: 700,
     color: 'var(--jordyn-muted)', marginBottom: 4,
     textTransform: 'uppercase', letterSpacing: 1,
-  }}>
-    {children}
-  </label>
+  }}>{children}</label>
 );
 
 const Input = ({ label, ...props }) => (
@@ -101,74 +63,638 @@ const Textarea = ({ label, rows = 4, ...props }) => (
   </div>
 );
 
-const Select = ({ label, children, ...props }) => (
-  <div style={{ marginBottom: '1rem' }}>
-    {label && <FldLabel>{label}</FldLabel>}
-    <select className="jd-input" style={{ width: '100%', boxSizing: 'border-box' }} {...props}>
-      {children}
-    </select>
-  </div>
+const Card = ({ children, style = {} }) => (
+  <div style={{
+    background: 'var(--jordyn-surface)',
+    border: '1px solid var(--jordyn-border)',
+    borderRadius: 12, padding: '1.25rem',
+    marginBottom: '1.25rem', ...style,
+  }}>{children}</div>
 );
 
-const InfoBox = ({ children }) => (
+const CardTitle = ({ icon, children }) => (
   <div style={{
-    background: 'rgba(10,191,188,0.07)',
-    border: '1px solid rgba(10,191,188,0.2)',
-    borderRadius: 10, padding: '0.85rem 1rem',
-    marginBottom: '1.2rem',
-    fontSize: '0.77rem', color: 'var(--jordyn-muted)', lineHeight: 1.7,
+    fontWeight: 800, fontSize: '0.82rem', color: 'var(--jordyn-muted)',
+    textTransform: 'uppercase', letterSpacing: 1,
+    marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 6,
   }}>
+    {icon && <i className={`bi ${icon}`} style={{ color: 'var(--jordyn-primary)' }}></i>}
     {children}
   </div>
 );
 
-// ─────────────────────────────────────────────
-//  TAB 1 — Credenciales Meta
-// ─────────────────────────────────────────────
-function TabConfigCredenciales() {
-  const [config, setConfig]         = useState(null);
-  const [form, setForm]             = useState({ nombre: '', phone_number_id: '', waba_id: '', access_token: '', verify_token: '', webhook_url: '' });
-  const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [testing, setTesting]       = useState(false);
-  const [testResult, setTestResult] = useState(null);
-  const [editMode, setEditMode]     = useState(false);
+const StatusDot = ({ ok }) => (
+  <span style={{
+    display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+    background: ok ? '#25d366' : 'var(--jordyn-muted)',
+    marginRight: 6, flexShrink: 0,
+    boxShadow: ok ? '0 0 6px #25d36688' : 'none',
+  }} />
+);
 
-  useEffect(() => {
-    API.get('/whatsapp/config')
-      .then(r => {
-        setConfig(r.data);
-        if (r.data) setForm({ ...r.data, access_token: '', verify_token: r.data.verify_token });
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+const Modal = ({ title, children, onClose, size = '600px' }) => (
+  <div style={{
+    position: 'fixed', inset: 0, zIndex: 1050,
+    background: 'rgba(0,0,0,0.75)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+  }} onClick={onClose}>
+    <div onClick={e => e.stopPropagation()} style={{
+      background: 'var(--jordyn-surface)', border: '1px solid var(--jordyn-border)',
+      borderRadius: 14, padding: '1.5rem',
+      width: '100%', maxWidth: size, maxHeight: '90vh', overflowY: 'auto',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+        <h3 style={{ margin: 0, fontWeight: 900, fontSize: '1rem', color: 'var(--jordyn-text)' }}>{title}</h3>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--jordyn-muted)', cursor: 'pointer', fontSize: '1.2rem' }}>
+          <i className="bi bi-x-lg"></i>
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// Llama a la API de Baileys (mismo origen del backend)
+function baileys(path, opts = {}) {
+  const token = localStorage.getItem('token');
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  return fetch(`${API_BASE}/api/baileys${path}`, { headers, ...opts });
+}
+
+// ─────────────────────────────────────────────
+// TAB 1 — Conexión (QR + estado)
+// ─────────────────────────────────────────────
+function TabConexion() {
+  const [status, setStatus]   = useState(null);
+  const [qr, setQr]           = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const intervalRef = useRef();
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const r = await baileys('/status');
+      const d = await r.json();
+      setStatus(d);
+      if (d.status !== 'open') fetchQR();
+      else setQr(null);
+    } catch { /* sin conexión */ }
+    finally { setLoading(false); }
   }, []);
 
+  const fetchQR = async () => {
+    try {
+      const r = await baileys('/qr');
+      const d = await r.json();
+      setQr(d.qr || null);
+    } catch { setQr(null); }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    intervalRef.current = setInterval(fetchStatus, 9000);
+    return () => clearInterval(intervalRef.current);
+  }, [fetchStatus]);
+
+  const doLogout = async () => {
+    if (!window.confirm('¿Cerrar sesión de WhatsApp? Tendrás que escanear el QR nuevamente.')) return;
+    try {
+      await baileys('/logout', { method: 'POST' });
+      toast.success('Sesión cerrada');
+      fetchStatus();
+    } catch { toast.error('Error al cerrar sesión'); }
+  };
+
+  const doReset = async () => {
+    if (!window.confirm('¿Forzar reinicio completo de la sesión? (borra la sesión guardada)')) return;
+    setResetting(true);
+    try {
+      await baileys('/reset', { method: 'POST' });
+      toast.success('Reset iniciado — espera el nuevo QR');
+      setTimeout(fetchStatus, 3000);
+    } catch { toast.error('Error en reset'); }
+    finally { setResetting(false); }
+  };
+
+  const connected   = status?.status === 'open';
+  const connecting  = status?.status === 'connecting';
+
+  const badgeStyle = connected
+    ? { background: 'rgba(37,211,102,.1)', color: '#25d366', border: '1px solid rgba(37,211,102,.3)' }
+    : connecting
+      ? { background: 'rgba(240,180,0,.1)', color: '#f0b400', border: '1px solid rgba(240,180,0,.3)' }
+      : { background: 'var(--jordyn-bg2)', color: 'var(--jordyn-muted)', border: '1px solid var(--jordyn-border)' };
+
+  if (loading) return (
+    <div className="d-flex justify-content-center mt-4">
+      <div className="jd-spinner" style={{ width: 36, height: 36 }}></div>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 520 }}>
+
+      {/* Estado */}
+      <Card>
+        <CardTitle icon="bi-wifi">Estado de la conexión</CardTitle>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 20, padding: '6px 14px', fontSize: '0.82rem', fontWeight: 700, ...badgeStyle }}>
+            <StatusDot ok={connected} />
+            {connected ? 'Conectado' : connecting ? 'Esperando QR…' : 'Desconectado'}
+          </span>
+          <button className="btn-jordyn-outline" style={{ fontSize: '0.78rem', padding: '6px 12px' }} onClick={fetchStatus}>
+            <i className="bi bi-arrow-clockwise me-1"></i>Actualizar
+          </button>
+        </div>
+
+        {status && connected && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: '1rem' }}>
+            {[
+              { l: 'Cola de mensajes', v: status.queueLength ?? 0 },
+              { l: 'Enviados este minuto', v: `${status.rateLimitInfo?.sentInLastMinute ?? 0} / ${status.rateLimitInfo?.maxPerMinute ?? 10}` },
+            ].map(({ l, v }) => (
+              <div key={l} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '8px 12px' }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', marginBottom: 2 }}>{l}</div>
+                <div style={{ fontWeight: 800, color: 'var(--jordyn-text)' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: '1rem', flexWrap: 'wrap' }}>
+          {connected && (
+            <button onClick={doLogout} style={{ background: 'rgba(230,57,70,.08)', border: '1px solid rgba(230,57,70,.25)', color: '#e63946', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, fontFamily: 'inherit' }}>
+              <i className="bi bi-box-arrow-right me-1"></i>Cerrar sesión
+            </button>
+          )}
+          <button onClick={doReset} disabled={resetting} style={{ background: 'rgba(240,180,0,.07)', border: '1px solid rgba(240,180,0,.25)', color: '#b37700', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, fontFamily: 'inherit', opacity: resetting ? 0.5 : 1 }}>
+            {resetting ? <><span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Reiniciando…</> : <><i className="bi bi-arrow-counterclockwise me-1"></i>Reset forzado</>}
+          </button>
+        </div>
+      </Card>
+
+      {/* QR */}
+      {!connected && (
+        <Card>
+          <CardTitle icon="bi-qr-code">Código QR</CardTitle>
+          <div style={{ textAlign: 'center', padding: '0.5rem 0 1rem' }}>
+            {qr ? (
+              <>
+                <img src={qr} alt="QR WhatsApp" style={{ width: 220, height: 220, borderRadius: 12, border: '3px solid var(--jordyn-border)' }} />
+                <div style={{ marginTop: 10, fontSize: '0.78rem', color: 'var(--jordyn-muted)', lineHeight: 1.6 }}>
+                  Abre WhatsApp → <strong>Dispositivos vinculados</strong> → <strong>Vincular dispositivo</strong>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: '2rem', color: 'var(--jordyn-muted)', fontSize: '0.82rem' }}>
+                <i className="bi bi-hourglass-split" style={{ fontSize: '1.8rem', opacity: 0.4, display: 'block', marginBottom: 8 }}></i>
+                QR no disponible aún. Esperando…
+              </div>
+            )}
+          </div>
+          <button className="btn-jordyn-outline" style={{ width: '100%' }} onClick={fetchQR}>
+            <i className="bi bi-arrow-clockwise me-1"></i>Refrescar QR
+          </button>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// TAB 2 — Chat directo (enviar texto/imagen)
+// ─────────────────────────────────────────────
+function TabChat() {
+  const [numero,    setNumero]    = useState('');
+  const [mensaje,   setMensaje]   = useState('');
+  const [caption,   setCaption]   = useState('');
+  const [imgFile,   setImgFile]   = useState(null);
+  const [imgUrl,    setImgUrl]    = useState('');
+  const [imgPreview,setImgPreview]= useState(null);
+  const [sending,   setSending]   = useState(false);
+  const [localHist, setLocalHist] = useState([]); // mensajes enviados en esta sesión
+  const fileRef = useRef();
+  const chatEndRef = useRef();
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [localHist]);
+
+  const hhmm = () => {
+    const n = new Date();
+    return n.getHours().toString().padStart(2,'0') + ':' + n.getMinutes().toString().padStart(2,'0');
+  };
+
+  const onFileChange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setImgFile(f);
+    setImgPreview(URL.createObjectURL(f));
+    setImgUrl('');
+  };
+
+  const clearImg = () => { setImgFile(null); setImgPreview(null); setImgUrl(''); fileRef.current.value = ''; };
+
+  const handleSendText = async () => {
+    if (!numero.trim() || !mensaje.trim()) return toast.error('Completa número y mensaje');
+    setSending(true);
+    try {
+      const r = await baileys('/send/text', { method: 'POST', body: JSON.stringify({ numero: numero.trim(), mensaje }) });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      setLocalHist(h => [...h, { tipo: 'text', text: mensaje, time: hhmm() }]);
+      setMensaje('');
+      toast.success('Enviado ✅');
+    } catch (e) { toast.error('Error: ' + e.message); }
+    finally { setSending(false); }
+  };
+
+  const handleSendImage = async () => {
+    if (!numero.trim()) return toast.error('Ingresa el número');
+    if (!imgFile && !imgUrl.trim()) return toast.error('Selecciona imagen o pega URL');
+    setSending(true);
+    try {
+      let r;
+      if (imgFile) {
+        const fd = new FormData();
+        fd.append('numero', numero.trim()); fd.append('caption', caption); fd.append('imagen', imgFile);
+        const token = localStorage.getItem('token');
+        r = await fetch(`${API_BASE}/api/baileys/send/image`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: fd,
+        });
+      } else {
+        r = await baileys('/send/image', { method: 'POST', body: JSON.stringify({ numero: numero.trim(), caption, imagenUrl: imgUrl.trim() }) });
+      }
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      setLocalHist(h => [...h, { tipo: 'image', imgSrc: imgPreview || imgUrl, caption, time: hhmm() }]);
+      clearImg(); setCaption('');
+      toast.success('Imagen enviada ✅');
+    } catch (e) { toast.error('Error: ' + e.message); }
+    finally { setSending(false); }
+  };
+
+  const onKeyDown = e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendText(); }
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1.25rem', alignItems: 'start' }}>
+
+      {/* Formulario de envío */}
+      <div>
+        <Card>
+          <CardTitle icon="bi-telephone-fill">Número destino</CardTitle>
+          <Input
+            value={numero} onChange={e => setNumero(e.target.value)}
+            placeholder="04241234567 — sin espacios ni guiones"
+          />
+        </Card>
+
+        <Card>
+          <CardTitle icon="bi-chat-text-fill">Enviar texto</CardTitle>
+          <Textarea
+            rows={3} value={mensaje} onChange={e => setMensaje(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Escribe el mensaje… (Enter para enviar)"
+          />
+          <button className="btn-jordyn" onClick={handleSendText} disabled={sending} style={{ width: '100%' }}>
+            {sending
+              ? <><span className="jd-spinner" style={{ width: 13, height: 13, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Enviando…</>
+              : <><i className="bi bi-send-fill me-1"></i>Enviar texto</>}
+          </button>
+        </Card>
+
+        <Card>
+          <CardTitle icon="bi-image-fill">Enviar imagen</CardTitle>
+
+          {/* Área de drop / click */}
+          <div
+            onClick={() => fileRef.current.click()}
+            style={{
+              border: `2px dashed ${imgFile ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`,
+              borderRadius: 10, padding: '1rem', textAlign: 'center', cursor: 'pointer',
+              marginBottom: '0.75rem', transition: 'border-color .15s', position: 'relative',
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--jordyn-primary)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = imgFile ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}
+          >
+            {imgPreview
+              ? <img src={imgPreview} alt="" style={{ maxHeight: 120, maxWidth: '100%', borderRadius: 8, display: 'block', margin: '0 auto' }} />
+              : <><i className="bi bi-cloud-upload" style={{ fontSize: '1.5rem', opacity: 0.4 }}></i><div style={{ fontSize: '0.78rem', color: 'var(--jordyn-muted)', marginTop: 6 }}>Click para seleccionar imagen</div></>}
+            {imgFile && (
+              <button onClick={e => { e.stopPropagation(); clearImg(); }}
+                style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(230,57,70,.15)', border: '1px solid rgba(230,57,70,.3)', color: '#e63946', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                ✕
+              </button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFileChange} />
+
+          <FldLabel>— o — URL de imagen</FldLabel>
+          <input className="jd-input" style={{ width: '100%', boxSizing: 'border-box', marginBottom: '0.75rem' }}
+            value={imgUrl} onChange={e => { setImgUrl(e.target.value); setImgFile(null); setImgPreview(null); }}
+            placeholder="https://cdn.ejemplo.com/imagen.jpg" />
+
+          <Input label="Caption (opcional)" value={caption} onChange={e => setCaption(e.target.value)} placeholder="¡Aquí está tu ticket! 🎟️" />
+
+          <button className="btn-jordyn" onClick={handleSendImage} disabled={sending} style={{ width: '100%', background: 'linear-gradient(135deg,#7c3aed,#5b21b6)' }}>
+            {sending
+              ? <><span className="jd-spinner" style={{ width: 13, height: 13, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Enviando…</>
+              : <><i className="bi bi-image-fill me-1"></i>Enviar imagen</>}
+          </button>
+        </Card>
+      </div>
+
+      {/* Mini historial de esta sesión */}
+      <div>
+        <Card style={{ position: 'sticky', top: 20 }}>
+          <CardTitle icon="bi-clock-history">Enviados en esta sesión</CardTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 480, overflowY: 'auto' }}>
+            {localHist.length === 0 && (
+              <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.78rem', textAlign: 'center', padding: '2rem 0', opacity: 0.6 }}>
+                Los mensajes enviados aparecerán aquí
+              </div>
+            )}
+            {localHist.map((m, i) => (
+              <div key={i} style={{
+                background: 'rgba(10,191,188,.06)', border: '1px solid rgba(10,191,188,.15)',
+                borderRadius: 10, padding: '0.65rem 0.9rem',
+              }}>
+                {m.tipo === 'image' && m.imgSrc && (
+                  <img src={m.imgSrc} alt="" style={{ width: '100%', maxHeight: 90, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }} />
+                )}
+                {(m.text || m.caption) && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--jordyn-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {m.text || m.caption}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.62rem', color: 'var(--jordyn-muted)', marginTop: 4, textAlign: 'right' }}>
+                  <i className="bi bi-check2-all me-1" style={{ color: 'var(--jordyn-primary)' }}></i>{m.time}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// TAB 3 — Guión del bot (fallback triggers)
+// ─────────────────────────────────────────────
+function TabGuion() {
+  const [guion,   setGuion]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal,   setModal]   = useState(null); // null | { item } | 'nuevo'
+  const [form,    setForm]    = useState({ nombre: '', triggers: '', response: '' });
+  const [saving,  setSaving]  = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState('');
+  const [testRes, setTestRes] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await baileys('/guion');
+      const d = await r.json();
+      setGuion(d.guion || []);
+    } catch { toast.error('No se pudo cargar el guión'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openEditar = item => {
+    setForm({ nombre: item.nombre, triggers: item.triggers.join(', '), response: item.response });
+    setModal({ item });
+  };
+
+  const openNuevo = () => {
+    setForm({ nombre: '', triggers: '', response: '' });
+    setModal('nuevo');
+  };
+
   const handleSave = async () => {
-    if (!form.phone_number_id || !form.waba_id || !form.access_token || !form.verify_token)
-      return toast.error('Completa todos los campos obligatorios');
+    if (!form.nombre.trim() || !form.triggers.trim() || !form.response.trim())
+      return toast.error('Completa todos los campos');
     setSaving(true);
     try {
-      await API.post('/whatsapp/config', form);
-      toast.success('✅ Credenciales guardadas');
-      setEditMode(false);
-      const r = await API.get('/whatsapp/config');
-      setConfig(r.data);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Error al guardar');
-    } finally { setSaving(false); }
+      const body = {
+        nombre: form.nombre.trim(),
+        triggers: form.triggers.split(',').map(t => t.trim()).filter(Boolean),
+        response: form.response,
+      };
+      const isEdit = modal?.item;
+      if (isEdit) {
+        await API.put(`/baileys/guion/${modal.item.id}`, body);
+        toast.success('✅ Nodo actualizado');
+      } else {
+        await API.post('/baileys/guion', body);
+        toast.success('✅ Nodo creado');
+      }
+      setModal(null); load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Error guardando'); }
+    finally { setSaving(false); }
   };
 
   const handleTest = async () => {
-    setTesting(true); setTestResult(null);
+    if (!testMsg.trim()) return;
+    setTesting(true); setTestRes(null);
     try {
-      const r = await API.post('/whatsapp/config/test');
-      setTestResult(r.data);
-      if (r.data.ok) toast.success(`✅ Conectado — ${r.data.telefono}`);
-      else toast.error(`❌ ${r.data.error}`);
-    } catch { toast.error('No se pudo probar la conexión'); }
+      const r = await baileys('/guion/test', { method: 'POST', body: JSON.stringify({ mensaje: testMsg }) });
+      const d = await r.json();
+      setTestRes(d.response || '(sin respuesta)');
+    } catch { setTestRes('❌ Error al probar'); }
     finally { setTesting(false); }
   };
+
+  return (
+    <div>
+      {/* Descripción */}
+      <div style={{
+        background: 'rgba(10,191,188,.06)', border: '1px solid rgba(10,191,188,.2)',
+        borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1.25rem',
+        fontSize: '0.77rem', color: 'var(--jordyn-muted)', lineHeight: 1.7,
+      }}>
+        <i className="bi bi-info-circle me-2" style={{ color: 'var(--jordyn-primary)' }}></i>
+        El <strong style={{ color: 'var(--jordyn-text)' }}>guión de fallback</strong> se activa cuando la IA (Groq) no está disponible o falla.
+        Cada nodo tiene <strong>triggers</strong> (palabras clave) y una <strong>respuesta fija</strong> que envía el bot.
+        Los triggers se comparan en texto normalizado (sin tildes, minúsculas).
+      </div>
+
+      {/* Tester */}
+      <Card>
+        <CardTitle icon="bi-bug-fill">Probar respuesta</CardTitle>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="jd-input" style={{ flex: 1 }}
+            value={testMsg} onChange={e => setTestMsg(e.target.value)}
+            placeholder="Escribe un mensaje para ver qué respondería el bot…"
+            onKeyDown={e => e.key === 'Enter' && handleTest()} />
+          <button className="btn-jordyn-outline" style={{ flexShrink: 0 }} onClick={handleTest} disabled={testing}>
+            {testing ? <span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2 }}></span> : <><i className="bi bi-play-fill me-1"></i>Probar</>}
+          </button>
+        </div>
+        {testRes && (
+          <div style={{
+            marginTop: '0.75rem', background: 'rgba(10,191,188,.07)',
+            border: '1px solid rgba(10,191,188,.2)', borderRadius: 8,
+            padding: '0.8rem 1rem', fontSize: '0.82rem', color: 'var(--jordyn-text)',
+            whiteSpace: 'pre-wrap', lineHeight: 1.6,
+          }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--jordyn-primary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <i className="bi bi-robot me-1"></i>Respuesta del bot:
+            </div>
+            {testRes}
+          </div>
+        )}
+      </Card>
+
+      {/* Lista de nodos */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--jordyn-muted)' }}>
+          {guion.length} nodo{guion.length !== 1 ? 's' : ''} en el guión
+        </span>
+        <button className="btn-jordyn" onClick={openNuevo}>
+          <i className="bi bi-plus-lg me-1"></i>Nuevo nodo
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 36, height: 36 }}></div></div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {guion.map(item => (
+            <div key={item.id} className="jd-card" style={{ padding: '0.9rem 1.1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--jordyn-text)' }}>
+                      {item.nombre}
+                    </span>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--jordyn-muted)', fontWeight: 600 }}>
+                      {item.triggers?.length} trigger{item.triggers?.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  {/* Triggers */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                    {(item.triggers || []).map(t => (
+                      <span key={t} style={{
+                        background: 'rgba(10,191,188,.1)', color: 'var(--jordyn-primary)',
+                        border: '1px solid rgba(10,191,188,.25)', borderRadius: 5,
+                        padding: '1px 8px', fontSize: '0.68rem', fontWeight: 700,
+                      }}>{t}</span>
+                    ))}
+                  </div>
+                  {/* Preview respuesta */}
+                  <div style={{
+                    fontSize: '0.76rem', color: 'var(--jordyn-muted)',
+                    overflow: 'hidden', display: '-webkit-box',
+                    WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                    background: 'var(--jordyn-bg2)', borderRadius: 6,
+                    padding: '6px 10px',
+                  }}>
+                    {item.responsePreview || item.response?.substring(0, 100) + '…'}
+                  </div>
+                </div>
+                <button className="btn-jordyn-outline" style={{ padding: '5px 11px', fontSize: '0.75rem', flexShrink: 0 }}
+                  onClick={() => openEditar(item)}>
+                  <i className="bi bi-pencil me-1"></i>Editar
+                </button>
+              </div>
+            </div>
+          ))}
+          {!guion.length && (
+            <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem' }}>
+              <i className="bi bi-chat-square-dots" style={{ fontSize: '2rem', opacity: 0.3, display: 'block', marginBottom: 8 }}></i>
+              No hay nodos en el guión. El bot usará solo la IA.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal edición / creación */}
+      {modal && (
+        <Modal title={modal === 'nuevo' ? 'Nuevo nodo' : `Editar: ${modal.item?.nombre}`} onClose={() => setModal(null)}>
+          <Input label="Nombre del nodo *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="saludo" />
+          <div style={{ marginBottom: '1rem' }}>
+            <FldLabel>Triggers (separados por coma) *</FldLabel>
+            <input className="jd-input" style={{ width: '100%', boxSizing: 'border-box' }}
+              value={form.triggers} onChange={e => setForm({ ...form, triggers: e.target.value })}
+              placeholder="hola, buenas, buenos dias, hey, inicio" />
+            <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>
+              El bot compara el mensaje del cliente con cada trigger (sin tildes, minúsculas).
+            </div>
+          </div>
+          <Textarea label="Respuesta del bot *" rows={6} value={form.response} onChange={e => setForm({ ...form, response: e.target.value })}
+            placeholder="¡Hola! 👋 Bienvenido a Rifas Jordyn..." />
+          <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)', marginBottom: '1rem', lineHeight: 1.6 }}>
+            Puedes usar <code>*negrita*</code>, saltos de línea y emojis. El bot los envía tal cual.
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="btn-jordyn-outline" onClick={() => setModal(null)}>Cancelar</button>
+            <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando…' : <><i className="bi bi-check-lg me-1"></i>Guardar nodo</>}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// TAB 4 — Entrenar IA (system prompt de Groq)
+// ─────────────────────────────────────────────
+function TabEntrenarIA() {
+  const [prompt,   setPrompt]   = useState('');
+  const [original, setOriginal] = useState('');
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [testing,  setTesting]  = useState(false);
+  const [testMsg,  setTestMsg]  = useState('');
+  const [testRes,  setTestRes]  = useState(null);
+  const [stats,    setStats]    = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rPrompt, rStats] = await Promise.all([
+        API.get('/baileys/ia/prompt').catch(() => ({ data: null })),
+        API.get('/baileys/ia/stats').catch(() => ({ data: null })),
+      ]);
+      if (rPrompt.data?.prompt) { setPrompt(rPrompt.data.prompt); setOriginal(rPrompt.data.prompt); }
+      if (rStats.data) setStats(rStats.data);
+    } catch { /* silencioso */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    if (!prompt.trim()) return toast.error('El prompt no puede estar vacío');
+    setSaving(true);
+    try {
+      await API.put('/baileys/ia/prompt', { prompt });
+      setOriginal(prompt);
+      toast.success('✅ System prompt actualizado');
+    } catch (err) { toast.error(err.response?.data?.error || 'Error guardando'); }
+    finally { setSaving(false); }
+  };
+
+  const handleTest = async () => {
+    if (!testMsg.trim()) return;
+    setTesting(true); setTestRes(null);
+    try {
+      const r = await API.post('/baileys/ia/test', { mensaje: testMsg });
+      setTestRes(r.data?.respuesta || '(sin respuesta)');
+    } catch { setTestRes('❌ Error al probar. Verifica que GROQ_API_KEY esté configurada.'); }
+    finally { setTesting(false); }
+  };
+
+  const hasChanges = prompt !== original;
 
   if (loading) return (
     <div className="d-flex justify-content-center mt-4">
@@ -178,678 +704,185 @@ function TabConfigCredenciales() {
 
   return (
     <div>
-      <InfoBox>
-        <div style={{ fontWeight: 800, color: 'var(--jordyn-primary)', marginBottom: 6 }}>
-          <i className="bi bi-info-circle me-2"></i>¿Cómo configurar?
-        </div>
-        <ol style={{ margin: 0, padding: '0 0 0 1.1rem' }}>
-          <li>Ve a <strong>Meta for Developers</strong> → Tu App → WhatsApp → Configuración de la API</li>
-          <li>Copia el <strong>Phone Number ID</strong> y el <strong>WhatsApp Business Account ID</strong></li>
-          <li>Genera un <strong>Token de acceso permanente</strong> en el panel de seguridad</li>
-          <li>En <strong>Webhook</strong>, pon: <code style={{ color: 'var(--jordyn-primary)' }}>https://tu-backend.com/api/whatsapp/webhook</code></li>
-          <li>Como <strong>Verify Token</strong> escribe el mismo texto secreto que guardes aquí</li>
-          <li>Suscríbete al campo <code style={{ color: 'var(--jordyn-primary)' }}>messages</code></li>
-        </ol>
-      </InfoBox>
+      {/* Info banner */}
+      <div style={{
+        background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.2)',
+        borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1.25rem',
+        fontSize: '0.77rem', color: 'var(--jordyn-muted)', lineHeight: 1.7,
+      }}>
+        <i className="bi bi-robot me-2" style={{ color: '#a855f7' }}></i>
+        El <strong style={{ color: 'var(--jordyn-text)' }}>system prompt</strong> define la personalidad, tono y reglas del bot de IA (Groq / Llama).
+        Cambia aquí cómo responde el bot, qué sabe del negocio y cómo trata a los clientes.
+        El modelo recibe este prompt + el contexto de rifas activas en cada mensaje.
+      </div>
 
-      {config && !editMode ? (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1.2rem' }}>
+      {/* Stats */}
+      {stats && (
+        <Card>
+          <CardTitle icon="bi-bar-chart-fill">Estado del motor IA</CardTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             {[
-              { label: 'Nombre',         value: config.nombre },
-              { label: 'Phone Number ID',value: config.phone_number_id },
-              { label: 'WABA ID',        value: config.waba_id },
-              { label: 'Access Token',   value: config.access_token_preview },
-              { label: 'Verify Token',   value: config.verify_token },
-              { label: 'Webhook URL',    value: config.webhook_url || '—' },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '0.7rem 1rem' }}>
-                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>{label}</div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--jordyn-text)', wordBreak: 'break-all' }}>{value}</div>
+              { l: 'Modelo', v: stats.modelo || 'llama-3.3-70b', icon: 'bi-cpu' },
+              { l: 'Conversaciones activas', v: stats.totalUsers ?? 0, icon: 'bi-people-fill' },
+              { l: 'API Key', v: stats.apiKeyOk ? '✅ Configurada' : '❌ No configurada', icon: 'bi-key-fill' },
+            ].map(({ l, v, icon }) => (
+              <div key={l} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '8px 12px' }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <i className={`bi ${icon}`}></i>{l}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--jordyn-text)' }}>{v}</div>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn-jordyn" onClick={() => setEditMode(true)}>
-              <i className="bi bi-pencil me-1"></i>Editar credenciales
-            </button>
-            <button className="btn-jordyn-outline" onClick={handleTest} disabled={testing}>
-              {testing
-                ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Probando...</>
-                : <><i className="bi bi-wifi me-1"></i>Probar conexión</>}
-            </button>
-          </div>
-          {testResult && (
-            <div style={{
-              marginTop: '1rem', padding: '0.8rem 1rem', borderRadius: 8,
-              background: testResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-              border: `1px solid ${testResult.ok ? '#22c55e44' : '#ef444444'}`,
-              fontSize: '0.82rem', color: testResult.ok ? '#22c55e' : '#ef4444',
-            }}>
-              {testResult.ok
-                ? `✅ Conectado — ${testResult.nombre} (${testResult.telefono})`
-                : `❌ Error: ${testResult.error}`}
-            </div>
+          <button className="btn-jordyn-outline" style={{ marginTop: '0.75rem', fontSize: '0.78rem', padding: '5px 12px' }}
+            onClick={() => API.post('/baileys/ia/clear-history').then(() => { toast.success('Historiales borrados'); load(); }).catch(() => toast.error('Error'))}>
+            <i className="bi bi-trash me-1"></i>Borrar todos los historiales de conversación
+          </button>
+        </Card>
+      )}
+
+      {/* Editor del prompt */}
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+          <CardTitle icon="bi-pencil-square" style={{ margin: 0 }}>System Prompt</CardTitle>
+          {hasChanges && (
+            <span style={{ fontSize: '0.7rem', color: '#f0b400', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <i className="bi bi-circle-fill" style={{ fontSize: '0.5rem' }}></i>Sin guardar
+            </span>
           )}
         </div>
-      ) : (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
-            <Input label="Nombre de la configuración" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Principal" />
-            <Input label="Phone Number ID *" value={form.phone_number_id} onChange={e => setForm({ ...form, phone_number_id: e.target.value })} placeholder="123456789012345" />
-            <Input label="WhatsApp Business Account ID *" value={form.waba_id} onChange={e => setForm({ ...form, waba_id: e.target.value })} placeholder="123456789012345" />
-            <Input label="Verify Token *" value={form.verify_token} onChange={e => setForm({ ...form, verify_token: e.target.value })} placeholder="mi_token_secreto" />
-          </div>
-          <Input label="Access Token — Token permanente de Meta *" value={form.access_token} onChange={e => setForm({ ...form, access_token: e.target.value })} placeholder="EAABsbCS..." type="password" />
-          <Input label="Webhook URL (tu URL pública)" value={form.webhook_url} onChange={e => setForm({ ...form, webhook_url: e.target.value })} placeholder="https://tu-backend.com/api/whatsapp/webhook" />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
+        <textarea
+          className="jd-input"
+          rows={18}
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          style={{
+            width: '100%', boxSizing: 'border-box', resize: 'vertical',
+            fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: 1.7,
+          }}
+          placeholder={`Eres una persona real que atiende los clientes de Rifas Jordyn por WhatsApp...\n\nNombre del negocio: Rifas Jordyn\nTono: cercano, natural, como texto de WhatsApp en Venezuela\n\nReglas:\n- No menciones que eres un bot\n- Frases cortas y directas\n- Usa emojis con moderación...`}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--jordyn-muted)' }}>
+            {prompt.length.toLocaleString()} caracteres · ~{Math.round(prompt.length / 4).toLocaleString()} tokens
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {hasChanges && (
+              <button className="btn-jordyn-outline" onClick={() => setPrompt(original)} style={{ fontSize: '0.78rem', padding: '6px 12px' }}>
+                <i className="bi bi-arrow-counterclockwise me-1"></i>Revertir
+              </button>
+            )}
+            <button className="btn-jordyn" onClick={handleSave} disabled={saving || !hasChanges}>
               {saving
-                ? <><span className="jd-spinner" style={{ width: 14, height: 14, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Guardando...</>
-                : <><i className="bi bi-floppy-fill me-1"></i>Guardar credenciales</>}
+                ? <><span className="jd-spinner" style={{ width: 13, height: 13, borderWidth: 2, display: 'inline-block', marginRight: 6 }}></span>Guardando…</>
+                : <><i className="bi bi-floppy-fill me-1"></i>Guardar prompt</>}
             </button>
-            {config && <button className="btn-jordyn-outline" onClick={() => setEditMode(false)}>Cancelar</button>}
           </div>
         </div>
-      )}
+      </Card>
+
+      {/* Tester IA */}
+      <Card>
+        <CardTitle icon="bi-chat-left-dots-fill">Probar con la IA real</CardTitle>
+        <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
+          <input className="jd-input" style={{ flex: 1 }}
+            value={testMsg} onChange={e => setTestMsg(e.target.value)}
+            placeholder="Escribe un mensaje de prueba para la IA…"
+            onKeyDown={e => e.key === 'Enter' && handleTest()} />
+          <button className="btn-jordyn" style={{ flexShrink: 0 }} onClick={handleTest} disabled={testing}>
+            {testing
+              ? <span className="jd-spinner" style={{ width: 13, height: 13, borderWidth: 2 }}></span>
+              : <><i className="bi bi-send-fill me-1"></i>Probar</>}
+          </button>
+        </div>
+        {testRes && (
+          <div style={{
+            background: 'rgba(168,85,247,.07)', border: '1px solid rgba(168,85,247,.2)',
+            borderRadius: 8, padding: '0.85rem 1rem',
+            fontSize: '0.82rem', color: 'var(--jordyn-text)', whiteSpace: 'pre-wrap', lineHeight: 1.6,
+          }}>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#a855f7', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+              <i className="bi bi-robot me-1"></i>Respuesta de Groq:
+            </div>
+            {testRes}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-//  TAB 2 — Biblioteca de Medios
-// ─────────────────────────────────────────────
-function TabMediaLibrary({ onSelectMedia }) {
-  const [medias, setMedias]     = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({ nombre: '', url_publica: '' });
-  const [file, setFile]         = useState(null);
-  const [saving, setSaving]     = useState(false);
-  const fileRef                 = useRef();
-
-  const load = useCallback(() => {
-    setLoading(true);
-    API.get('/whatsapp/media').then(r => setMedias(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleSubmit = async () => {
-    if (!form.nombre) return toast.error('Escribe un nombre');
-    if (!file && !form.url_publica) return toast.error('Sube un archivo o ingresa una URL');
-    setSaving(true);
-    try {
-      const fd = new FormData();
-      fd.append('nombre', form.nombre);
-      if (form.url_publica) fd.append('url_publica', form.url_publica);
-      if (file) fd.append('archivo', file);
-      await API.post('/whatsapp/media', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success('✅ Medio guardado');
-      setShowForm(false); setForm({ nombre: '', url_publica: '' }); setFile(null); load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-    finally { setSaving(false); }
-  };
-
-  const handleDelete = async (id, nombre) => {
-    if (!window.confirm(`¿Eliminar "${nombre}"?`)) return;
-    try { await API.delete(`/whatsapp/media/${id}`); toast.success('Eliminado'); load(); }
-    catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-  };
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--jordyn-muted)' }}>
-          {medias.length} archivo{medias.length !== 1 ? 's' : ''} en biblioteca
-        </span>
-        <button className="btn-jordyn" onClick={() => setShowForm(true)}>
-          <i className="bi bi-plus-lg me-1"></i>Agregar medio
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 36, height: 36 }}></div></div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))', gap: '1rem' }}>
-          {medias.map(m => (
-            <div key={m.id} style={{
-              background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)',
-              borderRadius: 10, overflow: 'hidden',
-              cursor: onSelectMedia ? 'pointer' : 'default',
-              transition: 'border-color .15s',
-            }}
-              onClick={() => onSelectMedia && onSelectMedia(m)}
-              onMouseEnter={e => { if (onSelectMedia) e.currentTarget.style.borderColor = 'var(--jordyn-primary)'; }}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--jordyn-border)'}
-            >
-              <div style={{ height: 100, background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                {m.tipo === 'image'
-                  ? <img src={m.url_publica} alt={m.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
-                  : m.tipo === 'video'
-                    ? <i className="bi bi-play-circle-fill" style={{ fontSize: '2.2rem', color: '#ef4444' }}></i>
-                    : <i className="bi bi-file-earmark" style={{ fontSize: '2.2rem', color: 'var(--jordyn-muted)' }}></i>}
-              </div>
-              <div style={{ padding: '0.6rem 0.8rem' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.76rem', color: 'var(--jordyn-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>{m.nombre}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <TipoBadge tipo={m.tipo} />
-                  {!onSelectMedia && (
-                    <button onClick={e => { e.stopPropagation(); handleDelete(m.id, m.nombre); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef444488', fontSize: '0.8rem', padding: 2 }}>
-                      <i className="bi bi-trash"></i>
-                    </button>
-                  )}
-                </div>
-                {m.tamanio_kb && <div style={{ fontSize: '0.6rem', color: 'var(--jordyn-muted)', marginTop: 3 }}>{m.tamanio_kb} KB</div>}
-              </div>
-            </div>
-          ))}
-          {!medias.length && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem' }}>
-              <i className="bi bi-images" style={{ fontSize: '2rem', opacity: 0.3 }}></i>
-              <div style={{ marginTop: 8, fontSize: '0.85rem' }}>No hay medios. Agrega imágenes o videos.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {showForm && (
-        <Modal title="Agregar medio" onClose={() => setShowForm(false)}>
-          <Input label="Nombre descriptivo *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="banner_rifa_julio" />
-          <div style={{ marginBottom: '1rem' }}>
-            <FldLabel>Subir archivo (imagen / video — máx 16 MB)</FldLabel>
-            <div
-              onClick={() => fileRef.current.click()}
-              style={{
-                border: '2px dashed var(--jordyn-border)', borderRadius: 10,
-                padding: '1.5rem', textAlign: 'center', cursor: 'pointer',
-                color: 'var(--jordyn-muted)', fontSize: '0.82rem', transition: 'border-color .15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--jordyn-primary)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--jordyn-border)'}
-            >
-              {file
-                ? <><i className="bi bi-check-circle-fill me-1" style={{ color: '#22c55e' }}></i>{file.name}</>
-                : <><i className="bi bi-cloud-upload me-2"></i>Click para seleccionar (jpg, png, webp, mp4)</>}
-            </div>
-            <input ref={fileRef} type="file" accept="image/*,video/mp4,application/pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files[0])} />
-          </div>
-          <Input label="— o — URL pública del medio" value={form.url_publica} onChange={e => setForm({ ...form, url_publica: e.target.value })} placeholder="https://cdn.ejemplo.com/imagen.jpg" />
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="btn-jordyn-outline" onClick={() => setShowForm(false)}>Cancelar</button>
-            <button className="btn-jordyn" onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Guardando...' : <><i className="bi bi-check-lg me-1"></i>Guardar medio</>}
-            </button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-//  TAB 3 — Plantillas de mensajes
-// ─────────────────────────────────────────────
-function TabPlantillas() {
-  const [plantillas, setPlantillas]   = useState([]);
-  const [medias, setMedias]           = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [modal, setModal]             = useState(null);
-  const [editObj, setEditObj]         = useState(null);
-  const [saving, setSaving]           = useState(false);
-  const [showMediaPicker, setShowMediaPicker] = useState(false);
-
-  const emptyForm = { nombre: '', tipo: 'text', cuerpo: '', pie: '', media_id: '', botones: [{ id: '', titulo: '' }] };
-  const [form, setForm] = useState(emptyForm);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    Promise.all([API.get('/whatsapp/plantillas'), API.get('/whatsapp/media')])
-      .then(([p, m]) => { setPlantillas(p.data); setMedias(m.data); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const openCrear  = () => { setForm(emptyForm); setModal('crear'); setEditObj(null); };
-  const openEditar = p => {
-    setForm({
-      nombre: p.nombre, tipo: p.tipo, cuerpo: p.cuerpo || '',
-      pie: p.pie || '', media_id: p.media_id || '',
-      botones: typeof p.botones === 'string' ? JSON.parse(p.botones) : (p.botones || []),
-    });
-    setEditObj(p); setModal('editar');
-  };
-
-  const handleSave = async () => {
-    if (!form.nombre || !form.tipo) return toast.error('Nombre y tipo son requeridos');
-    const botonesFiltrados = form.botones.filter(b => b.id && b.titulo);
-    setSaving(true);
-    try {
-      const body = { ...form, botones: JSON.stringify(botonesFiltrados), media_id: form.media_id || null };
-      if (modal === 'crear') await API.post('/whatsapp/plantillas', body);
-      else await API.put(`/whatsapp/plantillas/${editObj.id}`, body);
-      toast.success(modal === 'crear' ? '✅ Plantilla creada' : '✅ Actualizada');
-      setModal(null); load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-    finally { setSaving(false); }
-  };
-
-  const handleDelete = async p => {
-    if (!window.confirm(`¿Eliminar "${p.nombre}"?`)) return;
-    try { await API.delete(`/whatsapp/plantillas/${p.id}`); toast.success('Eliminada'); load(); }
-    catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-  };
-
-  const addBoton    = () => { if (form.botones.length >= 3) return toast.warn('Máximo 3 botones'); setForm(f => ({ ...f, botones: [...f.botones, { id: '', titulo: '' }] })); };
-  const removeBoton = i => setForm(f => ({ ...f, botones: f.botones.filter((_, idx) => idx !== i) }));
-  const updateBoton = (i, k, v) => setForm(f => { const a = [...f.botones]; a[i] = { ...a[i], [k]: v }; return { ...f, botones: a }; });
-
-  const needsMedia   = ['image', 'video', 'image_text'].includes(form.tipo);
-  const needsBotones = form.tipo === 'button';
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-        <button className="btn-jordyn" onClick={openCrear}><i className="bi bi-plus-lg me-1"></i>Nueva plantilla</button>
-      </div>
-
-      {loading ? (
-        <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 36, height: 36 }}></div></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
-          {plantillas.map(p => {
-            const bots = typeof p.botones === 'string' ? JSON.parse(p.botones) : (p.botones || []);
-            return (
-              <div key={p.id} className="jd-card" style={{ padding: '0.9rem 1.1rem', display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-                {p.media_url && (
-                  <img src={p.media_url} alt="" style={{ width: 52, height: 52, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
-                    onError={e => e.target.style.display = 'none'} />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--jordyn-text)' }}>{p.nombre}</span>
-                    <TipoBadge tipo={p.tipo} />
-                    {!p.activa && <span style={{ background: '#ef444422', color: '#ef4444', borderRadius: 4, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 700 }}>INACTIVA</span>}
-                  </div>
-                  {p.cuerpo && (
-                    <div style={{ fontSize: '0.77rem', color: 'var(--jordyn-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {p.cuerpo.substring(0, 120)}
-                    </div>
-                  )}
-                  {bots.length > 0 && (
-                    <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
-                      {bots.map(b => (
-                        <span key={b.id} style={{ background: 'rgba(10,191,188,0.1)', color: 'var(--jordyn-primary)', borderRadius: 5, padding: '1px 7px', fontSize: '0.65rem', fontWeight: 700 }}>{b.titulo}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button className="btn-jordyn-outline" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => openEditar(p)}>
-                    <i className="bi bi-pencil"></i>
-                  </button>
-                  <button onClick={() => handleDelete(p)} style={{ background: 'none', border: '1px solid #ef444433', color: '#ef4444', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
-                    <i className="bi bi-trash"></i>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {!plantillas.length && (
-            <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem' }}>
-              <i className="bi bi-chat-square-dots" style={{ fontSize: '2rem', opacity: 0.3 }}></i>
-              <div style={{ marginTop: 8, fontSize: '0.85rem' }}>No hay plantillas. Crea la primera.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {modal && (
-        <Modal title={modal === 'crear' ? 'Nueva plantilla' : `Editar: ${editObj?.nombre}`} onClose={() => setModal(null)} size="680px">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
-            <Input label="Nombre interno *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="bienvenida" />
-            <Select label="Tipo de mensaje *" value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value, media_id: '', botones: [{ id: '', titulo: '' }] })}>
-              <option value="text">📝 Texto</option>
-              <option value="image">🖼️ Imagen</option>
-              <option value="video">🎬 Video</option>
-              <option value="image_text">🖼️📝 Imagen + Texto</option>
-              <option value="button">🔘 Botones interactivos</option>
-            </Select>
-          </div>
-
-          {needsMedia && (
-            <div style={{ marginBottom: '1rem' }}>
-              <FldLabel>Medio adjunto (imagen / video) *</FldLabel>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div style={{ flex: 1, background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '0.5rem 0.8rem', fontSize: '0.8rem', color: form.media_id ? 'var(--jordyn-text)' : 'var(--jordyn-muted)' }}>
-                  {form.media_id ? (medias.find(m => m.id == form.media_id)?.nombre || `ID: ${form.media_id}`) : 'Ningún medio seleccionado'}
-                </div>
-                <button className="btn-jordyn-outline" style={{ fontSize: '0.78rem', padding: '6px 12px' }} onClick={() => setShowMediaPicker(true)}>
-                  <i className="bi bi-images me-1"></i>Elegir
-                </button>
-                {form.media_id && (
-                  <button onClick={() => setForm(f => ({ ...f, media_id: '' }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
-                    <i className="bi bi-x-lg"></i>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <Textarea label="Cuerpo del mensaje"
-            value={form.cuerpo} onChange={e => setForm({ ...form, cuerpo: e.target.value })}
-            placeholder="Usa {{nombre_cliente}}, {{numero}}, {{rifa_nombre}}, {{precio}}, {{premio}}, {{fecha_sorteo}}, {{rifas_lista}}"
-            rows={5} />
-          <Input label="Pie de mensaje (footer opcional)" value={form.pie} onChange={e => setForm({ ...form, pie: e.target.value })} placeholder="Escribe MENU para volver al inicio" />
-
-          {needsBotones && (
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <FldLabel>Botones (máx. 3)</FldLabel>
-                <button className="btn-jordyn-outline" style={{ fontSize: '0.72rem', padding: '3px 9px' }} onClick={addBoton}>+ Botón</button>
-              </div>
-              {form.botones.map((b, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <input className="jd-input" style={{ flex: 1 }} placeholder="ID único (ej: btn_rifas)" value={b.id} onChange={e => updateBoton(i, 'id', e.target.value)} />
-                  <input className="jd-input" style={{ flex: 2 }} placeholder="Texto (máx 20 chars)" maxLength={20} value={b.titulo} onChange={e => updateBoton(i, 'titulo', e.target.value)} />
-                  <button onClick={() => removeBoton(i)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem' }}>
-                    <i className="bi bi-x-circle"></i>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <InfoBox>
-            <strong style={{ color: 'var(--jordyn-primary)' }}>Variables disponibles:</strong>{' '}
-            <code>{'{{nombre_cliente}}'}</code> <code>{'{{numero}}'}</code> <code>{'{{rifa_nombre}}'}</code>{' '}
-            <code>{'{{precio}}'}</code> <code>{'{{premio}}'}</code> <code>{'{{fecha_sorteo}}'}</code>{' '}
-            <code>{'{{rifas_lista}}'}</code>
-          </InfoBox>
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="btn-jordyn-outline" onClick={() => setModal(null)}>Cancelar</button>
-            <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando...' : <><i className="bi bi-check-lg me-1"></i>Guardar plantilla</>}
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {showMediaPicker && (
-        <Modal title="Seleccionar medio" onClose={() => setShowMediaPicker(false)} size="800px">
-          <TabMediaLibrary onSelectMedia={m => { setForm(f => ({ ...f, media_id: m.id })); setShowMediaPicker(false); }} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-//  TAB 4 — Guión / Flujo del bot
-// ─────────────────────────────────────────────
-const ACCIONES = [
-  { value: '',                  label: '— Sin acción especial —' },
-  { value: 'mostrar_rifas',     label: '🏆 Mostrar rifas activas' },
-  { value: 'consultar_numero',  label: '🔢 Consultar número de boleto' },
-  { value: 'capturar_nombre',   label: '👤 Capturar nombre del cliente' },
-  { value: 'capturar_cedula',   label: '🪪 Capturar cédula / documento' },
-  { value: 'confirmar_reserva', label: '✅ Crear reserva automática' },
-  { value: 'finalizar',         label: '👋 Finalizar conversación' },
-];
-
-function TabFlujo() {
-  const [nodos, setNodos]           = useState([]);
-  const [plantillas, setPlantillas] = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [modal, setModal]           = useState(null);
-  const [editObj, setEditObj]       = useState(null);
-  const [saving, setSaving]         = useState(false);
-  const [transModal, setTransModal] = useState(null);
-  const [transForm, setTransForm]   = useState({ nodo_origen_id: '', nodo_destino_id: '', trigger_texto: '', trigger_payload: '', orden: 0 });
-
-  const emptyForm = { nombre: '', descripcion: '', es_inicio: false, plantilla_id: '', accion: '', orden: 0, activo: true };
-  const [form, setForm] = useState(emptyForm);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    Promise.all([API.get('/whatsapp/flujo'), API.get('/whatsapp/plantillas')])
-      .then(([f, p]) => { setNodos(f.data); setPlantillas(p.data); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const openCrear  = () => { setForm(emptyForm); setModal('crear'); setEditObj(null); };
-  const openEditar = n => {
-    setForm({ nombre: n.nombre, descripcion: n.descripcion || '', es_inicio: n.es_inicio, plantilla_id: n.plantilla_id || '', accion: n.accion || '', orden: n.orden, activo: n.activo });
-    setEditObj(n); setModal('editar');
-  };
-
-  const handleSave = async () => {
-    if (!form.nombre) return toast.error('El nombre es requerido');
-    setSaving(true);
-    try {
-      const body = { ...form, plantilla_id: form.plantilla_id || null, accion: form.accion || null };
-      if (modal === 'crear') await API.post('/whatsapp/flujo/nodos', body);
-      else await API.put(`/whatsapp/flujo/nodos/${editObj.id}`, body);
-      toast.success(modal === 'crear' ? '✅ Nodo creado' : '✅ Nodo actualizado');
-      setModal(null); load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-    finally { setSaving(false); }
-  };
-
-  const handleDeleteNodo = async n => {
-    if (!window.confirm(`¿Eliminar nodo "${n.nombre}"?`)) return;
-    try { await API.delete(`/whatsapp/flujo/nodos/${n.id}`); toast.success('Nodo eliminado'); load(); }
-    catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-  };
-
-  const handleAddTrans = async () => {
-    try { await API.post('/whatsapp/flujo/transiciones', transForm); toast.success('✅ Transición creada'); setTransModal(null); load(); }
-    catch (err) { toast.error(err.response?.data?.error || 'Error'); }
-  };
-
-  const handleDeleteTrans = async id => {
-    try { await API.delete(`/whatsapp/flujo/transiciones/${id}`); toast.success('Eliminada'); load(); }
-    catch { toast.error('Error al eliminar'); }
-  };
-
-  return (
-    <div>
-      <div style={{
-        background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.22)',
-        borderRadius: 10, padding: '0.8rem 1rem', marginBottom: '1.2rem',
-        fontSize: '0.77rem', color: '#92400e', lineHeight: 1.6,
-      }}>
-        <i className="bi bi-diagram-3 me-2"></i>
-        <strong>Cómo funciona el guión:</strong> Cada nodo es un paso del bot. Las <em>transiciones</em> definen qué respuesta del usuario lleva al siguiente nodo. El nodo <strong>Inicio</strong> se envía con el primer mensaje del cliente.
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-        <button className="btn-jordyn" onClick={openCrear}><i className="bi bi-plus-lg me-1"></i>Nuevo nodo</button>
-      </div>
-
-      {loading ? (
-        <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 36, height: 36 }}></div></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {nodos.map(n => (
-            <div key={n.id} className="jd-card" style={{
-              borderLeft: n.es_inicio ? '3px solid var(--jordyn-primary)' : '3px solid transparent',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    {n.es_inicio && (
-                      <span style={{ background: 'var(--jordyn-primary)', color: '#000', borderRadius: 5, padding: '1px 7px', fontSize: '0.62rem', fontWeight: 800 }}>INICIO</span>
-                    )}
-                    <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--jordyn-text)' }}>{n.nombre}</span>
-                    {n.accion && (
-                      <span style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 5, padding: '1px 7px', fontSize: '0.62rem', fontWeight: 700 }}>
-                        {ACCIONES.find(a => a.value === n.accion)?.label || n.accion}
-                      </span>
-                    )}
-                    {!n.activo && <span style={{ background: '#ef444422', color: '#ef4444', borderRadius: 5, padding: '1px 6px', fontSize: '0.6rem', fontWeight: 700 }}>INACTIVO</span>}
-                  </div>
-                  {n.descripcion && <div style={{ fontSize: '0.76rem', color: 'var(--jordyn-muted)', marginBottom: 4 }}>{n.descripcion}</div>}
-                  {n.plantilla_nombre && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginBottom: 6 }}>
-                      <i className="bi bi-chat-square-text me-1"></i>Plantilla: <strong style={{ color: 'var(--jordyn-text)' }}>{n.plantilla_nombre}</strong>
-                      {n.plantilla_tipo && <span style={{ marginLeft: 6 }}><TipoBadge tipo={n.plantilla_tipo} /></span>}
-                    </div>
-                  )}
-                  {n.transiciones?.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-                        <i className="bi bi-arrow-right-circle me-1"></i>Transiciones:
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {n.transiciones.map(t => (
-                          <div key={t.id} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 6, padding: '3px 8px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ color: 'var(--jordyn-muted)' }}>
-                              {t.trigger_texto ? `"${t.trigger_texto}"` : t.trigger_payload ? `[${t.trigger_payload}]` : '(cualquier respuesta)'}
-                            </span>
-                            <i className="bi bi-arrow-right" style={{ color: 'var(--jordyn-primary)', fontSize: '0.65rem' }}></i>
-                            <span style={{ color: 'var(--jordyn-text)', fontWeight: 700 }}>{t.destino_nombre}</span>
-                            <button onClick={() => handleDeleteTrans(t.id)} style={{ background: 'none', border: 'none', color: '#ef444488', cursor: 'pointer', fontSize: '0.7rem', padding: 0 }}>
-                              <i className="bi bi-x"></i>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <button className="btn-jordyn-outline" style={{ padding: '4px 10px', fontSize: '0.72rem' }}
-                    onClick={() => { setTransForm({ nodo_origen_id: n.id, nodo_destino_id: '', trigger_texto: '', trigger_payload: '', orden: 0 }); setTransModal({ nodoId: n.id, nodoNombre: n.nombre }); }}>
-                    <i className="bi bi-arrow-right-circle me-1"></i>Transición
-                  </button>
-                  <button className="btn-jordyn-outline" style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => openEditar(n)}>
-                    <i className="bi bi-pencil"></i>
-                  </button>
-                  {!n.es_inicio && (
-                    <button onClick={() => handleDeleteNodo(n)} style={{ background: 'none', border: '1px solid #ef444433', color: '#ef4444', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: '0.72rem' }}>
-                      <i className="bi bi-trash"></i>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {!nodos.length && (
-            <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem' }}>
-              <i className="bi bi-diagram-3" style={{ fontSize: '2rem', opacity: 0.3 }}></i>
-              <div style={{ marginTop: 8, fontSize: '0.85rem' }}>No hay nodos. El SQL semilla debería haberlos creado automáticamente.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modal nodo */}
-      {modal && (
-        <Modal title={modal === 'crear' ? 'Nuevo nodo' : `Editar: ${editObj?.nombre}`} onClose={() => setModal(null)}>
-          <Input label="Nombre del nodo *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
-          <Textarea label="Descripción (interna)" value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} rows={2} />
-          <Select label="Plantilla de mensaje" value={form.plantilla_id} onChange={e => setForm({ ...form, plantilla_id: e.target.value })}>
-            <option value="">— Sin plantilla —</option>
-            {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.tipo})</option>)}
-          </Select>
-          <Select label="Acción especial del bot" value={form.accion} onChange={e => setForm({ ...form, accion: e.target.value })}>
-            {ACCIONES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </Select>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
-            <Input label="Orden" type="number" value={form.orden} onChange={e => setForm({ ...form, orden: parseInt(e.target.value) || 0 })} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: '1.4rem' }}>
-              <input type="checkbox" id="chkInicio" checked={form.es_inicio} onChange={e => setForm({ ...form, es_inicio: e.target.checked })} />
-              <label htmlFor="chkInicio" style={{ fontSize: '0.8rem', color: 'var(--jordyn-text)', cursor: 'pointer' }}>
-                Nodo de inicio (primer mensaje)
-              </label>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="btn-jordyn-outline" onClick={() => setModal(null)}>Cancelar</button>
-            <button className="btn-jordyn" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando...' : <><i className="bi bi-check-lg me-1"></i>Guardar nodo</>}
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal transición */}
-      {transModal && (
-        <Modal title={`Nueva transición desde: ${transModal.nodoNombre}`} onClose={() => setTransModal(null)}>
-          <Select label="Nodo destino *" value={transForm.nodo_destino_id} onChange={e => setTransForm({ ...transForm, nodo_destino_id: e.target.value })}>
-            <option value="">Selecciona un nodo</option>
-            {nodos.filter(n => n.id !== transModal.nodoId).map(n => <option key={n.id} value={n.id}>{n.nombre}</option>)}
-          </Select>
-          <Input label="Trigger por texto (ej: RESERVAR)" value={transForm.trigger_texto} onChange={e => setTransForm({ ...transForm, trigger_texto: e.target.value })} placeholder="Vacío = captura cualquier respuesta" />
-          <Input label="Trigger por payload de botón (ej: btn_ver_rifas)" value={transForm.trigger_payload} onChange={e => setTransForm({ ...transForm, trigger_payload: e.target.value })} />
-          <InfoBox>
-            <strong>Nota:</strong> Dejar ambos triggers vacíos activa la transición con cualquier respuesta del usuario (transición por defecto).
-          </InfoBox>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="btn-jordyn-outline" onClick={() => setTransModal(null)}>Cancelar</button>
-            <button className="btn-jordyn" onClick={handleAddTrans} disabled={!transForm.nodo_destino_id}>
-              <i className="bi bi-check-lg me-1"></i>Crear transición
-            </button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-//  TAB 5 — Conversaciones / Logs
+// TAB 5 — Conversaciones (logs del bot)
 // ─────────────────────────────────────────────
 function TabConversaciones() {
-  const [sesiones, setSesiones]       = useState([]);
-  const [logs, setLogs]               = useState([]);
-  const [selectedNum, setSelectedNum] = useState(null);
-  const [loading, setLoading]         = useState(true);
-  const logsEndRef                    = useRef();
+  const [sesiones,     setSesiones]     = useState([]);
+  const [logs,         setLogs]         = useState([]);
+  const [selectedNum,  setSelectedNum]  = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [loadingLogs,  setLoadingLogs]  = useState(false);
+  const logsEndRef = useRef();
 
-  useEffect(() => {
-    API.get('/whatsapp/flujo/sesiones').then(r => setSesiones(r.data)).catch(() => {}).finally(() => setLoading(false));
+  const loadSesiones = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await API.get('/whatsapp/flujo/sesiones');
+      setSesiones(r.data);
+    } catch { /* sin historial disponible */ }
+    finally { setLoading(false); }
   }, []);
+
+  useEffect(() => { loadSesiones(); }, [loadSesiones]);
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
 
-  const loadLogs = numero => {
+  const loadLogs = async numero => {
     setSelectedNum(numero);
-    API.get(`/whatsapp/flujo/logs?numero=${encodeURIComponent(numero)}`).then(r => setLogs(r.data)).catch(() => {});
+    setLoadingLogs(true);
+    try {
+      const r = await API.get(`/whatsapp/flujo/logs?numero=${encodeURIComponent(numero)}`);
+      setLogs(r.data);
+    } catch { setLogs([]); }
+    finally { setLoadingLogs(false); }
   };
 
-  const estadoColor = { activo: '#22c55e', completado: '#0abed4', expirado: '#6b7280', cancelado: '#ef4444' };
+  const clearHistorial = async numero => {
+    try {
+      await API.delete(`/baileys/ia/history/${encodeURIComponent(numero)}`);
+      toast.success('Historial de IA borrado');
+    } catch { toast.error('Error'); }
+  };
+
+  const estadoColor = { activo: '#25d366', completado: 'var(--jordyn-primary)', expirado: 'var(--jordyn-muted)', cancelado: '#e63946' };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: selectedNum ? '260px 1fr' : '1fr', gap: '1rem' }}>
-      {/* Lista sesiones */}
-      <div style={{ overflowY: 'auto', maxHeight: '60vh' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: selectedNum ? '260px 1fr' : '1fr', gap: '1rem', alignItems: 'start' }}>
+
+      {/* Lista de sesiones */}
+      <div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--jordyn-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          Conversaciones
+        </div>
         {loading ? (
           <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 32, height: 32 }}></div></div>
         ) : !sesiones.length ? (
-          <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem' }}>
-            <i className="bi bi-chat-dots" style={{ fontSize: '2rem', opacity: 0.3 }}></i>
-            <div style={{ marginTop: 8, fontSize: '0.85rem' }}>Sin conversaciones aún</div>
+          <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', padding: '3rem', background: 'var(--jordyn-bg2)', borderRadius: 10, border: '1px solid var(--jordyn-border)' }}>
+            <i className="bi bi-chat-dots" style={{ fontSize: '2rem', opacity: 0.3, display: 'block', marginBottom: 8 }}></i>
+            Sin conversaciones aún
           </div>
         ) : sesiones.map(s => (
           <div key={s.id} onClick={() => loadLogs(s.wa_numero)} style={{
             padding: '0.75rem 0.9rem', borderRadius: 10, cursor: 'pointer', marginBottom: 6,
-            background: selectedNum === s.wa_numero ? 'rgba(10,191,188,0.08)' : 'var(--jordyn-bg2)',
-            border: `1px solid ${selectedNum === s.wa_numero ? 'rgba(10,191,188,0.3)' : 'var(--jordyn-border)'}`,
+            background: selectedNum === s.wa_numero ? 'rgba(10,191,188,.08)' : 'var(--jordyn-bg2)',
+            border: `1px solid ${selectedNum === s.wa_numero ? 'rgba(10,191,188,.3)' : 'var(--jordyn-border)'}`,
             transition: 'all .15s',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--jordyn-text)' }}>{s.wa_numero}</span>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: estadoColor[s.estado] || '#6b7280', display: 'inline-block' }}></span>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: estadoColor[s.estado] || 'var(--jordyn-muted)', display: 'inline-block' }}></span>
             </div>
             {s.nombre_cliente && <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)' }}>{s.nombre_cliente}</div>}
-            {s.nodo_nombre && <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-primary)' }}>📍 {s.nodo_nombre}</div>}
+            {s.nodo_nombre    && <div style={{ fontSize: '0.68rem', color: 'var(--jordyn-primary)' }}>📍 {s.nodo_nombre}</div>}
             <div style={{ fontSize: '0.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
               {new Date(s.ultimo_mensaje).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })}
             </div>
@@ -859,20 +892,28 @@ function TabConversaciones() {
 
       {/* Chat log */}
       {selectedNum && (
-        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '0.8rem 1rem', borderBottom: '1px solid var(--jordyn-border)', fontWeight: 800, fontSize: '0.82rem', color: 'var(--jordyn-text)', background: 'var(--jordyn-surface)', flexShrink: 0 }}>
-            <i className="bi bi-whatsapp me-2" style={{ color: '#25D366' }}></i>{selectedNum}
+        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 12, overflow: 'hidden', minHeight: 300 }}>
+          <div style={{ padding: '0.8rem 1rem', borderBottom: '1px solid var(--jordyn-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--jordyn-surface)', flexShrink: 0 }}>
+            <span style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--jordyn-text)' }}>
+              <i className="bi bi-whatsapp me-2" style={{ color: '#25D366' }}></i>{selectedNum}
+            </span>
+            <button onClick={() => clearHistorial(selectedNum)}
+              style={{ background: 'none', border: '1px solid var(--jordyn-border)', color: 'var(--jordyn-muted)', borderRadius: 6, padding: '3px 9px', cursor: 'pointer', fontSize: '0.72rem', fontFamily: 'inherit' }}>
+              <i className="bi bi-trash me-1"></i>Borrar historial IA
+            </button>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: '52vh', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {logs.map(l => (
+          <div style={{ flex: 1, overflowY: 'auto', maxHeight: '56vh', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {loadingLogs ? (
+              <div className="d-flex justify-content-center mt-4"><div className="jd-spinner" style={{ width: 28, height: 28 }}></div></div>
+            ) : logs.map(l => (
               <div key={l.id} style={{ display: 'flex', justifyContent: l.direccion === 'saliente' ? 'flex-end' : 'flex-start' }}>
                 <div style={{
                   maxWidth: '72%', padding: '0.6rem 0.9rem', borderRadius: 10,
-                  background: l.direccion === 'saliente' ? 'rgba(10,191,188,0.15)' : 'var(--jordyn-surface)',
-                  border: `1px solid ${l.direccion === 'saliente' ? 'rgba(10,191,188,0.25)' : 'var(--jordyn-border)'}`,
+                  background: l.direccion === 'saliente' ? 'rgba(10,191,188,.15)' : 'var(--jordyn-surface)',
+                  border: `1px solid ${l.direccion === 'saliente' ? 'rgba(10,191,188,.25)' : 'var(--jordyn-border)'}`,
                   fontSize: '0.78rem', color: 'var(--jordyn-text)',
                 }}>
-                  {l.contenido}
+                  <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l.contenido}</div>
                   <div style={{ fontSize: '0.6rem', color: 'var(--jordyn-muted)', marginTop: 3, textAlign: 'right' }}>
                     {new Date(l.created_at).toLocaleTimeString('es-VE', { timeStyle: 'short' })}
                     {l.direccion === 'saliente' && (
@@ -883,7 +924,7 @@ function TabConversaciones() {
                 </div>
               </div>
             ))}
-            {!logs.length && (
+            {!loadingLogs && !logs.length && (
               <div style={{ textAlign: 'center', color: 'var(--jordyn-muted)', fontSize: '0.82rem', marginTop: '2rem' }}>
                 Sin mensajes registrados
               </div>
@@ -897,25 +938,23 @@ function TabConversaciones() {
 }
 
 // ─────────────────────────────────────────────
-//  PÁGINA PRINCIPAL — envuelta en <Layout>
-//  El Layout ya incluye sidebar + footer
-//  igual que Tasas.js, Caja.js, etc.
+// PÁGINA PRINCIPAL
 // ─────────────────────────────────────────────
 export default function WhatsApp() {
-  const [tab, setTab] = useState('config');
+  const [tab, setTab] = useState('conexion');
 
   const tabs = [
-    { key: 'config',         label: 'Credenciales',  icon: 'bi-key-fill' },
-    { key: 'media',          label: 'Medios',         icon: 'bi-images' },
-    { key: 'plantillas',     label: 'Plantillas',     icon: 'bi-chat-square-text-fill' },
-    { key: 'flujo',          label: 'Guión / Flujo',  icon: 'bi-diagram-3-fill' },
-    { key: 'conversaciones', label: 'Conversaciones', icon: 'bi-whatsapp' },
+    { key: 'conexion',        label: 'Conexión',      icon: 'bi-wifi' },
+    { key: 'chat',            label: 'Chat directo',  icon: 'bi-chat-text-fill' },
+    { key: 'guion',           label: 'Guión',         icon: 'bi-list-check' },
+    { key: 'ia',              label: 'Entrenar IA',   icon: 'bi-robot' },
+    { key: 'conversaciones',  label: 'Conversaciones',icon: 'bi-whatsapp' },
   ];
 
   return (
     <Layout title="WHATSAPP BOT">
 
-      {/* Header del módulo */}
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
         <div style={{
           width: 48, height: 48, borderRadius: 14, flexShrink: 0,
@@ -926,23 +965,21 @@ export default function WhatsApp() {
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--jordyn-text)' }}>
-            WhatsApp Business
+            WhatsApp Bot · Baileys
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-muted)', marginTop: 1 }}>
-            Bot automático · Guión configurable · API de Meta · Reservas automáticas via WhatsApp
+            Bot IA con Groq · Guión de fallback · Comprobantes automáticos · Reservas vía WhatsApp
           </div>
         </div>
       </div>
 
-      {/* Tabs internos */}
       <Tabs tabs={tabs} activo={tab} onChange={setTab} />
 
-      {/* Contenido del tab activo */}
       <div className="fade-in">
-        {tab === 'config'         && <TabConfigCredenciales />}
-        {tab === 'media'          && <TabMediaLibrary />}
-        {tab === 'plantillas'     && <TabPlantillas />}
-        {tab === 'flujo'          && <TabFlujo />}
+        {tab === 'conexion'       && <TabConexion />}
+        {tab === 'chat'           && <TabChat />}
+        {tab === 'guion'          && <TabGuion />}
+        {tab === 'ia'             && <TabEntrenarIA />}
         {tab === 'conversaciones' && <TabConversaciones />}
       </div>
 
