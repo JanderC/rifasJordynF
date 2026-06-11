@@ -400,9 +400,15 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
         } else if (data.sinTelefono) {
           toast.success('✅ Aprobada — cliente sin teléfono registrado');
         } else if (data.waError) {
-          // Aprobada en BD pero WA falló → mostrar error real + permitir reenvío manual
-          toast.warn(`✅ Aprobada en BD. Error al enviar WA: ${data.waError}`);
+          // Aprobada en BD pero WA (Baileys) falló → fallback automático a WA Web
           setBaileysStatus('error');
+          toast.warn(`✅ Aprobada. Baileys no disponible — abriendo WhatsApp Web para envío manual...`, { autoClose: 4000 });
+          if (reserva.telefono) {
+            // Construir el mensaje con las URLs de ticket si las hay
+            const msgFallback = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas, urlsCloud);
+            // Pequeño delay para que el toast sea visible antes de abrir la ventana
+            setTimeout(() => abrirWA(reserva.telefono, msgFallback), 1200);
+          }
         }
         // Refrescar lista padre
         await onAccion(reserva.id, 'aprobado', nota, false, true /* skipBD */);
@@ -413,8 +419,17 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
     } catch (baileysErr) {
       console.error('[GestionReservas] Error al confirmar:', baileysErr.message);
       setBaileysStatus('error');
-      toast.error(`Error al confirmar: ${baileysErr.message}`);
-      // NO hacer fallback silencioso — el admin necesita saber qué pasó
+      // Si Baileys no está disponible (QR caído, cuenta suspendida, error de red),
+      // hacer fallback automático a WhatsApp Web desde el dispositivo del admin.
+      // Así el mensaje sale desde el número personal del admin (tablet/teléfono),
+      // no desde el bot, y no arriesga la cuenta de Baileys.
+      if (reserva.telefono) {
+        toast.warn('⚠️ Baileys no disponible — abriendo WhatsApp Web para envío manual desde tu dispositivo...', { autoClose: 5000 });
+        const msgFallback = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas, urlsTicket);
+        setTimeout(() => abrirWA(reserva.telefono, msgFallback), 1500);
+      } else {
+        toast.error(`Error al confirmar con Baileys: ${baileysErr.message}. El cliente no tiene teléfono registrado.`);
+      }
     } finally {
       setEnviandoBaileys(false);
     }
@@ -665,16 +680,21 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
               </button>
               {reserva.telefono && (
                 <button onClick={enviarWAConTicket} disabled={generandoWA}
-                  title="Reenviar ticket por WhatsApp Web (fallback)"
+                  title="Reenviar ticket abriendo WhatsApp Web — el mensaje se envía DESDE TU DISPOSITIVO (tablet/teléfono), no desde Baileys"
                   style={{ background:'linear-gradient(135deg,#25d366,#128c7e)', border:'none', color:'#fff', borderRadius:9, padding:'9px 16px', cursor:'pointer', fontSize:'.82rem', fontWeight:700, display:'flex', alignItems:'center', gap:6 }}>
                   {generandoWA
                     ? <><span className="jd-spinner" style={{ width:13, height:13, borderWidth:2 }}></span> Generando...</>
-                    : <><WaIcon size={15}/> WA Web</>}
+                    : <><WaIcon size={15}/> Enviar desde mi WA</>}
                 </button>
               )}
               {baileysStatus === 'ok' && (
                 <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:'.78rem', color:'#059669', fontWeight:700, padding:'9px 14px', background:'rgba(6,214,160,.08)', border:'1px solid rgba(6,214,160,.3)', borderRadius:9 }}>
                   <i className="bi bi-send-check-fill"></i> Enviado por Baileys
+                </span>
+              )}
+              {baileysStatus === 'error' && reserva.telefono && (
+                <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:'.78rem', color:'#d97706', fontWeight:700, padding:'9px 14px', background:'rgba(251,191,36,.08)', border:'1px solid rgba(251,191,36,.3)', borderRadius:9 }}>
+                  <i className="bi bi-exclamation-triangle-fill"></i> Baileys falló — usa "Enviar desde mi WA" ↑
                 </span>
               )}
             </>
