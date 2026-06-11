@@ -387,7 +387,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
       const resp  = await fetch(`${API_BASE}/api/baileys/reservas/${reserva.id}/confirmar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ nota, ticketsBase64, mensajeTexto: msg }),
+        body: JSON.stringify({ nota, ticketUrls: urlsCloud, mensajeTexto: msg }),
       });
       const data = await resp.json();
 
@@ -395,35 +395,26 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
         setBaileysStatus('ok');
         setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota }));
         setMostrandoPreview(false);
-        onAccion && onAccion.__refreshOnly && onAccion.__refreshOnly(); // recargar lista
         if (data.waSent) {
-          toast.success(`✅ Aprobada y ticket enviado por WhatsApp (Baileys) 🎉`);
+          toast.success(`✅ Aprobada y ticket enviado por WhatsApp 🎉 (${data.imagenesEnviadas || 0} imagen${(data.imagenesEnviadas || 0) !== 1 ? 'es' : ''})`);
         } else if (data.sinTelefono) {
-          toast.success('✅ Aprobada — sin teléfono, no se envió WA');
+          toast.success('✅ Aprobada — cliente sin teléfono registrado');
         } else if (data.waError) {
-          toast.warn(`✅ Aprobada en BD, pero error WA: ${data.waError}`);
+          // Aprobada en BD pero WA falló → mostrar error real + permitir reenvío manual
+          toast.warn(`✅ Aprobada en BD. Error al enviar WA: ${data.waError}`);
+          setBaileysStatus('error');
         }
-        // Refrescar lista en el padre
+        // Refrescar lista padre
         await onAccion(reserva.id, 'aprobado', nota, false, true /* skipBD */);
       } else {
-        throw new Error(data.error || 'Error en Baileys');
+        throw new Error(data.error || 'Error desconocido en el servidor');
       }
 
     } catch (baileysErr) {
-      console.warn('[GestionReservas] Baileys falló, usando flujo legacy:', baileysErr.message);
+      console.error('[GestionReservas] Error al confirmar:', baileysErr.message);
       setBaileysStatus('error');
-      // Fallback: aprobar en BD y abrir WA web manualmente
-      let ok;
-      if (todasPendientes.length > 1)
-        ok = await onAccion(todasPendientes.map(r => r.id), 'aprobado', nota, true);
-      else
-        ok = await onAccion(reserva.id, 'aprobado', nota, false);
-      if (ok) {
-        setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota }));
-        setMostrandoPreview(false);
-        toast.warn('Baileys no disponible — se abrirá WhatsApp Web');
-        await enviarWAConTicket();
-      }
+      toast.error(`Error al confirmar: ${baileysErr.message}`);
+      // NO hacer fallback silencioso — el admin necesita saber qué pasó
     } finally {
       setEnviandoBaileys(false);
     }
