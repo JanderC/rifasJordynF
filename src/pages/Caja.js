@@ -122,18 +122,22 @@ export default function Caja() {
       setPrecioPorNum(precioEfectivo);
       setPorcentaje(pctActivo);
 
-      // Mapa de cuadre
-      const cuadreMap = {};
-      for (const v of (cuadreRes?.data?.vendedores || [])) {
-        cuadreMap[v.vendedor_id] = {
-          cuadrado:        v.cuadrado        || false,
-          pendiente_flag:  v.pendiente_flag  || false,
-          monto_cuadrado:  v.monto_cuadrado  || null,
-          nums_cuadrados:  v.nums_cuadrados  || null,
-          monto_entregado: v.monto_entregado || null,
-        };
+      // Mapa de cuadre — leer siempre desde cobro-vendedores aunque el array esté vacío
+      // Si la respuesta llegó (aunque sea con 0 vendedores), actualizar. Si falló, conservar el estado previo.
+      if (cuadreRes?.data?.vendedores !== undefined) {
+        const cuadreMap = {};
+        for (const v of (cuadreRes.data.vendedores || [])) {
+          cuadreMap[v.vendedor_id] = {
+            cuadrado:        v.cuadrado        || false,
+            pendiente_flag:  v.pendiente_flag  || false,
+            monto_cuadrado:  v.monto_cuadrado  || null,
+            nums_cuadrados:  v.nums_cuadrados  || null,
+            monto_entregado: v.monto_entregado || null,
+          };
+        }
+        setCuadreLocal(cuadreMap);
       }
-      setCuadreLocal(cuadreMap);
+      // Si cuadreRes es null (falló), no tocar cuadreLocal — conservar el último estado conocido
 
       // Mapa de lotes — por_pagar ya viene con el porcentaje correcto
       const lMap = {};
@@ -170,13 +174,17 @@ export default function Caja() {
     }
   };
 
-  /* ── Refrescar solo los lotes (después de abonar/venta) ── */
+  /* ── Refrescar lotes Y cuadre (después de abonar/cuadrar) ── */
   const refrescarLotes = async () => {
     if (!rifaActiva?.id) return;
     try {
-      const r = await API.get(`/caja/rifas/${rifaActiva.id}/lotes-vendedores`);
+      const [lotesRes, cuadreRes] = await Promise.all([
+        API.get(`/caja/rifas/${rifaActiva.id}/lotes-vendedores`),
+        API.get(`/caja/rifas/${rifaActiva.id}/cobro-vendedores?porcentaje=${porcentaje}`).catch(() => null),
+      ]);
+
       const lMap = {};
-      for (const l of (r.data?.lotes || [])) {
+      for (const l of (lotesRes.data?.lotes || [])) {
         if (l.vendedor_id) {
           lMap[l.vendedor_id] = {
             lote_id:       l.lote_id,
@@ -189,7 +197,22 @@ export default function Caja() {
         }
       }
       setLotesMap(lMap);
-      if (r.data?.precio_con_pct) setPrecioPorNum(r.data.precio_con_pct);
+      if (lotesRes.data?.precio_con_pct) setPrecioPorNum(lotesRes.data.precio_con_pct);
+
+      // También actualizar el cuadre si la respuesta llegó
+      if (cuadreRes?.data?.vendedores !== undefined) {
+        const cuadreMap = {};
+        for (const v of (cuadreRes.data.vendedores || [])) {
+          cuadreMap[v.vendedor_id] = {
+            cuadrado:        v.cuadrado        || false,
+            pendiente_flag:  v.pendiente_flag  || false,
+            monto_cuadrado:  v.monto_cuadrado  || null,
+            nums_cuadrados:  v.nums_cuadrados  || null,
+            monto_entregado: v.monto_entregado || null,
+          };
+        }
+        setCuadreLocal(cuadreMap);
+      }
     } catch {}
   };
 
