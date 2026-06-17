@@ -135,7 +135,7 @@ export default function Caja() {
             monto_entregado: v.monto_entregado || null,
           };
         }
-        setCuadreLocal(cuadreMap);
+        setCuadreLocal(prev => ({ ...prev, ...cuadreMap }));
       }
       // Si cuadreRes es null (falló), no tocar cuadreLocal — conservar el último estado conocido
 
@@ -211,7 +211,7 @@ export default function Caja() {
             monto_entregado: v.monto_entregado || null,
           };
         }
-        setCuadreLocal(cuadreMap);
+        setCuadreLocal(prev => ({ ...prev, ...cuadreMap }));
       }
     } catch {}
   };
