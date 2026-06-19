@@ -256,12 +256,37 @@ export default function Caja() {
   /* ── Cuadre ── */
   const handleGuardarCuadre = async (vendedorId, payload) => {
     if (!rifaActiva?.id) return;
+
+    // Guardamos el estado anterior por si hay que revertir
+    const prevState = cuadreLocal[vendedorId];
+
+    // Optimista: pintamos el cambio
     setCuadreLocal(prev => ({ ...prev, [vendedorId]: { ...(prev[vendedorId] || {}), ...payload } }));
     setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: true }));
+
     try {
-      await API.put(`/caja/rifas/${rifaActiva.id}/cuadre/${vendedorId}`, payload);
-    } catch {
-      toast.error('Error guardando cuadre');
+      // El backend devuelve la fila realmente guardada (autoritativa)
+      const { data } = await API.put(`/caja/rifas/${rifaActiva.id}/cuadre/${vendedorId}`, payload);
+
+      if (data?.cuadre) {
+        setCuadreLocal(prev => ({
+          ...prev,
+          [vendedorId]: {
+            cuadrado:        data.cuadre.cuadrado        || false,
+            pendiente_flag:  data.cuadre.pendiente_flag  || false,
+            monto_cuadrado:  data.cuadre.monto_cuadrado  ?? null,
+            nums_cuadrados:  data.cuadre.nums_cuadrados  ?? null,
+            monto_entregado: data.cuadre.monto_entregado ?? null,
+          },
+        }));
+      }
+      return data;
+    } catch (err) {
+      // Revertimos el estado optimista al valor anterior
+      setCuadreLocal(prev => ({ ...prev, [vendedorId]: prevState }));
+      const msg = err?.response?.data?.error || 'No se pudo guardar el cuadre. Intenta de nuevo.';
+      toast.error(msg);
+      throw err; // relanzamos: que quien llama NO muestre éxito ni cierre el modal
     } finally {
       setGuardandoCuadre(prev => ({ ...prev, [vendedorId]: false }));
     }
@@ -468,10 +493,14 @@ export default function Caja() {
             await refrescarLotes();
           }}
           onGuardar={async (payload) => {
-            await handleGuardarCuadre(modalCuadre.vendedor_id, payload);
-            await refrescarLotes();
-            setModalCuadre(null);
-            toast.success(`✅ ${modalCuadre.vendedor_nombre.split(' ')[0]} cuadrado`);
+            try {
+              await handleGuardarCuadre(modalCuadre.vendedor_id, payload);
+              await refrescarLotes();
+              setModalCuadre(null);
+              toast.success(`✅ ${modalCuadre.vendedor_nombre.split(' ')[0]} cuadrado`);
+            } catch {
+              /* el error ya se notificó; dejamos el modal abierto para reintentar */
+            }
           }}
         />
       )}

@@ -1351,6 +1351,233 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   BUSCADOR DE NÚMEROS — Rifas de 4 cifras (0000–9999)
+   Sin cuadrícula: el cliente busca un número, ve si está libre
+   y lo agrega al carrito. Reutiliza ModalReserva, ofertas y carrito.
+═══════════════════════════════════════════════════════════ */
+function BuscadorNumeros4({ rifa, onComprar }) {
+  const cifras   = Number(rifa.cifras) || 4;
+  const ofertas  = rifa.ofertas || [];
+  const maxNum   = '9'.repeat(cifras);
+
+  const [valor,    setValor]    = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [res,      setRes]      = useState(null);   // { numero, estado }
+  const [errorMsg, setErrorMsg] = useState('');
+  const [sel,      setSel]      = useState([]);     // [{ numero, idx }]
+  const idxRef = useRef(1);
+
+  const numNorm  = valor.replace(/\D/g, '').slice(0, cifras);
+  const completo = numNorm.length === cifras;
+
+  const buscar = async () => {
+    if (!completo) { setErrorMsg(`Escribe los ${cifras} dígitos`); return; }
+    setCargando(true); setErrorMsg(''); setRes(null);
+    try {
+      const { data } = await API.get(`/publico/rifas/${rifa.id}/numero/${numNorm}`);
+      setRes(data);
+    } catch (e) {
+      setErrorMsg(e?.response?.data?.error || 'No se pudo consultar el número');
+    } finally { setCargando(false); }
+  };
+
+  const agregar = (numero) => {
+    if (sel.some(s => s.numero === numero)) return;
+    setSel(prev => [...prev, { numero, idx: idxRef.current++ }]);
+  };
+  const quitar  = (idx) => setSel(prev => prev.filter(s => s.idx !== idx));
+  const limpiar = () => setSel([]);
+
+  const yaEnCarrito = res && sel.some(s => s.numero === res.numero);
+
+  const ofertaInfo  = calcularOferta(sel.length, ofertas, rifa.precio);
+  const sugerencia  = !ofertaInfo ? siguienteOferta(sel.length, ofertas, rifa.precio) : null;
+  const totalNormal = rifa.precio * sel.length;
+  const totalReal   = ofertaInfo ? ofertaInfo.totalConOferta : totalNormal;
+
+  const EST = {
+    disponible: { txt:'¡Está libre!',   sub:'Este número está disponible para ti',  color:VERDE,     icon:'🎯', puede:true  },
+    reservado:  { txt:'Apartado',       sub:'Alguien lo está reservando ahora mismo',color:'#f0a500', icon:'⏳', puede:false },
+    vendido_1:  { txt:'Ya tiene dueño', sub:'Este número ya fue vendido',            color:'#e63946', icon:'🔒', puede:false },
+    agotado:    { txt:'No disponible',  sub:'Este número ya no está disponible',     color:'#e63946', icon:'🔒', puede:false },
+  };
+  const info = res ? (EST[res.estado] || EST.agotado) : null;
+
+  return (
+    <div>
+      <style>{`
+        @keyframes b4pulse { 0%,100%{box-shadow:0 0 0 0 ${TURQ}55} 50%{box-shadow:0 0 0 14px ${TURQ}00} }
+        @keyframes b4pop   { 0%{transform:scale(.85);opacity:0} 100%{transform:scale(1);opacity:1} }
+        .b4-digit-box{width:100%;text-align:center;letter-spacing:.5em;font-family:'Poppins',sans-serif;
+          font-weight:900;font-size:2.6rem;color:#fff;background:rgba(255,255,255,.06);
+          border:2px solid rgba(255,255,255,.18);border-radius:16px;padding:16px 10px;outline:none;
+          transition:all .2s}
+        .b4-digit-box:focus{border-color:${TURQ};background:rgba(10,191,188,.12)}
+        @media(max-width:640px){.b4-digit-box{font-size:2rem;letter-spacing:.35em}}
+      `}</style>
+
+      {ofertas.length > 0 && <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />}
+
+      {/* ── Hero buscador ── */}
+      <div style={{
+        background:`linear-gradient(135deg,${DARK},#0d2424)`,
+        borderRadius:24, padding:'30px 24px', marginBottom:20, position:'relative', overflow:'hidden',
+        boxShadow:`0 20px 60px rgba(0,0,0,.25)`,
+      }}>
+        <div style={{ position:'absolute', top:-50, right:-40, width:160, height:160, borderRadius:'50%', background:`${TURQ}14`, pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-60, left:-30, width:140, height:140, borderRadius:'50%', background:`${NARANJA}10`, pointerEvents:'none' }}/>
+
+        <div style={{ textAlign:'center', marginBottom:20, position:'relative' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:`${TURQ}1f`, border:`1px solid ${TURQ}44`, borderRadius:999, padding:'5px 14px', marginBottom:12 }}>
+            <span style={{ fontSize:'.9rem' }}>🍀</span>
+            <span style={{ fontSize:'.7rem', color:TURQ2, fontWeight:800, letterSpacing:'1px', textTransform:'uppercase' }}>Rifa de {cifras} cifras · 0000 – {maxNum}</span>
+          </div>
+          <div style={{ fontSize:'1.5rem', color:'#fff', fontWeight:900, letterSpacing:'.5px', lineHeight:1.2 }}>
+            Busca tu número de la suerte
+          </div>
+          <div style={{ fontSize:'.82rem', color:'rgba(255,255,255,.55)', marginTop:6 }}>
+            Escribe el número que quieres y mira si está libre
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap:10, alignItems:'stretch', position:'relative', maxWidth:420, margin:'0 auto' }}>
+          <input
+            inputMode="numeric" value={numNorm} autoFocus
+            onChange={e => { setValor(e.target.value); setRes(null); setErrorMsg(''); }}
+            onKeyDown={e => e.key === 'Enter' && buscar()}
+            placeholder={'0'.repeat(cifras)} maxLength={cifras}
+            className="b4-digit-box" style={{ flex:1 }}
+          />
+          <button
+            onClick={buscar} disabled={!completo || cargando}
+            style={{
+              flexShrink:0, padding:'0 22px', borderRadius:16, border:'none',
+              fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1rem', color:'#fff',
+              background: completo ? `linear-gradient(135deg,${TURQ},${TURQ2})` : 'rgba(255,255,255,.1)',
+              cursor: completo ? 'pointer' : 'not-allowed',
+              boxShadow: completo ? `0 8px 24px ${TURQ}55` : 'none',
+              animation: completo && !res ? 'b4pulse 1.6s infinite' : 'none', transition:'all .2s',
+            }}>
+            {cargando ? '···' : '🔍'}
+          </button>
+        </div>
+
+        {errorMsg && <div style={{ color:'#ff9b9b', textAlign:'center', marginTop:12, fontSize:'.82rem', fontWeight:600, position:'relative' }}>{errorMsg}</div>}
+
+        {/* ── Resultado ── */}
+        {res && info && (
+          <div style={{
+            marginTop:22, padding:'22px', borderRadius:20, textAlign:'center', position:'relative',
+            background:`${info.color}12`, border:`2px solid ${info.color}55`, animation:'b4pop .25s ease',
+          }}>
+            <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.5)', fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', marginBottom:6 }}>Número</div>
+            <div style={{ fontSize:'3.2rem', fontFamily:"'Poppins',sans-serif", fontWeight:900, color:'#fff', letterSpacing:'.12em', lineHeight:1 }}>
+              {res.numero}
+            </div>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, marginTop:12, background:`${info.color}22`, border:`1px solid ${info.color}66`, borderRadius:999, padding:'7px 16px' }}>
+              <span style={{ fontSize:'1.1rem' }}>{info.icon}</span>
+              <span style={{ color:'#fff', fontWeight:800, fontSize:'.92rem' }}>{info.txt}</span>
+            </div>
+            <div style={{ fontSize:'.78rem', color:'rgba(255,255,255,.6)', marginTop:8 }}>{info.sub}</div>
+
+            {info.puede && !yaEnCarrito && (
+              <button onClick={() => agregar(res.numero)}
+                style={{
+                  marginTop:18, width:'100%', maxWidth:340, padding:'14px 20px', borderRadius:14, border:'none',
+                  background:`linear-gradient(135deg,${VERDE},#16a34a)`, color:'#fff',
+                  fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1rem', cursor:'pointer',
+                  boxShadow:`0 8px 24px ${VERDE}55`, letterSpacing:'.5px',
+                }}>
+                🎟 ¡Lo quiero! Agregar {res.numero}
+              </button>
+            )}
+            {yaEnCarrito && (
+              <div style={{ marginTop:16, color:VERDE, fontWeight:800, fontSize:'.9rem' }}>
+                ✓ Ya está en tu carrito
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Chips de selección ── */}
+      {sel.length > 0 && (
+        <div style={{ background:'#f0fafa', border:`1.5px solid ${TURQ}33`, borderRadius:12, padding:'10px 14px', marginBottom:14 }}>
+          <div style={{ fontSize:'.65rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+            Tus números ({sel.length}):
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {sel.map(n => (
+              <span key={n.idx} className="num-chip">
+                {n.numero}
+                <button className="num-chip-remove" onClick={() => quitar(n.idx)} title={`Quitar ${n.numero}`}>✕</button>
+              </span>
+            ))}
+            <button onClick={limpiar}
+              style={{ background:'none', border:`1px solid #ffaaaa`, color:'#c0392b', borderRadius:20, padding:'4px 10px', fontSize:'.68rem', fontWeight:600, cursor:'pointer' }}>
+              Limpiar todo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Carrito flotante (idéntico al de la cuadrícula) ── */}
+      {sel.length > 0 && (
+        <div className="carrito-bar">
+          <div style={{
+            background:`linear-gradient(135deg,${DARK},#0d2424)`,
+            borderRadius:20, padding:'14px 20px',
+            boxShadow:`0 -4px 32px rgba(0,0,0,.2), 0 12px 40px ${TURQ}44`,
+            border: ofertaInfo ? `1.5px solid ${VERDE}55` : 'none',
+          }}>
+            {sugerencia && (
+              <div className="oferta-sugerencia" style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:'1rem' }}>💡</span>
+                  <span style={{ fontSize:'.78rem', color:`${NARANJA}ee`, fontWeight:700 }}>
+                    ¡Agrega <strong style={{ color:'#fff', background:NARANJA, borderRadius:4, padding:'0 5px' }}>{sugerencia.faltan}</strong> número{sugerencia.faltan > 1 ? 's' : ''} más y activa{' '}
+                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Pack x${sugerencia.oferta.cantidad}`}</strong>!
+                  </span>
+                </div>
+              </div>
+            )}
+            {ofertaInfo && (
+              <BloqueOfertaAplicada ofertaInfo={ofertaInfo} cantidad={sel.length} precioUnitario={rifa.precio} compact />
+            )}
+            {ofertaInfo && <div style={{ height:10 }}></div>}
+
+            <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:'.62rem', color:'rgba(255,255,255,.55)', fontWeight:600, marginBottom:2 }}>
+                  {sel.length} número{sel.length>1?'s':''} seleccionado{sel.length>1?'s':''}
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                  {sel.slice(0, 8).map(n => (
+                    <span key={n.idx} style={{ background:'rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'2px 7px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n.numero}</span>
+                  ))}
+                  {sel.length > 8 && <span style={{ color:'rgba(255,255,255,.5)', fontSize:'.72rem', alignSelf:'center' }}>+{sel.length-8} más</span>}
+                </div>
+              </div>
+              <div style={{ textAlign:'right', flexShrink:0 }}>
+                <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Total</div>
+                {ofertaInfo && (
+                  <div style={{ fontSize:'.68rem', color:'rgba(255,255,255,.3)', textDecoration:'line-through' }}>{fmt(totalNormal)}</div>
+                )}
+                <div style={{ fontSize:'1.2rem', color: ofertaInfo ? VERDE : '#fff', fontWeight:900 }}>{fmt(totalReal)}</div>
+              </div>
+              <button className="pub-btn" onClick={() => onComprar(sel)}
+                style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
+                🎟 {sel.length > 1 ? `Comprar ${sel.length} números` : 'Comprar número'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GridNumeros({ rifa, onComprar }) {
   const [todos,       setTodos]      = useState([]);
   const [loading,     setLoading]    = useState(true);
@@ -2108,11 +2335,19 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
               ))}
             </div>
 
-            <GridNumeros
-              key={`${rifaSel.id}-${refreshKey}`}
-              rifa={rifaSel}
-              onComprar={nums => setNumerosCarrito(nums)}
-            />
+            {Number(rifaSel.cifras) >= 4 ? (
+              <BuscadorNumeros4
+                key={`${rifaSel.id}-${refreshKey}`}
+                rifa={rifaSel}
+                onComprar={nums => setNumerosCarrito(nums)}
+              />
+            ) : (
+              <GridNumeros
+                key={`${rifaSel.id}-${refreshKey}`}
+                rifa={rifaSel}
+                onComprar={nums => setNumerosCarrito(nums)}
+              />
+            )}
           </div>
         </section>
       )}

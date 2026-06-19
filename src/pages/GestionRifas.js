@@ -31,7 +31,7 @@ const LOTERIAS = [
 const emptyForm = {
   nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
   premio_secundario: '', premio_secundario_display: '',
-  fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', imagen_base64: '',
+  fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', cifras: 3, imagen_base64: '',
   ticket_template_id: null,
   ofertas: [],
   categoria_seleccionada_id: null,
@@ -2548,6 +2548,7 @@ export default function GestionRifas() {
       hora_sorteo:               r.hora_sorteo  ? String(r.hora_sorteo).slice(0,5) : '',
       loteria_ref:               r.loteria_ref  || '',
       tipo:                      r.tipo         || 'sencilla',
+      cifras:                    r.cifras       || 3,
       imagen_base64:             r.imagen_url   || '',
       ticket_template_id:        r.ticket_template_id || null,
       ofertas:                   Array.isArray(r.ofertas) ? r.ofertas : [],
@@ -2602,6 +2603,7 @@ export default function GestionRifas() {
         hora_sorteo:           form.hora_sorteo  || null,
         loteria_ref:           form.loteria_ref  || null,
         tipo:                  form.tipo,
+        cifras:                Number(form.cifras) || 3,
         imagen_url:            form.imagen_base64 || null,
         ticket_template_id:    form.ticket_template_id || null,
         ofertas:               form.ofertas || [],
@@ -3164,6 +3166,25 @@ export default function GestionRifas() {
                   <option value="sencilla">🎯 Sencilla (1 número ganador)</option>
                   <option value="simultanea">⚡ Simultánea (2 rifas paralelas)</option>
                 </select>
+              </div>
+
+              {/* Cifras (cantidad de dígitos) — no editable después de crear */}
+              <div className="col-12 col-md-4">
+                <label className="jd-label">CIFRAS DEL NÚMERO</label>
+                <select
+                  className="jd-select"
+                  value={form.cifras}
+                  disabled={!!editId}
+                  onChange={e => setForm(p => ({ ...p, cifras: Number(e.target.value) }))}
+                >
+                  <option value={3}>3 cifras · 000–999 (cuadrícula)</option>
+                  <option value={4}>4 cifras · 0000–9999 (buscador)</option>
+                </select>
+                {!!editId && (
+                  <small style={{ color: 'var(--jordyn-muted)', fontSize: '.6rem' }}>
+                    Las cifras no se cambian después de crear la rifa.
+                  </small>
+                )}
               </div>
 
               {/* Lotería */}
