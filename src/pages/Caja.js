@@ -48,7 +48,7 @@ export default function Caja() {
   const [precioPorNum, setPrecioPorNum] = useState(0);
   const [loadingVends, setLoadingVends] = useState(false);
   const [buscar,       setBuscar]       = useState('');
-  const [filtro,       setFiltro]       = useState('todos');
+  const [filtro,       setFiltro]       = useState('activos');
 
   // cuadreLocal: vendedorId → { cuadrado, pendiente_flag, monto_cuadrado }
   const [cuadreLocal,     setCuadreLocal]     = useState({});
@@ -95,7 +95,7 @@ export default function Caja() {
   useEffect(() => {
     if (!rifaActiva?.id) return;
     setBuscar('');
-    setFiltro('todos');
+    setFiltro('activos');
     setCuadreLocal({});
     setVendedores([]);
     setLotesMap({});
@@ -155,16 +155,37 @@ export default function Caja() {
       }
       setLotesMap(lMap);
 
-      // Vendedores (solo para contar números y mostrar nombre)
-      const vends = (bolRes.data.vendedores || []).map(v => ({
-        vendedor_id:     v.vendedor_id,
-        vendedor_nombre: v.vendedor_nombre,
-        cedula:          v.cedula,
-        numeros:         (v.numeros_fijos || []).map(n => ({
-          numero: String(n.numero).padStart(3, '0'),
-          serie:  n.serie || 'A',
-        })),
-      }));
+      // Cédulas desde boletería (cobro-vendedores no las trae)
+      const cedulaMap = {};
+      for (const v of (bolRes?.data?.vendedores || [])) {
+        if (v.vendedor_id) cedulaMap[v.vendedor_id] = v.cedula;
+      }
+
+      // Lista de vendedores: FUENTE ÚNICA = cobro-vendedores.
+      // Así la lista y el estado de cuadre nunca se desincronizan.
+      let vends;
+      if (cuadreRes?.data?.vendedores) {
+        vends = cuadreRes.data.vendedores.map(v => ({
+          vendedor_id:     v.vendedor_id,
+          vendedor_nombre: v.vendedor_nombre,
+          cedula:          cedulaMap[v.vendedor_id] || null,
+          numeros:         (v.numeros || []).map(n => ({
+            numero: String(n.numero).padStart(3, '0'),
+            serie:  n.serie || 'A',
+          })),
+        }));
+      } else {
+        // Fallback: si cobro-vendedores falló, usar boletería
+        vends = (bolRes?.data?.vendedores || []).map(v => ({
+          vendedor_id:     v.vendedor_id,
+          vendedor_nombre: v.vendedor_nombre,
+          cedula:          v.cedula,
+          numeros:         (v.numeros_fijos || []).map(n => ({
+            numero: String(n.numero).padStart(3, '0'),
+            serie:  n.serie || 'A',
+          })),
+        }));
+      }
       setVendedores(vends);
     } catch (err) {
       toast.error('Error cargando vendedores');
@@ -325,8 +346,9 @@ export default function Caja() {
 
   const vendedoresFiltrados = vendedoresOrdenados.filter(v => {
     const c = cuadreLocal[v.vendedor_id] || {};
-    if (filtro === 'pendientes' && !c.pendiente_flag) return false;
-    if (filtro === 'cuadrados'  && !c.cuadrado)       return false;
+    if (filtro === 'activos'    && c.cuadrado)         return false; // por cobrar = sin cuadrar
+    if (filtro === 'pendientes' && !c.pendiente_flag)  return false;
+    if (filtro === 'cuadrados'  && !c.cuadrado)        return false;
     if (buscar.trim() && !v.vendedor_nombre?.toLowerCase().includes(buscar.toLowerCase())) return false;
     return true;
   });
@@ -399,9 +421,10 @@ export default function Caja() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 3, background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: 3 }}>
                 {[
-                  { key: 'todos',      label: `TODOS (${cuentas.todos})`,                  color: 'var(--jordyn-primary)' },
+                  { key: 'activos',    label: `POR COBRAR (${cuentas.sinCuadrar})`,        color: 'var(--jordyn-primary)' },
                   { key: 'pendientes', label: `⚡ PRIOR. (${cuentas.pendientes})`,          color: '#f59e0b' },
                   { key: 'cuadrados',  label: `✅ CUADRADOS (${cuentas.cuadrados})`,        color: '#06d6a0' },
+                  { key: 'todos',      label: `TODOS (${cuentas.todos})`,                  color: 'var(--jordyn-muted)' },
                 ].map(f => (
                   <button key={f.key} onClick={() => setFiltro(f.key)}
                     style={{ background: filtro === f.key ? f.color : 'transparent', color: filtro === f.key ? '#fff' : 'var(--jordyn-muted)', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'Share Tech Mono',monospace", fontSize: '.6rem', fontWeight: 700, transition: 'all .15s', whiteSpace: 'nowrap' }}>
