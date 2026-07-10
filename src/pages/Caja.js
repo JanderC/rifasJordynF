@@ -140,6 +140,29 @@ export default function Caja() {
       nums_cuadrados:  c.nums_cuadrados  ?? null,
       monto_entregado: c.monto_entregado ?? null,
     });
+    if (r.data.lote) {
+      patchVendedor(vendedorId, {
+        por_pagar:   Number(r.data.lote.por_pagar  ?? 0),
+        pendiente:   Number(r.data.lote.pendiente  ?? 0),
+        estado_lote: r.data.lote.estado || 'pendiente',
+      });
+    }
+  };
+
+  /* ── Editar cantidad de números manual (antes de cuadrar) ── */
+  const handleEditarNumerosManual = async (v, nuevoTotal) => {
+    try {
+      await handleGuardarCuadre(v.vendedor_id, {
+        cuadrado:             v.cuadrado || false,
+        pendiente_flag:       v.pendiente_flag || false,
+        monto_cuadrado:       v.monto_cuadrado ?? null,
+        nums_cuadrados:       v.nums_cuadrados ?? null,
+        monto_entregado:      v.monto_entregado ?? null,
+        total_numeros_manual: nuevoTotal,
+      });
+      patchVendedor(v.vendedor_id, { total_numeros: nuevoTotal, total_numeros_manual: nuevoTotal });
+      toast.success(`${v.vendedor_nombre.split(' ')[0]}: ${nuevoTotal} números guardados`);
+    } catch { toast.error('No se pudo guardar la cantidad de números'); }
   };
 
   /* ── Toggle prioritario ── */
@@ -287,6 +310,7 @@ export default function Caja() {
                     onCuadrar={() => setModalCuadre(v)}
                     onDetalle={() => setModalDetalle(v)}
                     onTogglePrioritario={() => handleTogglePrioritario(v)}
+                    onEditarNumeros={nuevoTotal => handleEditarNumerosManual(v, nuevoTotal)}
                   />
                 ))}
               </div>
@@ -337,7 +361,7 @@ export default function Caja() {
 /* ════════════════════════════════════════════════════════════
    TARJETA VENDEDOR
 ════════════════════════════════════════════════════════════ */
-function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDetalle, onTogglePrioritario }) {
+function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDetalle, onTogglePrioritario, onEditarNumeros }) {
   const total   = calcTotal(v);
   const cobrado = calcCobrado(v);
   const deuda   = calcDeuda(v);
@@ -404,8 +428,24 @@ function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDeta
             <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '1px 7px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>
               {estadoLabel}
             </span>
-            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', color: 'var(--jordyn-muted)' }}>
-              {v.total_numeros} núm · {COP(precioPorNum)}/ticket
+            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', color: 'var(--jordyn-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {v.total_numeros} núm{v.total_numeros_manual != null ? ' (manual)' : ''} · {COP(precioPorNum)}/ticket
+              {!v.cuadrado && (
+                <i
+                  className="bi bi-pencil-square"
+                  title="Editar cantidad de números"
+                  style={{ cursor: 'pointer', color: 'var(--jordyn-primary)' }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    const actual = v.total_numeros ?? 0;
+                    const val = window.prompt(`¿Cuántos números le diste a ${v.vendedor_nombre}?`, actual);
+                    if (val === null) return;
+                    const n = parseInt(val, 10);
+                    if (isNaN(n) || n < 0) { toast.error('Cantidad inválida'); return; }
+                    onEditarNumeros(n);
+                  }}
+                />
+              )}
             </span>
           </div>
         </div>
