@@ -517,10 +517,10 @@ function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDeta
             {v.vendedor_nombre}
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '1px 7px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', fontWeight: 700 }}>
+            <span style={{ background: `${estadoColor}18`, border: `1px solid ${estadoColor}40`, color: estadoColor, borderRadius: 4, padding: '2px 8px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.62rem', fontWeight: 700 }}>
               {estadoLabel}
             </span>
-            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', color: 'var(--jordyn-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.68rem', color: 'var(--jordyn-muted)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               {v.total_numeros} núm{v.total_numeros_manual != null ? ' (manual)' : ''} · {COP(precioPorNum)}/ticket
               {(v.abonos?.length > 0) && (
                 <span
@@ -534,7 +534,7 @@ function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDeta
                 <i
                   className="bi bi-pencil-square"
                   title="Editar cantidad de números"
-                  style={{ cursor: 'pointer', color: 'var(--jordyn-primary)' }}
+                  style={{ cursor: 'pointer', color: 'var(--jordyn-primary)', fontSize: '.8rem' }}
                   onClick={e => {
                     e.stopPropagation();
                     const actual = v.total_numeros ?? 0;
@@ -988,7 +988,7 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
   };
   return (
     <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(155px,1fr))', gap: 8 }}>
         {[
           {
             label: 'TOTAL A COBRAR',
@@ -1025,12 +1025,12 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
         ].map(c => (
           <div key={c.label} style={{ background: 'var(--jordyn-bg)', border: `1.5px solid ${c.big ? 'rgba(230,57,70,.3)' : 'var(--jordyn-border)'}`, borderRadius: 9, padding: c.big ? '12px 14px' : '10px 12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.44rem', color: c.big ? '#e63946' : 'var(--jordyn-muted)', letterSpacing: '2px' }}>{c.label}</div>
-              <i className={`bi ${c.icon}`} style={{ color: c.color, fontSize: '.7rem', opacity: .4 }} />
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.68rem', color: c.big ? '#e63946' : 'var(--jordyn-muted)', letterSpacing: '1px', fontWeight: 700 }}>{c.label}</div>
+              <i className={`bi ${c.icon}`} style={{ color: c.color, fontSize: '.9rem', opacity: .4 }} />
             </div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: c.big ? '1.8rem' : '1.35rem', color: c.color, letterSpacing: '2px', marginTop: 4, lineHeight: 1 }}>{c.val}</div>
             {c.sub && (
-              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.3 }}>{c.sub}</div>
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.58rem', color: 'var(--jordyn-muted)', marginTop: 5, lineHeight: 1.3 }}>{c.sub}</div>
             )}
           </div>
         ))}
