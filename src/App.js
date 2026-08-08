@@ -6,7 +6,6 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Pages
 import Login             from './pages/Login';
-import DashboardDueno    from './pages/DashboardDueno';
 import DashboardVendedor from './pages/DashboardVendedor';
 import GestionRifas      from './pages/GestionRifas';
 import GestionVendedores from './pages/GestionVendedores';
@@ -51,7 +50,9 @@ function AppRoutes() {
       } />
 
       {/* ── DUEÑO ── */}
-      <Route path="/dashboard"     element={<PrivateRoute rol="dueno"><DashboardDueno /></PrivateRoute>} />
+      {/* La pantalla principal del dueño quedó fuera: /dashboard manda a /rifas.
+          Se deja el redirect para que ningún enlace o marcador viejo se rompa. */}
+      <Route path="/dashboard"     element={<Navigate to="/rifas" replace />} />
       <Route path="/rifas"         element={<PrivateRoute rol="dueno"><GestionRifas /></PrivateRoute>} />
       <Route path="/vendedores"    element={<PrivateRoute rol="dueno"><GestionVendedores /></PrivateRoute>} />
       <Route path="/numeros"       element={<PrivateRoute rol="dueno"><NumeroGrid /></PrivateRoute>} />
