@@ -27,6 +27,8 @@ const fmtHora = h => {
   return `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${ampm}`;
 };
 
+const fmtNum = n => new Intl.NumberFormat('es-CO').format(Number(n) || 0);
+
 /* Fecha del abono: el backend ya la manda formateada (fecha_txt) para
    evitar corrimientos de zona horaria; esto es solo el respaldo. */
 const fmtFechaHora = a => {
@@ -251,13 +253,44 @@ export default function Caja() {
       });
   }, [datos, buscar, filtro]);
 
+  /* ── TOTALES ──────────────────────────────────────────────────────
+     TOTAL A COBRAR ya NO es el potencial de toda la rifa: se va llenando
+     con cada vendedor que cuadras (15 números × precio = lo que suma).
+     YA COBRADO no cambia: es la plata realmente recibida (abonos).
+     TOTAL DEUDA = TOTAL A COBRAR − YA COBRADO.
+     TICKETS VENDIDOS = suma de números vendidos de los ya cuadrados.  */
   const totales = useMemo(() => {
     if (!datos?.vendedores) return null;
-    return datos.vendedores.reduce((acc, v) => ({
-      totalCobrar: acc.totalCobrar + calcTotal(v),
-      cobrado:     acc.cobrado     + calcCobrado(v),
-      deuda:       acc.deuda       + calcDeuda(v),
-    }), { totalCobrar: 0, cobrado: 0, deuda: 0 });
+    const precioTicket = Number(datos.precio_boleto_efectivo || 0);
+
+    const t = datos.vendedores.reduce((acc, v) => {
+      const cobrado = calcCobrado(v);
+      acc.cobrado          += cobrado;
+      acc.ticketsAsignados += Number(v.total_numeros || 0);
+
+      if (v.cuadrado) {
+        // Números vendidos declarados en el cuadre (con respaldo para
+        // cuadres viejos que no guardaron nums_cuadrados).
+        const vendidos =
+          v.nums_cuadrados != null ? Number(v.nums_cuadrados)
+          : (precioTicket > 0 && v.monto_cuadrado != null)
+            ? Math.round(Number(v.monto_cuadrado) / precioTicket)
+            : Number(v.total_numeros || 0);
+
+        acc.totalCobrar     += calcTotal(v);
+        acc.ticketsVendidos += vendidos;
+      } else {
+        acc.abonadoSinCuadrar += cobrado;
+        acc.potencial         += calcTotal(v);
+      }
+      return acc;
+    }, {
+      totalCobrar: 0, cobrado: 0, ticketsVendidos: 0,
+      ticketsAsignados: 0, abonadoSinCuadrar: 0, potencial: 0,
+    });
+
+    t.deuda = t.totalCobrar - t.cobrado;
+    return t;
   }, [datos]);
 
   const cuentas = useMemo(() => {
@@ -955,13 +988,40 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
   };
   return (
     <div style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
         {[
-          { label: 'TOTAL A COBRAR', val: COP(totales.totalCobrar), color: 'var(--jordyn-primary)', icon: 'bi-cash',               big: false },
-          { label: 'YA COBRADO',     val: COP(totales.cobrado),     color: '#06d6a0',               icon: 'bi-check2-circle',       big: false },
-          { label: 'TOTAL DEUDA',    val: COP(totales.deuda),       color: '#e63946',               icon: 'bi-exclamation-circle',  big: true  },
-          { label: 'SIN CUADRAR',    val: cuentas.sinCuadrar,       color: '#f59e0b',               icon: 'bi-person-exclamation',  big: false },
-          { label: 'CUADRADOS',      val: cuentas.cuadrados,        color: '#06d6a0',               icon: 'bi-person-check',        big: false },
+          {
+            label: 'TOTAL A COBRAR',
+            val:   COP(totales.totalCobrar),
+            sub:   cuentas.cuadrados > 0
+                     ? `${cuentas.cuadrados} de ${cuentas.todos} cuadrados`
+                     : 'aún no cuadras a nadie',
+            color: 'var(--jordyn-primary)', icon: 'bi-cash',
+          },
+          {
+            label: 'YA COBRADO',
+            val:   COP(totales.cobrado),
+            sub:   totales.abonadoSinCuadrar > 0
+                     ? `${COP(totales.abonadoSinCuadrar)} sin cuadrar`
+                     : null,
+            color: '#06d6a0', icon: 'bi-check2-circle',
+          },
+          {
+            label: 'TOTAL DEUDA',
+            val:   COP(Math.max(totales.deuda, 0)),
+            sub:   totales.deuda < 0
+                     ? `${COP(-totales.deuda)} abonado de más`
+                     : null,
+            color: '#e63946', icon: 'bi-exclamation-circle', big: true,
+          },
+          {
+            label: 'TICKETS VENDIDOS',
+            val:   fmtNum(totales.ticketsVendidos),
+            sub:   `de ${fmtNum(totales.ticketsAsignados)} entregados`,
+            color: '#a78bfa', icon: 'bi-ticket-perforated',
+          },
+          { label: 'SIN CUADRAR', val: cuentas.sinCuadrar, color: '#f59e0b', icon: 'bi-person-exclamation' },
+          { label: 'CUADRADOS',   val: cuentas.cuadrados,  color: '#06d6a0', icon: 'bi-person-check' },
         ].map(c => (
           <div key={c.label} style={{ background: 'var(--jordyn-bg)', border: `1.5px solid ${c.big ? 'rgba(230,57,70,.3)' : 'var(--jordyn-border)'}`, borderRadius: 9, padding: c.big ? '12px 14px' : '10px 12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -969,6 +1029,9 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
               <i className={`bi ${c.icon}`} style={{ color: c.color, fontSize: '.7rem', opacity: .4 }} />
             </div>
             <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: c.big ? '1.8rem' : '1.35rem', color: c.color, letterSpacing: '2px', marginTop: 4, lineHeight: 1 }}>{c.val}</div>
+            {c.sub && (
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.42rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.3 }}>{c.sub}</div>
+            )}
           </div>
         ))}
       </div>
