@@ -45,7 +45,7 @@ function AppRoutes() {
       <Route path="/" element={
         <PrivateRoute>
           {user?.rol === 'dueno'
-            ? <Navigate to="/dashboard" />
+            ? <Navigate to="/rifas" />
             : <Navigate to="/vender" />}
         </PrivateRoute>
       } />
