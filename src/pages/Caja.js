@@ -27,11 +27,32 @@ const fmtHora = h => {
   return `${String(h12).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${ampm}`;
 };
 
+/* Fecha del abono: el backend ya la manda formateada (fecha_txt) para
+   evitar corrimientos de zona horaria; esto es solo el respaldo. */
+const fmtFechaHora = a => {
+  if (a?.fecha_txt) return a.fecha_txt;
+  if (!a?.fecha) return '—';
+  const d = new Date(a.fecha);
+  if (isNaN(d)) return '—';
+  return d.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
+
 /* ════════════════════════════════════════════════════════════
    HELPERS DE CÁLCULO
 ════════════════════════════════════════════════════════════ */
 function calcTotal(v)   { return v.cuadrado && v.monto_cuadrado != null ? Number(v.monto_cuadrado) : Number(v.por_pagar || 0); }
-function calcCobrado(v) { return v.cuadrado && v.monto_entregado != null ? Number(v.monto_entregado) : Number(v.abono || 0); }
+
+/* IMPORTANTE (bug del botón ABONAR):
+   antes, si el vendedor estaba cuadrado se mostraba SOLO monto_entregado
+   (un valor congelado al momento del cuadre), así que los abonos
+   posteriores no bajaban la deuda en pantalla.
+   Ahora manda la suma real de abonos (v.abono); monto_entregado solo se
+   usa como respaldo para cuadres viejos que no generaron abono. */
+function calcCobrado(v) {
+  const abonado   = Number(v.abono || 0);
+  const entregado = v.cuadrado && v.monto_entregado != null ? Number(v.monto_entregado) : 0;
+  return Math.max(abonado, entregado);
+}
 function calcDeuda(v)   { return Math.max(calcTotal(v) - calcCobrado(v), 0); }
 
 /* ════════════════════════════════════════════════════════════
@@ -117,16 +138,40 @@ export default function Caja() {
 
   /* ── Guardar abono ── */
   const handleGuardarAbono = async ({ lote_id, monto, nota }, vendedorId) => {
-    const r = await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Abono' });
-    const lote = r.data.lote;
-    patchVendedor(vendedorId, {
+    const r    = await API.post('/caja/abonos', { lote_id, monto, nota: nota || 'Abono' });
+    const lote = r.data.lote || {};
+    const patch = {
       abono:       Number(lote.abono     || 0),
       pendiente:   Number(lote.pendiente || 0),
-      por_pagar:   Number(lote.por_pagar || 0),
       estado_lote: lote.estado,
-    });
+      abonos:      r.data.abonos || [],
+    };
+    // Nunca pisar el total con un 0: si el lote viene sin por_pagar
+    // (vendedor ya cuadrado, o dato viejo) conservamos el que ya teníamos.
+    if (Number(lote.por_pagar) > 0) patch.por_pagar = Number(lote.por_pagar);
+    patchVendedor(vendedorId, patch);
     toast.success(`Abono de ${COP(monto)} registrado`);
     setModalAbono(null);
+  };
+
+  /* ── Eliminar abono del historial ── */
+  const handleEliminarAbono = async (vendedorId, abonoId) => {
+    if (!window.confirm('¿Eliminar este abono? La deuda se recalcula al instante.')) return;
+    try {
+      const r    = await API.delete(`/caja/abonos/${abonoId}`);
+      const lote = r.data.lote || {};
+      const patch = {
+        abono:       Number(lote.abono     || 0),
+        pendiente:   Number(lote.pendiente || 0),
+        estado_lote: lote.estado,
+        abonos:      r.data.abonos || [],
+      };
+      if (Number(lote.por_pagar) > 0) patch.por_pagar = Number(lote.por_pagar);
+      patchVendedor(vendedorId, patch);
+      toast.success('Abono eliminado');
+    } catch (e) {
+      toast.error('No se pudo eliminar: ' + (e.response?.data?.error || e.message));
+    }
   };
 
   /* ── Guardar cuadre ── */
@@ -175,6 +220,14 @@ export default function Caja() {
       });
     } catch { toast.error('Error actualizando prioridad'); }
   };
+
+  /* ── Versión SIEMPRE actualizada del vendedor abierto en un modal ──
+     (modalAbono/modalDetalle guardaban una copia congelada, por eso el
+     historial no se refrescaba tras abonar o borrar) */
+  const vivo = useCallback(
+    ref => (!ref ? null : (datos?.vendedores || []).find(x => x.vendedor_id === ref.vendedor_id) || ref),
+    [datos]
+  );
 
   /* ── Filtrar / ordenar ── */
   const vendedoresFiltrados = useMemo(() => {
@@ -320,13 +373,14 @@ export default function Caja() {
       </div>
 
       {modalAbono && datos && (
-        <ModalAbono vendedor={modalAbono} onClose={() => setModalAbono(null)}
-          onSave={payload => handleGuardarAbono(payload, modalAbono.vendedor_id)} />
+        <ModalAbono vendedor={vivo(modalAbono)} onClose={() => setModalAbono(null)}
+          onSave={payload => handleGuardarAbono(payload, modalAbono.vendedor_id)}
+          onEliminarAbono={abonoId => handleEliminarAbono(modalAbono.vendedor_id, abonoId)} />
       )}
 
       {modalCuadre && datos && (
         <ModalCuadre
-          vendedor={modalCuadre}
+          vendedor={vivo(modalCuadre)}
           precioPorNum={datos.precio_boleto_efectivo}
           onClose={() => setModalCuadre(null)}
           onRegistrarAbono={async payload => {
@@ -352,7 +406,12 @@ export default function Caja() {
       )}
 
       {modalDetalle && datos && (
-        <ModalDetalle vendedor={modalDetalle} precioPorNum={datos.precio_boleto_efectivo} onClose={() => setModalDetalle(null)} />
+        <ModalDetalle
+          vendedor={vivo(modalDetalle)}
+          precioPorNum={datos.precio_boleto_efectivo}
+          rifaId={rifaActiva?.id}
+          onClose={() => setModalDetalle(null)}
+          onEliminarAbono={abonoId => handleEliminarAbono(modalDetalle.vendedor_id, abonoId)} />
       )}
     </Layout>
   );
@@ -430,6 +489,14 @@ function TarjetaVendedor({ vendedor: v, precioPorNum, onAbono, onCuadrar, onDeta
             </span>
             <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.48rem', color: 'var(--jordyn-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               {v.total_numeros} núm{v.total_numeros_manual != null ? ' (manual)' : ''} · {COP(precioPorNum)}/ticket
+              {(v.abonos?.length > 0) && (
+                <span
+                  onClick={e => { e.stopPropagation(); onDetalle(); }}
+                  title="Ver historial de pagos"
+                  style={{ cursor: 'pointer', color: '#06d6a0', fontWeight: 700 }}>
+                  · 💵 {v.abonos.length} abono{v.abonos.length !== 1 ? 's' : ''}
+                </span>
+              )}
               {!v.cuadrado && (
                 <i
                   className="bi bi-pencil-square"
@@ -563,6 +630,12 @@ function ModalCuadre({ vendedor: v, precioPorNum, onClose, onGuardar, onRegistra
             <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', marginBottom: 8 }}>
               Debería ser {COP(totalEsperado)} — escribe lo que entregó
             </div>
+            {yaAbonado > 0 && (
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: '#06d6a0', marginBottom: 8 }}>
+                Ya te había abonado {COP(yaAbonado)} — escribe el <strong>TOTAL acumulado</strong> que te ha entregado
+                {abonoNuevo > 0 && <> · se registrará un abono nuevo de <strong>{COP(abonoNuevo)}</strong></>}
+              </div>
+            )}
             <input className="jd-input" type="number" min="0"
               value={montoDado} onChange={e => setMontoDado(e.target.value)}
               placeholder={`Ej: ${Math.round(totalEsperado)}`}
@@ -603,6 +676,8 @@ function ModalCuadre({ vendedor: v, precioPorNum, onClose, onGuardar, onRegistra
           </div>
         )}
 
+        <HistorialAbonos abonos={v.abonos} titulo="PAGOS YA REGISTRADOS" />
+
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
           {yaCuadrado && (
             <button onClick={onAbrir} disabled={saving}
@@ -628,7 +703,7 @@ function ModalCuadre({ vendedor: v, precioPorNum, onClose, onGuardar, onRegistra
 /* ════════════════════════════════════════════════════════════
    MODAL ABONAR
 ════════════════════════════════════════════════════════════ */
-function ModalAbono({ vendedor: v, onClose, onSave }) {
+function ModalAbono({ vendedor: v, onClose, onSave, onEliminarAbono }) {
   const [monto,  setMonto]  = useState('');
   const [nota,   setNota]   = useState('');
   const [saving, setSaving] = useState(false);
@@ -676,6 +751,8 @@ function ModalAbono({ vendedor: v, onClose, onSave }) {
           </div>
         )}
 
+        <HistorialAbonos abonos={v.abonos} onEliminar={onEliminarAbono} />
+
         <div>
           <label className="jd-label">MONTO DEL ABONO *</label>
           <input className="jd-input" type="number" min="1" value={monto} onChange={e => setMonto(e.target.value)}
@@ -718,10 +795,23 @@ function ModalAbono({ vendedor: v, onClose, onSave }) {
 /* ════════════════════════════════════════════════════════════
    MODAL DETALLE
 ════════════════════════════════════════════════════════════ */
-function ModalDetalle({ vendedor: v, precioPorNum, onClose }) {
+function ModalDetalle({ vendedor: v, precioPorNum, rifaId, onClose, onEliminarAbono }) {
   const total   = calcTotal(v);
   const cobrado = calcCobrado(v);
   const deuda   = calcDeuda(v);
+
+  /* Historial global del vendedor (todas las rifas) — se carga bajo demanda */
+  const [histGlobal, setHistGlobal] = useState(null);
+  const [cargandoHist, setCargandoHist] = useState(false);
+  const verHistorialGlobal = async () => {
+    if (histGlobal) { setHistGlobal(null); return; }
+    setCargandoHist(true);
+    try {
+      const r = await API.get(`/caja/vendedores/${v.vendedor_id}/historial-pagos`);
+      setHistGlobal(r.data);
+    } catch { toast.error('No se pudo cargar el historial'); }
+    finally { setCargandoHist(false); }
+  };
   return (
     <ModalBase title={`DETALLE — ${v.vendedor_nombre}`} onClose={onClose} wide>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -746,11 +836,109 @@ function ModalDetalle({ vendedor: v, precioPorNum, onClose }) {
           {v.nums_cuadrados != null && <><strong style={{ color: '#a78bfa' }}>CÁLCULO:</strong> {v.nums_cuadrados} × {COP(precioPorNum)} = <strong style={{ color: 'var(--jordyn-primary)' }}>{COP(total)}</strong><br /></>}
           <strong style={{ color: '#06d6a0' }}>Entregó:</strong> {COP(cobrado)} · <strong style={{ color: deuda > 0 ? '#e63946' : '#06d6a0' }}>{deuda > 0 ? `Debe: ${COP(deuda)}` : 'Saldado ✓'}</strong>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+
+        <HistorialAbonos abonos={v.abonos} onEliminar={onEliminarAbono} abiertoPorDefecto />
+
+        {histGlobal && (
+          <div style={{ border: '1px solid var(--jordyn-border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#a78bfa', letterSpacing: '2px', fontWeight: 700 }}>
+              HISTORIAL EN TODAS LAS RIFAS · TOTAL {COP(histGlobal.total_general)}
+            </div>
+            {(histGlobal.rifas || []).length === 0 && (
+              <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: 'var(--jordyn-muted)' }}>Sin pagos registrados.</div>
+            )}
+            {(histGlobal.rifas || []).map(rf => (
+              <div key={rf.rifa_id} style={{ background: 'var(--jordyn-bg2)', border: '1px solid var(--jordyn-border)', borderRadius: 8, padding: '9px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: "'Oswald',sans-serif", fontSize: '.82rem', fontWeight: 600, color: rf.rifa_id === rifaId ? 'var(--jordyn-primary)' : 'var(--jordyn-text)' }}>
+                    {rf.rifa_nombre}{rf.rifa_id === rifaId ? ' (actual)' : ''}
+                  </span>
+                  <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1rem', color: '#06d6a0', letterSpacing: '1px' }}>{COP(rf.total)}</span>
+                </div>
+                {rf.abonos.map(a => (
+                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontFamily: "'Share Tech Mono',monospace", fontSize: '.52rem', color: 'var(--jordyn-muted)', padding: '2px 0' }}>
+                    <span>{fmtFechaHora(a)}{a.nota ? ` · ${a.nota}` : ''}</span>
+                    <span style={{ color: '#06d6a0', fontWeight: 700 }}>{COP(a.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn-jordyn-outline" onClick={verHistorialGlobal} disabled={cargandoHist}>
+            {cargandoHist ? 'CARGANDO…' : histGlobal ? '▲ OCULTAR HISTORIAL GLOBAL' : '🗂 VER HISTORIAL EN TODAS LAS RIFAS'}
+          </button>
           <button className="btn-jordyn-outline" onClick={onClose}>CERRAR</button>
         </div>
       </div>
     </ModalBase>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   HISTORIAL DE ABONOS (reutilizable)
+════════════════════════════════════════════════════════════ */
+function HistorialAbonos({ abonos, onEliminar, titulo = 'HISTORIAL DE PAGOS', abiertoPorDefecto = false }) {
+  const lista = Array.isArray(abonos) ? abonos : [];
+  const [abierto, setAbierto] = useState(abiertoPorDefecto || lista.length <= 4);
+  const total = lista.reduce((s, a) => s + Number(a.monto || 0), 0);
+
+  if (lista.length === 0) {
+    return (
+      <div style={{ border: '1px dashed var(--jordyn-border)', borderRadius: 8, padding: '10px 13px', fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: 'var(--jordyn-muted)' }}>
+        Sin abonos registrados todavía.
+      </div>
+    );
+  }
+
+  // Más recientes primero
+  const orden = [...lista].reverse();
+
+  return (
+    <div style={{ border: '1px solid rgba(6,214,160,.25)', borderRadius: 10, overflow: 'hidden' }}>
+      <button type="button" onClick={() => setAbierto(a => !a)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'rgba(6,214,160,.06)', border: 'none', padding: '9px 13px', cursor: 'pointer' }}>
+        <span style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: '#06d6a0', letterSpacing: '2px', fontWeight: 700 }}>
+          💵 {titulo} · {lista.length}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.05rem', color: '#06d6a0', letterSpacing: '1px' }}>{COP(total)}</span>
+          <i className={`bi bi-chevron-${abierto ? 'up' : 'down'}`} style={{ color: '#06d6a0', fontSize: '.7rem' }} />
+        </span>
+      </button>
+
+      {abierto && (
+        <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+          {orden.map((a, i) => (
+            <div key={a.id ?? i}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 13px', borderTop: '1px solid var(--jordyn-border)' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(6,214,160,.12)', color: '#06d6a0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', fontWeight: 700, flexShrink: 0 }}>
+                {orden.length - i}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.55rem', color: 'var(--jordyn-text)' }}>
+                  {fmtFechaHora(a)}
+                </div>
+                <div style={{ fontFamily: "'Share Tech Mono',monospace", fontSize: '.5rem', color: 'var(--jordyn-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.nota || 'Abono'}{a.registrado_por_nombre ? ` · ${a.registrado_por_nombre}` : ''}
+                </div>
+              </div>
+              <div style={{ fontFamily: "'Bebas Neue',cursive", fontSize: '1.05rem', color: '#06d6a0', letterSpacing: '1px', flexShrink: 0 }}>
+                {COP(a.monto)}
+              </div>
+              {onEliminar && a.id != null && (
+                <button type="button" onClick={() => onEliminar(a.id)} title="Eliminar este abono"
+                  style={{ background: 'transparent', border: 'none', color: '#e63946', cursor: 'pointer', fontSize: '.8rem', flexShrink: 0 }}>
+                  <i className="bi bi-trash" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
