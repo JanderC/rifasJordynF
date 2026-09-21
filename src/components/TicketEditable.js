@@ -3112,9 +3112,13 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
 
             {/* ═══ TEXTOS BUILT-IN ═══ */}
             {F('numBoletoIzq', numBoleto, 'numBoleto', {
-              border: `2px solid ${STROKE}`, padding: '6px 12px',
+              ...(D.numTalonBorde === false ? {} : { border: `2px solid ${STROKE}` }),
+              padding: '6px 12px',
               fontSize: pxScaled(D.sizeNumTalon), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2, background: '#fff',
+              color: D.colorTalon, letterSpacing: 2,
+              ...(D.numTalonFondo === false ? {} : { background: '#fff' }),
+              WebkitTextStroke: D.numStrokeWidth > 0
+                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
             })}
             {F('nombreLabel', 'NOMBRE:', '_label_NOMBRE', {
               fontSize: pxScaled(D.sizeNombre), fontWeight: 700, color: '#000',
@@ -3148,9 +3152,13 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               color: D.colorFecha, fontStyle: 'italic', letterSpacing: .5,
             })}
             {F('numBoletoDer', numBoleto, 'numBoleto', {
-              border: `2px solid ${STROKE}`, padding: '6px 14px',
+              ...(D.numDerBorde === false ? {} : { border: `2px solid ${STROKE}` }),
+              padding: '6px 14px',
               fontSize: pxScaled(D.sizeNumDer), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2, background: '#fff',
+              color: D.colorTalon, letterSpacing: 2,
+              ...(D.numDerFondo === false ? {} : { background: '#fff' }),
+              WebkitTextStroke: D.numStrokeWidth > 0
+                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
             })}
 
             {F('premioLabel', D.premioLabel, 'premioLabel', {
