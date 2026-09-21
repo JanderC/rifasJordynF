@@ -18,56 +18,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import API from '../services/api';
 import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN } from '../components/Ticket';
-
-// ── Dimensiones del PDF ───────────────────────────────────────
-// A4: 297×210 mm. Se rota según orientación.
-const A4_LARGO_MM = 297;
-const A4_CORTO_MM = 210;
-// Gaps mínimos entre boletos (mm)
-const GAP_MM = 3;
-
-// Calcula layout dado boleto (cm) y orientación.
-// Devuelve { pageW, pageH, ticketW, ticketH, cols, rows, perPage, marginX, marginY, ok, error }
-function calcularLayout(ticketAnchoCm, ticketAltoCm, orientacion) {
-  const pageW = orientacion === 'horizontal' ? A4_LARGO_MM : A4_CORTO_MM;
-  const pageH = orientacion === 'horizontal' ? A4_CORTO_MM : A4_LARGO_MM;
-  const ticketW = Math.max(1, ticketAnchoCm * 10);
-  const ticketH = Math.max(1, ticketAltoCm * 10);
-
-  if (ticketW > pageW || ticketH > pageH) {
-    return {
-      pageW, pageH, ticketW, ticketH,
-      cols: 0, rows: 0, perPage: 0,
-      marginX: 0, marginY: 0,
-      ok: false,
-      error: `El boleto (${ticketAnchoCm}×${ticketAltoCm} cm) es más grande que la hoja A4 ${orientacion}.`,
-    };
-  }
-
-  // Cuántas columnas/filas caben con gap GAP_MM entre boletos
-  // n*W + (n-1)*gap ≤ page → n ≤ (page+gap)/(W+gap)
-  const cols = Math.max(1, Math.floor((pageW + GAP_MM) / (ticketW + GAP_MM)));
-  const rows = Math.max(1, Math.floor((pageH + GAP_MM) / (ticketH + GAP_MM)));
-  const perPage = cols * rows;
-
-  // Márgenes para centrar
-  const usadoX = cols * ticketW + (cols - 1) * GAP_MM;
-  const usadoY = rows * ticketH + (rows - 1) * GAP_MM;
-  const marginX = Math.max(0, (pageW - usadoX) / 2);
-  const marginY = Math.max(0, (pageH - usadoY) / 2);
-
-  return {
-    pageW, pageH, ticketW, ticketH,
-    cols, rows, perPage,
-    marginX, marginY,
-    ok: true,
-    error: null,
-  };
-}
+import {
+  PAPELES,
+  calcularLayout,
+  celda,
+  ajustarEnCelda,
+  capturarNodo,
+  esperarRecursos,
+  crearLienzoOculto,
+  destruirLienzoOculto,
+  canvasADato,
+  marcasDeCorte,
+  pxACm,
+  cm1,
+} from '../utils/printTicket';
 
 // ── Normaliza números respetando serie (numero+serie = 1 boleto) ──
 // Devuelve array de objetos { numero, serie } sin duplicados exactos.
@@ -145,16 +112,19 @@ export default function ImprimirBoletos() {
   const [generando, setGenerando]     = useState(false);
   const [progreso, setProgreso]       = useState(0);
 
-  // Configuración de impresión
+  // ── Configuración de impresión ──
+  const [papel, setPapel]                   = useState('a4');
   const [orientacion, setOrientacion]       = useState('horizontal'); // 'horizontal' | 'vertical'
   const [ticketAnchoCm, setTicketAnchoCm]   = useState(11);
   const [ticketAltoCm, setTicketAltoCm]     = useState(6.5);
-
-  // Layout calculado en vivo
-  const layout = useMemo(
-    () => calcularLayout(ticketAnchoCm, ticketAltoCm, orientacion),
-    [ticketAnchoCm, ticketAltoCm, orientacion]
-  );
+  const [mantenerProporcion, setMantenerProporcion] = useState(true);
+  const [modoAjuste, setModoAjuste]         = useState('contener');   // 'contener' | 'estirar'
+  const [gapMm, setGapMm]                   = useState(3);
+  const [margenMm, setMargenMm]             = useState(5);
+  const [dpi, setDpi]                       = useState(300);
+  const [formato, setFormato]               = useState('PNG');        // 'PNG' | 'JPEG'
+  const [marcas, setMarcas]                 = useState(true);
+  const [tamanoTocado, setTamanoTocado]     = useState(false);
 
   // ── Carga inicial ──
   useEffect(() => {
@@ -229,6 +199,53 @@ export default function ImprimirBoletos() {
     return { ...DEFAULT_DESIGN, ...extraido };
   }, [plantilla]);
 
+  // ── Tamaño real del DISEÑO (px del lienzo → cm a 96 dpi) ──
+  // Esta es la proporción que hay que respetar: si el rectángulo del
+  // PDF tiene otra proporción, la imagen se estira y "los objetos
+  // se mueven" respecto al borde del boleto.
+  const disW = Number(design.ticketWidth)  || 760;
+  const disH = Number(design.ticketHeight) || 340;
+  const aspectoDiseno = disW / disH;
+  const disAnchoCm = cm1(pxACm(disW));
+  const disAltoCm  = cm1(pxACm(disH));
+
+  // Al cargar / cambiar de plantilla, adoptamos el tamaño del diseño
+  // (1:1 exacto) mientras el usuario no lo haya modificado a mano.
+  useEffect(() => {
+    if (tamanoTocado) return;
+    setTicketAnchoCm(disAnchoCm);
+    setTicketAltoCm(disAltoCm);
+  }, [disAnchoCm, disAltoCm, tamanoTocado]);
+
+  // Cambiar ancho/alto respetando la proporción del diseño
+  const cambiarAncho = (v) => {
+    setTamanoTocado(true);
+    setTicketAnchoCm(v);
+    if (mantenerProporcion && v > 0) setTicketAltoCm(cm1(v / aspectoDiseno));
+  };
+  const cambiarAlto = (v) => {
+    setTamanoTocado(true);
+    setTicketAltoCm(v);
+    if (mantenerProporcion && v > 0) setTicketAnchoCm(cm1(v * aspectoDiseno));
+  };
+
+  // ¿La proporción pedida coincide con la del diseño?
+  const aspectoImpresion = (ticketAnchoCm || 1) / (ticketAltoCm || 1);
+  const proporcionOk = Math.abs(aspectoImpresion - aspectoDiseno) < 0.01;
+
+  // Layout calculado en vivo
+  const layout = useMemo(
+    () => calcularLayout({
+      anchoCm: ticketAnchoCm,
+      altoCm: ticketAltoCm,
+      papel,
+      orientacion,
+      gapMm,
+      margenMm,
+    }),
+    [ticketAnchoCm, ticketAltoCm, papel, orientacion, gapMm, margenMm]
+  );
+
   // Total de páginas (depende del layout actual)
   const totalPaginas = layout.ok && layout.perPage > 0
     ? Math.ceil(numerosImprimir.length / layout.perPage)
@@ -248,91 +265,89 @@ export default function ImprimirBoletos() {
     const pdf = new jsPDF({
       orientation: orientacion === 'horizontal' ? 'landscape' : 'portrait',
       unit: 'mm',
-      format: 'a4',
+      format: PAPELES[papel].jsPdf,
+      compress: true,
     });
 
-    // Vamos número por número. Por cada uno renderizamos un
-    // TicketEditable en un div oculto, lo capturamos con html2canvas,
-    // y lo pegamos en la posición correcta de la hoja actual.
-    const totalNumeros = numerosImprimir.length;
+    // ── Un ÚNICO lienzo oculto y una ÚNICA raíz de React ──
+    // (antes se creaba un root por boleto: lento y propenso a
+    //  capturar antes de que el DOM estuviera estable)
+    const fondo = design.bgPaper || '#ffffff';
+    const cont  = crearLienzoOculto(disW + 40, disH + 40, fondo);
+    const root  = createRoot(cont);
 
-    for (let i = 0; i < totalNumeros; i++) {
-      const { numero, serie } = numerosImprimir[i];
-      const indexEnPagina = i % layout.perPage;
-      const pagina = Math.floor(i / layout.perPage);
+    try {
+      const porPagina  = layout.perPage;
+      const totalPag   = Math.ceil(numerosImprimir.length / porPagina);
+      let hechos       = 0;
 
-      // Si arrancamos una página nueva (excepto la primera)
-      if (indexEnPagina === 0 && pagina > 0) {
-        pdf.addPage();
+      for (let p = 0; p < totalPag; p++) {
+        if (p > 0) pdf.addPage();
+
+        const items = numerosImprimir.slice(p * porPagina, (p + 1) * porPagina);
+
+        // Guías de corte debajo de los boletos
+        if (marcas) marcasDeCorte(pdf, layout, items.length);
+
+        for (let k = 0; k < items.length; k++) {
+          const { numero } = items[k];
+
+          // 1. Renderizar el boleto con su número real
+          root.render(
+            <TicketEditable
+              r={rifa}
+              numero={numero}
+              design={{ ...design, numBoleto: numero }}
+              printMode={true}
+            />
+          );
+
+          // 2. Esperar fuentes + imágenes (clave para que NADA se mueva)
+          await esperarRecursos(cont, 40);
+
+          // 3. Capturar SOLO el lienzo del boleto, a su tamaño real
+          const nodo = cont.querySelector('[data-ticket-canvas="true"]');
+          if (!nodo) throw new Error('No se encontró el lienzo del boleto');
+
+          const canvas = await capturarNodo(nodo, { dpi, fondo });
+
+          // 4. Colocar en la hoja SIN deformar:
+          //    la proporción real capturada manda.
+          const c = celda(layout, k);
+          const aspecto = canvas.width / canvas.height;
+          const r = ajustarEnCelda(aspecto, c.w, c.h, modoAjuste);
+          const { data, fmt } = canvasADato(canvas, formato, 0.95);
+
+          pdf.addImage(
+            data, fmt,
+            +(c.x + r.x).toFixed(2),
+            +(c.y + r.y).toFixed(2),
+            +r.w.toFixed(2),
+            +r.h.toFixed(2),
+            undefined,
+            'FAST'
+          );
+
+          hechos++;
+          setProgreso(Math.round((hechos / numerosImprimir.length) * 100));
+        }
       }
 
-      // Renderizar el ticket en un div oculto
-      const div = document.createElement('div');
-      div.style.cssText = `
-        position: fixed; left: -10000px; top: 0;
-        width: ${design.ticketWidth + 10}px;
-        height: ${design.ticketHeight + 10}px;
-        z-index: -1;
-        background: ${design.bgPaper || '#ffffff'};
-      `;
-      document.body.appendChild(div);
-
-      const root = createRoot(div);
-
-      await new Promise(resolve => {
-        root.render(
-          <TicketEditable
-            r={rifa}
-            numero={numero}
-            design={{
-              ...design,
-              // Sobrescribimos numBoleto con el número real de este boleto
-              numBoleto: numero,
-            }}
-            printMode={true}
-          />
-        );
-        // Damos tiempo a que SVG y fuentes se pinten (más que con CSS plano)
-        setTimeout(resolve, 400);
-      });
-
-      // Localizar el canvas REAL del ticket (no el wrapper externo).
-      // Se identifica por el data-attribute que pusimos en TicketEditable.
-      const canvasNode = div.querySelector('[data-ticket-canvas="true"]') || div.firstChild;
-
-      // Capturar con html2canvas
-      const canvas = await html2canvas(canvasNode, {
-        scale: 3,                  // alta resolución
-        useCORS: true,
-        backgroundColor: design.bgPaper || '#ffffff',
-        width: design.ticketWidth,
-        height: design.ticketHeight,
-        windowWidth: design.ticketWidth,
-        windowHeight: design.ticketHeight,
-        logging: false,
-      });
-
-      root.unmount();
-      document.body.removeChild(div);
-
-      // Calcular posición en la hoja usando el layout dinámico
-      const col = indexEnPagina % layout.cols;
-      const row = Math.floor(indexEnPagina / layout.cols);
-      const x = layout.marginX + col * (layout.ticketW + GAP_MM);
-      const y = layout.marginY + row * (layout.ticketH + GAP_MM);
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      pdf.addImage(imgData, 'JPEG', x, y, layout.ticketW, layout.ticketH);
-
-      setProgreso(Math.round(((i + 1) / totalNumeros) * 100));
+      const nombreRifa = (rifa?.nombre || 'rifa').replace(/[^\w-]+/g, '_');
+      const nombreVend = (vendedorActual?.vendedor_nombre || 'vendedor').replace(/[^\w-]+/g, '_');
+      pdf.save(`boletos_${nombreRifa}_${nombreVend}.pdf`);
+    } catch (err) {
+      console.error('[ImprimirBoletos] Error generando PDF:', err);
+      alert('No se pudo generar el PDF: ' + (err.message || err));
+    } finally {
+      // Desmontar fuera del ciclo de render de React
+      setTimeout(() => {
+        try { root.unmount(); } catch (_) {}
+        destruirLienzoOculto(cont);
+      }, 0);
+      setGenerando(false);
+      setProgreso(0);
     }
-
-    const nombreRifa = (rifa?.nombre || 'rifa').replace(/[^\w-]+/g, '_');
-    const nombreVend = (vendedorActual?.vendedor_nombre || 'vendedor').replace(/[^\w-]+/g, '_');
-    pdf.save(`boletos_${nombreRifa}_${nombreVend}.pdf`);
-
-    setGenerando(false);
-    setProgreso(0);
   }
 
   // ─────────── RENDER ───────────
@@ -482,38 +497,70 @@ export default function ImprimirBoletos() {
                 }}>
                   <strong style={{ fontSize: 12, color: '#0abfbc',
                     textTransform: 'uppercase', letterSpacing: 1.2 }}>
-                    ⚙️ Configuración de impresión
+                    ⚙️ Tamaño y disposición
                   </strong>
-                  <button
-                    onClick={() => {
-                      // Auto-encajar: prueba reducir tamaño hasta sacar 9, 8 o 12
-                      // por hoja según orientación. Mantiene proporción.
-                      const propor = ticketAnchoCm / ticketAltoCm;
-                      // Para horizontal busca 3×3 = 9; vertical busca 2×4 = 8
-                      let mejor = null;
-                      for (let w = 13; w >= 6; w -= 0.5) {
-                        const h = +(w / propor).toFixed(1);
-                        const l = calcularLayout(w, h, orientacion);
-                        if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
-                          mejor = { w, h, perPage: l.perPage };
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        // Vuelve al tamaño EXACTO del diseño → 1:1 perfecto
+                        setTamanoTocado(false);
+                        setTicketAnchoCm(disAnchoCm);
+                        setTicketAltoCm(disAltoCm);
+                        setMantenerProporcion(true);
+                      }}
+                      style={S.btnAutoFit}
+                      title="Usa el tamaño real con el que se diseñó la plantilla"
+                    >
+                      🎯 Tamaño del diseño
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Busca el ancho que más boletos mete por hoja,
+                        // SIEMPRE conservando la proporción del diseño.
+                        let mejor = null;
+                        for (let w = 20; w >= 4; w -= 0.1) {
+                          const wr = cm1(w);
+                          const hr = cm1(wr / aspectoDiseno);
+                          const l = calcularLayout({
+                            anchoCm: wr, altoCm: hr, papel, orientacion, gapMm, margenMm,
+                          });
+                          if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
+                            mejor = { w: wr, h: hr, perPage: l.perPage };
+                          }
                         }
-                      }
-                      if (mejor) {
-                        setTicketAnchoCm(mejor.w);
-                        setTicketAltoCm(mejor.h);
-                      }
-                    }}
-                    style={S.btnAutoFit}
-                    title="Sugiere el tamaño que aprovecha mejor la hoja manteniendo la proporción"
-                  >
-                    ✨ Auto-encajar
-                  </button>
+                        if (mejor) {
+                          setTamanoTocado(true);
+                          setMantenerProporcion(true);
+                          setTicketAnchoCm(mejor.w);
+                          setTicketAltoCm(mejor.h);
+                        }
+                      }}
+                      style={S.btnAutoFit}
+                      title="Aprovecha al máximo la hoja sin deformar el diseño"
+                    >
+                      ✨ Auto-encajar
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  {/* Papel */}
+                  <div>
+                    <div style={S.infoLabel}>Hoja</div>
+                    <select
+                      value={papel}
+                      onChange={e => setPapel(e.target.value)}
+                      style={{ ...S.numInput, width: 110, textAlign: 'left' }}
+                    >
+                      {Object.entries(PAPELES).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Orientación */}
                   <div>
-                    <div style={S.infoLabel}>Orientación de hoja</div>
+                    <div style={S.infoLabel}>Orientación</div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                       <button
                         onClick={() => setOrientacion('horizontal')}
@@ -536,43 +583,66 @@ export default function ImprimirBoletos() {
                     </div>
                   </div>
 
-                  {/* Ancho */}
+                  {/* Tamaño del boleto */}
                   <div>
-                    <div style={S.infoLabel}>Ancho boleto (cm)</div>
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={1}
-                      max={30}
-                      value={ticketAnchoCm}
-                      onChange={e => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v)) setTicketAnchoCm(v);
-                      }}
-                      style={S.numInput}
-                    />
+                    <div style={S.infoLabel}>Tamaño del boleto (cm)</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                      <input
+                        type="number" step={0.1} min={2} max={35}
+                        value={ticketAnchoCm}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) cambiarAncho(v);
+                        }}
+                        style={{ ...S.numInput, marginTop: 0 }}
+                      />
+                      <button
+                        onClick={() => setMantenerProporcion(v => !v)}
+                        title={mantenerProporcion
+                          ? 'Proporción del diseño bloqueada (recomendado)'
+                          : 'Proporción libre — el diseño puede deformarse'}
+                        style={{
+                          ...S.btnToggle,
+                          padding: '7px 10px',
+                          background: mantenerProporcion ? '#e6faf9' : '#fff',
+                          borderColor: mantenerProporcion ? '#0abfbc' : '#ddd',
+                          color: mantenerProporcion ? '#089a98' : '#999',
+                        }}
+                      >{mantenerProporcion ? '🔒' : '🔓'}</button>
+                      <input
+                        type="number" step={0.1} min={2} max={35}
+                        value={ticketAltoCm}
+                        onChange={e => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) cambiarAlto(v);
+                        }}
+                        style={{ ...S.numInput, marginTop: 0 }}
+                      />
+                    </div>
                   </div>
 
-                  {/* Alto */}
+                  {/* Separación y margen */}
                   <div>
-                    <div style={S.infoLabel}>Alto boleto (cm)</div>
-                    <input
-                      type="number"
-                      step={0.1}
-                      min={1}
-                      max={30}
-                      value={ticketAltoCm}
-                      onChange={e => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v)) setTicketAltoCm(v);
-                      }}
-                      style={S.numInput}
-                    />
+                    <div style={S.infoLabel}>Separación / margen (mm)</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                      <input
+                        type="number" step={1} min={0} max={20}
+                        value={gapMm}
+                        onChange={e => setGapMm(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={{ ...S.numInput, width: 62, marginTop: 0 }}
+                      />
+                      <input
+                        type="number" step={1} min={0} max={25}
+                        value={margenMm}
+                        onChange={e => setMargenMm(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={{ ...S.numInput, width: 62, marginTop: 0 }}
+                      />
+                    </div>
                   </div>
 
                   {/* Resumen del layout en vivo */}
                   <div style={{
-                    flex: 1, minWidth: 180,
+                    flex: 1, minWidth: 200,
                     padding: '8px 12px',
                     background: layout.ok ? '#e6faf9' : '#ffe5e5',
                     border: `1px solid ${layout.ok ? '#9ae3e0' : '#f5a5a5'}`,
@@ -581,13 +651,13 @@ export default function ImprimirBoletos() {
                     {layout.ok ? (
                       <>
                         <div style={{ fontSize: 11, color: '#666', fontWeight: 600 }}>
-                          Hoja A4 {orientacion}: {layout.pageW}×{layout.pageH} mm
+                          {PAPELES[papel].label} {orientacion}: {Math.round(layout.pageW)}×{Math.round(layout.pageH)} mm
                         </div>
                         <div style={{
                           fontSize: 14, fontWeight: 800, color: '#0abfbc',
                           marginTop: 2,
                         }}>
-                          {layout.cols} cols × {layout.rows} filas = <span style={{ fontSize: 18 }}>{layout.perPage}</span> boletos/hoja
+                          {layout.cols} × {layout.rows} = <span style={{ fontSize: 18 }}>{layout.perPage}</span> boletos/hoja
                         </div>
                       </>
                     ) : (
@@ -596,6 +666,99 @@ export default function ImprimirBoletos() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Aviso de proporción */}
+                <div style={{
+                  marginTop: 12,
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  background: proporcionOk ? '#f0fdf4' : '#fff7ed',
+                  border: `1px solid ${proporcionOk ? '#bbf7d0' : '#fed7aa'}`,
+                  fontSize: 11,
+                  lineHeight: 1.55,
+                  color: proporcionOk ? '#166534' : '#9a3412',
+                }}>
+                  {proporcionOk ? (
+                    <>
+                      ✅ <strong>Impresión 1:1.</strong> El diseño mide{' '}
+                      {disAnchoCm}×{disAltoCm} cm ({disW}×{disH} px) y se imprime con la
+                      misma proporción: nada se estira ni se desplaza.
+                    </>
+                  ) : (
+                    <>
+                      ⚠️ <strong>La proporción no coincide.</strong> El diseño es{' '}
+                      {disAnchoCm}×{disAltoCm} cm y estás imprimiendo a{' '}
+                      {cm1(ticketAnchoCm)}×{cm1(ticketAltoCm)} cm.
+                      <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700 }}>Qué hacer:</span>
+                        <button
+                          onClick={() => setModoAjuste('contener')}
+                          style={{
+                            ...S.btnToggle,
+                            padding: '5px 10px',
+                            background: modoAjuste === 'contener' ? '#0abfbc' : '#fff',
+                            color: modoAjuste === 'contener' ? '#fff' : '#666',
+                            borderColor: modoAjuste === 'contener' ? '#0abfbc' : '#ddd',
+                          }}
+                        >Centrar sin deformar</button>
+                        <button
+                          onClick={() => setModoAjuste('estirar')}
+                          style={{
+                            ...S.btnToggle,
+                            padding: '5px 10px',
+                            background: modoAjuste === 'estirar' ? '#f0a500' : '#fff',
+                            color: modoAjuste === 'estirar' ? '#fff' : '#666',
+                            borderColor: modoAjuste === 'estirar' ? '#f0a500' : '#ddd',
+                          }}
+                        >Estirar (deforma)</button>
+                        <span style={{ opacity: .8 }}>
+                          · o cambia el tamaño del lienzo en el editor de plantillas (📐).
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Calidad */}
+                <div style={{
+                  display: 'flex', gap: 16, flexWrap: 'wrap',
+                  alignItems: 'flex-end', marginTop: 12,
+                  paddingTop: 12, borderTop: '1px solid #eee',
+                }}>
+                  <div>
+                    <div style={S.infoLabel}>Resolución</div>
+                    <select
+                      value={dpi}
+                      onChange={e => setDpi(Number(e.target.value))}
+                      style={{ ...S.numInput, width: 150, textAlign: 'left' }}
+                    >
+                      <option value={150}>150 dpi · borrador</option>
+                      <option value={220}>220 dpi · normal</option>
+                      <option value={300}>300 dpi · imprenta</option>
+                      <option value={400}>400 dpi · máxima</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={S.infoLabel}>Formato interno</div>
+                    <select
+                      value={formato}
+                      onChange={e => setFormato(e.target.value)}
+                      style={{ ...S.numInput, width: 170, textAlign: 'left' }}
+                    >
+                      <option value="PNG">PNG · texto nítido</option>
+                      <option value="JPEG">JPEG · archivo liviano</option>
+                    </select>
+                  </div>
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 12, color: '#666', fontWeight: 600,
+                    cursor: 'pointer', paddingBottom: 8,
+                  }}>
+                    <input type="checkbox" checked={marcas}
+                      onChange={e => setMarcas(e.target.checked)} />
+                    ✂️ Marcas de corte
+                  </label>
                 </div>
               </div>
 
@@ -688,6 +851,8 @@ export default function ImprimirBoletos() {
                       </div>
                       <div>🙈 <b>Campos ocultos:</b> {(design.hiddenFields || []).length}</div>
                       <div>📏 <b>Factor global:</b> {design.globalSizeFactor || 1.0}</div>
+                      <div>📐 <b>Lienzo:</b> {disW}×{disH} px = {disAnchoCm}×{disAltoCm} cm
+                        {' '}(proporción {aspectoDiseno.toFixed(3)})</div>
                       <div>🎨 <b>colorPremio1/2:</b> {design.colorPremio1} / {design.colorPremio2}</div>
                       <div>📍 <b>Rifa.ticket_template_id:</b> {rifa?.ticket_template_id || '(null)'}</div>
                       {(design.customTexts || []).length === 0 && Object.keys(design.positions || {}).length === 0 && (
@@ -713,7 +878,10 @@ export default function ImprimirBoletos() {
                     />
                   </div>
                   <p style={S.previewHint}>
-                    Todos los demás boletos se generarán igual, cambiando solo el número.
+                    Vista a tamaño real del diseño: <strong>{disAnchoCm}×{disAltoCm} cm</strong>
+                    {' '}({disW}×{disH} px) · se imprimirá a{' '}
+                    <strong>{cm1(ticketAnchoCm)}×{cm1(ticketAltoCm)} cm</strong>.
+                    Los demás boletos salen idénticos, cambiando solo el número.
                   </p>
                 </div>
               )}

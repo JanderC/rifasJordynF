@@ -7,8 +7,16 @@
 // ============================================================
 import React, { useState, useEffect, useRef } from 'react';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import API from '../services/api';
+import {
+  capturarNodo,
+  esperarRecursos,
+  crearLienzoOculto,
+  destruirLienzoOculto,
+  canvasADato,
+  ajustarEnCelda,
+  tamanoHoja,
+} from '../utils/printTicket';
 
 // ─────────────────────────────────────────────────────────────
 //  Constants & helpers
@@ -240,6 +248,7 @@ function PdfSheet({ rifa, vendedor, numeros, design }) {
       gridTemplateRows: 'repeat(2, 130px)',
       gap: '16px 12px',
       boxSizing: 'border-box',
+      // el alto lo define el contenido: NUNCA lo fijamos a mano
     }}>
       {numeros.map((n, i) => (
         <TicketCard key={i} rifa={rifa} vendedor={vendedor} numero={n} design={design} />
@@ -313,58 +322,72 @@ export default function GeneradorPDFTickets() {
       orientation: 'landscape',
       unit: 'mm',
       format: 'letter',
+      compress: true,
     });
 
-    const SHEET_W = 1240;
-    const SHEET_H = 296; // 2 rows × 130px + gaps + padding
+    const { pageW, pageH } = tamanoHoja('letter', 'horizontal');
+    const MARGEN = 8; // mm
 
-    for (let pg = 0; pg < paginas; pg++) {
-      const pageNumeros = numerosTotal.slice(pg * 10, pg * 10 + 10);
+    // Lienzo oculto reutilizable + una sola raíz de React
+    const { createRoot } = await import('react-dom/client');
+    const { createElement } = await import('react');
+    const cont = crearLienzoOculto(1300, 400, '#f0f7f7');
+    const root = createRoot(cont);
 
-      // Crear div temporal fuera del viewport
-      const div = document.createElement('div');
-      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;';
-      document.body.appendChild(div);
+    try {
+      for (let pg = 0; pg < paginas; pg++) {
+        const pageNumeros = numerosTotal.slice(pg * 10, pg * 10 + 10);
 
-      // Renderizar la hoja con React
-      const { createRoot } = await import('react-dom/client');
-      const { createElement } = await import('react');
-      const root = createRoot(div);
-
-      await new Promise(resolve => {
         root.render(createElement(PdfSheet, {
           rifa: rifaActual,
           vendedor: vendedorActual,
           numeros: pageNumeros,
           design,
         }));
-        setTimeout(resolve, 600);
-      });
 
-      const canvas = await html2canvas(div.firstChild, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#f0f7f7',
-        width: SHEET_W,
-        height: SHEET_H,
-      });
+        await esperarRecursos(cont, 60);
 
-      root.unmount();
-      document.body.removeChild(div);
+        const hoja = cont.firstChild;
+        if (!hoja) throw new Error('No se pudo renderizar la hoja');
 
-      if (pg > 0) pdf.addPage();
+        // ⚠️ El tamaño se MIDE, no se adivina (antes estaba fijo en
+        // 1240×296 y la imagen se pegaba a 269×189 mm → todo deformado).
+        const canvas = await capturarNodo(hoja, { dpi: 200, fondo: '#f0f7f7' });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      pdf.addImage(imgData, 'JPEG', 5, 5, 269, 189); // letter landscape ~279×216 mm
+        if (pg > 0) pdf.addPage();
 
-      setProgreso(Math.round(((pg + 1) / paginas) * 100));
+        // Se ajusta a la hoja RESPETANDO la proporción real
+        const aspecto = canvas.width / canvas.height;
+        const r = ajustarEnCelda(aspecto, pageW - MARGEN * 2, pageH - MARGEN * 2, 'contener');
+        const { data, fmt } = canvasADato(canvas, 'JPEG', 0.92);
+
+        pdf.addImage(
+          data, fmt,
+          +(MARGEN + r.x).toFixed(2),
+          +(MARGEN + r.y).toFixed(2),
+          +r.w.toFixed(2),
+          +r.h.toFixed(2),
+          undefined,
+          'FAST'
+        );
+
+        setProgreso(Math.round(((pg + 1) / paginas) * 100));
+      }
+
+      const nombreRifa = (rifaActual?.nombre || 'rifa').replace(/\s+/g, '_');
+      const nombreVend = (vendedorActual?.nombre || 'vendedor').replace(/\s+/g, '_');
+      pdf.save(`tickets_${nombreRifa}_${nombreVend}_${numInicio}-${numInicio + paginas * 10 - 1}.pdf`);
+    } catch (err) {
+      console.error('[GeneradorPDFTickets] Error:', err);
+      alert('No se pudo generar el PDF: ' + (err.message || err));
+    } finally {
+      setTimeout(() => {
+        try { root.unmount(); } catch (_) {}
+        destruirLienzoOculto(cont);
+      }, 0);
+      setGenerando(false);
+      setProgreso(0);
     }
-
-    const nombreRifa = (rifaActual?.nombre || 'rifa').replace(/\s+/g, '_');
-    const nombreVend = (vendedorActual?.nombre || 'vendedor').replace(/\s+/g, '_');
-    pdf.save(`tickets_${nombreRifa}_${nombreVend}_${numInicio}-${numInicio + paginas * 10 - 1}.pdf`);
-
-    setGenerando(false);
   }
 
   // ── Render ─────────────────────────────────────────────────

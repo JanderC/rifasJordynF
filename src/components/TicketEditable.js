@@ -29,6 +29,25 @@ const px = (pt) => Math.round((Number(pt) || 0) * PT_TO_PX);
 const DRAG_THRESHOLD = 5;
 const SNAP_GRID = 10;
 
+// ── Tamaño físico ───────────────────────────────────────
+// El lienzo trabaja en px CSS (96 dpi). 1 mm = 3.7795 px.
+// Con esto, lo que ves en el editor es EXACTAMENTE lo que se
+// imprime: el PDF coloca el boleto en esos mismos milímetros.
+const PX_POR_MM  = 96 / 25.4;
+const cmAPx      = (cm) => (Number(cm) || 0) * 10 * PX_POR_MM;
+const pxACm      = (p)  => (Number(p)  || 0) / PX_POR_MM / 10;
+const cm1        = (v)  => Math.round((Number(v) || 0) * 10) / 10;
+
+// Tamaños de boleto sugeridos (ancho × alto en cm)
+const TAMANOS_BOLETO = [
+  { label: 'Boleto clásico',  w: 11,   h: 6.5 },
+  { label: 'Boleto chico',    w: 9,    h: 5   },
+  { label: 'Boleto ancho',    w: 14,   h: 6   },
+  { label: 'Media carta',     w: 13.9, h: 10.7 },
+  { label: 'Tira larga',      w: 18,   h: 6   },
+  { label: 'Tarjeta',         w: 8.5,  h: 5.4 },
+];
+
 // ── Subida de imagen desde galería ──────────────────────
 // Lee un File (de <input type="file">), lo dibuja en un canvas,
 // detecta si tiene transparencia (PNG/WebP sin fondo) y lo devuelve
@@ -757,6 +776,276 @@ function DraggableEditable({
 
 
 /* ════════════════════════════════════════════════════════════
+   <ResizeOverlay> — manijas estilo PowerPoint / Canva
+   ─────────────────────────────────────────────────────────────
+   Se dibuja ENCIMA del elemento seleccionado (imagen o forma) y
+   deja pasar el mouse (pointerEvents:none) salvo en las manijas.
+
+   • 4 esquinas  → escalan manteniendo la proporción
+                   (Shift = libre, como PowerPoint)
+   • 4 laterales → estiran solo en ese eje
+   • manija superior → rotar (Shift = saltos de 15°)
+
+   La matemática mantiene FIJA la esquina opuesta, aun con el
+   elemento rotado (rotación respecto al centro).
+═════════════════════════════════════════════════════════════ */
+const HANDLES = [
+  { id: 'nw', ax: -1, ay: -1, cur: 'nwse-resize' },
+  { id: 'n',  ax:  0, ay: -1, cur: 'ns-resize'   },
+  { id: 'ne', ax:  1, ay: -1, cur: 'nesw-resize' },
+  { id: 'e',  ax:  1, ay:  0, cur: 'ew-resize'   },
+  { id: 'se', ax:  1, ay:  1, cur: 'nwse-resize' },
+  { id: 's',  ax:  0, ay:  1, cur: 'ns-resize'   },
+  { id: 'sw', ax: -1, ay:  1, cur: 'nesw-resize' },
+  { id: 'w',  ax: -1, ay:  0, cur: 'ew-resize'   },
+];
+
+const MIN_LADO = 10; // px
+
+function ResizeOverlay({ el, kind = 'image', scale = 1, onChange }) {
+  const [activo, setActivo] = useState(null); // id de la manija en uso
+  const elRef    = useLatest(el);
+  const scaleRef = useLatest(scale);
+  const onChRef  = useLatest(onChange);
+
+  if (!el) return null;
+
+  const w = Math.max(MIN_LADO, Number(el.width)  || 0);
+  const h = Math.max(MIN_LADO, Number(el.height) || 0);
+  const rot = Number(el.rotation) || 0;
+
+  // Las manijas deben verse siempre del mismo tamaño en pantalla,
+  // sin importar el zoom del lienzo.
+  const S      = Math.max(8, 11 / (scale || 1));
+  const medio  = S / 2;
+  const grosor = Math.max(1, 1.5 / (scale || 1));
+
+  // ── Redimensionar ────────────────────────────────────────────
+  const startResize = (e, handle) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const p0 = e.touches ? e.touches[0] : e;
+    const startX = p0.clientX;
+    const startY = p0.clientY;
+
+    const base = { ...elRef.current };
+    const w0 = Math.max(MIN_LADO, Number(base.width)  || 0);
+    const h0 = Math.max(MIN_LADO, Number(base.height) || 0);
+    const x0 = Number(base.x) || 0;
+    const y0 = Number(base.y) || 0;
+    const r  = ((Number(base.rotation) || 0) * Math.PI) / 180;
+    const cos = Math.cos(r), sin = Math.sin(r);
+    const esEsquina = handle.ax !== 0 && handle.ay !== 0;
+
+    setActivo(handle.id);
+
+    const mover = (ev) => {
+      const p = ev.touches ? ev.touches[0] : ev;
+      if (ev.cancelable) ev.preventDefault();
+      const s = scaleRef.current || 1;
+
+      // delta del mouse en coordenadas del lienzo
+      const dx = (p.clientX - startX) / s;
+      const dy = (p.clientY - startY) / s;
+
+      // delta llevado al sistema local del elemento (des-rotado)
+      const dxl =  dx * cos + dy * sin;
+      const dyl = -dx * sin + dy * cos;
+
+      let nw = w0 + handle.ax * dxl;
+      let nh = h0 + handle.ay * dyl;
+
+      // Esquinas: proporción bloqueada salvo Shift (igual que PowerPoint)
+      if (esEsquina && !ev.shiftKey) {
+        const k = Math.abs(dxl) > Math.abs(dyl) ? (nw / w0) : (nh / h0);
+        const kk = Math.max(MIN_LADO / w0, Math.max(MIN_LADO / h0, k));
+        nw = w0 * kk;
+        nh = h0 * kk;
+      }
+
+      nw = Math.max(MIN_LADO, Math.round(nw));
+      nh = Math.max(MIN_LADO, Math.round(nh));
+
+      // Mantener fija la esquina/lado opuesto:
+      // c' = c0 + R · ( ax·(nw-w0)/2 , ay·(nh-h0)/2 )
+      const ox = (handle.ax * (nw - w0)) / 2;
+      const oy = (handle.ay * (nh - h0)) / 2;
+      const cx = x0 + w0 / 2 + (ox * cos - oy * sin);
+      const cy = y0 + h0 / 2 + (ox * sin + oy * cos);
+
+      const patch = {
+        width:  nw,
+        height: nh,
+        x: Math.round(cx - nw / 2),
+        y: Math.round(cy - nh / 2),
+      };
+
+      // Si el usuario estira SIN proporción, la imagen debe
+      // deformarse de verdad (como en PowerPoint) → objectFit:'fill'
+      if (kind === 'image' && (!esEsquina || ev.shiftKey)) {
+        patch.objectFit = 'fill';
+      }
+
+      onChRef.current(patch);
+    };
+
+    const soltar = () => {
+      window.removeEventListener('mousemove', mover);
+      window.removeEventListener('mouseup',   soltar);
+      window.removeEventListener('touchmove', mover);
+      window.removeEventListener('touchend',  soltar);
+      setActivo(null);
+    };
+
+    if (e.touches) {
+      window.addEventListener('touchmove', mover, { passive: false });
+      window.addEventListener('touchend',  soltar);
+    } else {
+      window.addEventListener('mousemove', mover);
+      window.addEventListener('mouseup',   soltar);
+    }
+  };
+
+  // ── Rotar ────────────────────────────────────────────────────
+  const startRotate = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActivo('rot');
+
+    const nodo = e.currentTarget.closest('[data-resize-overlay]');
+    const caja = nodo ? nodo.getBoundingClientRect() : null;
+    const cx = caja ? caja.left + caja.width  / 2 : 0;
+    const cy = caja ? caja.top  + caja.height / 2 : 0;
+
+    const mover = (ev) => {
+      const p = ev.touches ? ev.touches[0] : ev;
+      if (ev.cancelable) ev.preventDefault();
+      let ang = (Math.atan2(p.clientY - cy, p.clientX - cx) * 180) / Math.PI + 90;
+      if (ev.shiftKey) ang = Math.round(ang / 15) * 15;
+      if (ang > 180) ang -= 360;
+      if (ang < -180) ang += 360;
+      onChRef.current({ rotation: Math.round(ang) });
+    };
+    const soltar = () => {
+      window.removeEventListener('mousemove', mover);
+      window.removeEventListener('mouseup',   soltar);
+      window.removeEventListener('touchmove', mover);
+      window.removeEventListener('touchend',  soltar);
+      setActivo(null);
+    };
+    if (e.touches) {
+      window.addEventListener('touchmove', mover, { passive: false });
+      window.addEventListener('touchend',  soltar);
+    } else {
+      window.addEventListener('mousemove', mover);
+      window.addEventListener('mouseup',   soltar);
+    }
+  };
+
+  const posDe = (ax, ay) => ({
+    left: ax === -1 ? -medio : ax === 0 ? w / 2 - medio : w - medio,
+    top:  ay === -1 ? -medio : ay === 0 ? h / 2 - medio : h - medio,
+  });
+
+  return (
+    <div
+      data-resize-overlay="true"
+      style={{
+        position: 'absolute',
+        left: Number(el.x) || 0,
+        top:  Number(el.y) || 0,
+        width: w,
+        height: h,
+        transform: rot ? `rotate(${rot}deg)` : 'none',
+        transformOrigin: 'center center',
+        pointerEvents: 'none',
+        zIndex: 3000,
+      }}
+    >
+      {/* Contorno de selección */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        border: `${grosor}px solid #06b6d4`,
+        boxShadow: '0 0 0 1px rgba(255,255,255,.7) inset',
+        pointerEvents: 'none',
+      }} />
+
+      {/* Manija de rotación */}
+      <div
+        onMouseDown={startRotate}
+        onTouchStart={startRotate}
+        title="Rotar (Shift = saltos de 15°)"
+        style={{
+          position: 'absolute',
+          left: w / 2 - medio,
+          top: -(S * 2.4),
+          width: S, height: S,
+          borderRadius: '50%',
+          background: activo === 'rot' ? '#0891b2' : '#fff',
+          border: `${grosor}px solid #06b6d4`,
+          cursor: 'grab',
+          pointerEvents: 'auto',
+          touchAction: 'none',
+          boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+        }}
+      />
+      <div style={{
+        position: 'absolute',
+        left: w / 2 - grosor / 2,
+        top: -(S * 1.4),
+        width: grosor, height: S * 1.4,
+        background: '#06b6d4',
+        pointerEvents: 'none',
+      }} />
+
+      {/* 8 manijas */}
+      {HANDLES.map(hd => {
+        const esEsquina = hd.ax !== 0 && hd.ay !== 0;
+        return (
+          <div
+            key={hd.id}
+            onMouseDown={(e) => startResize(e, hd)}
+            onTouchStart={(e) => startResize(e, hd)}
+            title={esEsquina
+              ? 'Arrastra para escalar (Shift = libre / deformar)'
+              : 'Arrastra para estirar en este eje'}
+            style={{
+              position: 'absolute',
+              ...posDe(hd.ax, hd.ay),
+              width: S, height: S,
+              background: activo === hd.id ? '#0891b2' : '#fff',
+              border: `${grosor}px solid #06b6d4`,
+              borderRadius: esEsquina ? 2 : '50%',
+              cursor: hd.cur,
+              pointerEvents: 'auto',
+              touchAction: 'none',
+              boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+            }}
+          />
+        );
+      })}
+
+      {/* Medidas en vivo */}
+      <div style={{
+        position: 'absolute',
+        left: 0, top: h + S,
+        transform: `scale(${1 / (scale || 1)})`,
+        transformOrigin: 'left top',
+        background: '#06b6d4', color: '#fff',
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: 10, fontWeight: 700,
+        padding: '2px 6px', borderRadius: 4,
+        whiteSpace: 'nowrap', pointerEvents: 'none',
+        opacity: activo ? 1 : 0.85,
+      }}>
+        {Math.round(w)} × {Math.round(h)} px · {cm1(pxACm(w))} × {cm1(pxACm(h))} cm
+      </div>
+    </div>
+  );
+}
+
+
+/* ════════════════════════════════════════════════════════════
    Componentes UI auxiliares para los paneles
 ═════════════════════════════════════════════════════════════ */
 const labelStyle = {
@@ -824,6 +1113,7 @@ function ElementPanel({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [replaceErr, setReplaceErr] = useState('');
+  const [lockAspect, setLockAspect] = useState(true);
   const replaceFileRef = useRef(null);
   if (!selection) return null;
 
@@ -1078,13 +1368,53 @@ function ElementPanel({
             placeholder={(img.src || '').startsWith('data:') ? 'Imagen subida desde galería' : 'https://...'}
             style={{ ...inputStyle, marginBottom: 12 }} />
 
-          {/* Tamaño */}
-          <NumberSlider label="↔ Ancho" suffix="px" min={20} max={600}
-            value={img.width}
-            onChange={v => onUpdateImage(img.id, { width: v })} />
-          <NumberSlider label="↕ Alto" suffix="px" min={20} max={400}
-            value={img.height}
-            onChange={v => onUpdateImage(img.id, { height: v })} />
+          {/* ── Tamaño ── */}
+          <div style={{
+            background: '#ecfeff', border: '1px solid #a5f3fc',
+            borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+            fontSize: 11, color: '#0e7490', lineHeight: 1.5,
+          }}>
+            🖱 <strong>Arrastra las manijas</strong> de la imagen en el lienzo:
+            esquinas = escalar proporcional · lados = estirar ·
+            <strong> Shift</strong> en una esquina = deformar libre.
+          </div>
+
+          <label style={labelStyle}>Tamaño</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <input type="number" min={10} max={2000} value={Math.round(img.width)}
+              onChange={e => {
+                const w = Math.max(10, Number(e.target.value) || 10);
+                const patch = { width: w };
+                if (lockAspect && img.width) {
+                  patch.height = Math.max(10, Math.round(img.height * (w / img.width)));
+                }
+                onUpdateImage(img.id, patch);
+              }}
+              style={{ ...inputStyle, textAlign: 'center' }} />
+            <button
+              onClick={() => setLockAspect(v => !v)}
+              title={lockAspect ? 'Proporción bloqueada' : 'Proporción libre'}
+              style={{
+                border: '1px solid ' + (lockAspect ? '#06b6d4' : '#ddd'),
+                background: lockAspect ? '#ecfeff' : '#fff',
+                color: lockAspect ? '#0891b2' : '#999',
+                borderRadius: 5, cursor: 'pointer',
+                padding: '6px 8px', fontSize: 14, lineHeight: 1,
+              }}>{lockAspect ? '🔒' : '🔓'}</button>
+            <input type="number" min={10} max={2000} value={Math.round(img.height)}
+              onChange={e => {
+                const h = Math.max(10, Number(e.target.value) || 10);
+                const patch = { height: h };
+                if (lockAspect && img.height) {
+                  patch.width = Math.max(10, Math.round(img.width * (h / img.height)));
+                }
+                onUpdateImage(img.id, patch);
+              }}
+              style={{ ...inputStyle, textAlign: 'center' }} />
+          </div>
+          <p style={{ margin: '0 0 12px', fontSize: 11, color: '#0891b2', fontWeight: 700 }}>
+            ≈ {cm1(pxACm(img.width))} × {cm1(pxACm(img.height))} cm impresos
+          </p>
 
           {/* Rotación */}
           <NumberSlider label="🔄 Rotación" suffix="°" min={-180} max={180} step={5}
@@ -1554,6 +1884,141 @@ function ElementPanel({
 /* ════════════════════════════════════════════════════════════
    <PaletasPanel>
 ═════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════
+   <TamanoPanel> — define el TAMAÑO REAL del boleto
+   El lienzo pasa a medir exactamente los cm indicados (a 96 dpi),
+   así lo que ves es lo que se imprime. Opcionalmente reescala
+   todo el contenido para que nada se salga.
+═════════════════════════════════════════════════════════════ */
+function TamanoPanel({ anchoPx, altoPx, onApply, onClose }) {
+  const [ancho, setAncho]   = useState(cm1(pxACm(anchoPx)));
+  const [alto,  setAlto]    = useState(cm1(pxACm(altoPx)));
+  const [reajustar, setReajustar] = useState(true);
+  const [proporcion, setProporcion] = useState(false);
+
+  const aspecto = (anchoPx && altoPx) ? anchoPx / altoPx : 1;
+
+  const cambiarAncho = (v) => {
+    setAncho(v);
+    if (proporcion && v > 0) setAlto(cm1(v / aspecto));
+  };
+  const cambiarAlto = (v) => {
+    setAlto(v);
+    if (proporcion && v > 0) setAncho(cm1(v * aspecto));
+  };
+
+  const nuevoW = Math.round(cmAPx(ancho));
+  const nuevoH = Math.round(cmAPx(alto));
+  const cambia = nuevoW !== Math.round(anchoPx) || nuevoH !== Math.round(altoPx);
+
+  return (
+    <div style={{
+      width: 280, background: '#fff',
+      border: '1px solid #e0e0e0', borderRadius: 10,
+      boxShadow: '0 6px 24px rgba(0,0,0,.10)',
+      fontFamily: 'system-ui, sans-serif',
+      overflow: 'hidden', alignSelf: 'flex-start',
+      maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px',
+        background: 'linear-gradient(135deg, #0abfbc 0%, #089a98 100%)',
+        color: '#fff',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18 }}>📐</span>
+          <strong style={{ fontSize: 13 }}>Tamaño del boleto</strong>
+        </div>
+        <button onClick={onClose}
+          style={{ background: 'rgba(255,255,255,.2)', border: 'none',
+            color: '#fff', cursor: 'pointer', width: 24, height: 24,
+            borderRadius: 4, fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+
+      <div style={{ padding: 14, overflowY: 'auto' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 11, color: '#666', lineHeight: 1.5 }}>
+          Este es el tamaño <strong>real de impresión</strong>. El PDF coloca el
+          boleto exactamente en estos centímetros, sin estirarlo.
+        </p>
+
+        <label style={labelStyle}>Medidas (cm)</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <input type="number" step={0.1} min={2} max={35} value={ancho}
+            onChange={e => cambiarAncho(parseFloat(e.target.value) || 0)}
+            style={{ ...inputStyle, textAlign: 'center' }} />
+          <button
+            onClick={() => setProporcion(v => !v)}
+            title={proporcion ? 'Proporción bloqueada' : 'Proporción libre'}
+            style={{
+              border: '1px solid ' + (proporcion ? '#0abfbc' : '#ddd'),
+              background: proporcion ? '#e6faf9' : '#fff',
+              color: proporcion ? '#089a98' : '#999',
+              borderRadius: 5, cursor: 'pointer',
+              padding: '6px 8px', fontSize: 14, lineHeight: 1,
+            }}>{proporcion ? '🔒' : '🔓'}</button>
+          <input type="number" step={0.1} min={2} max={35} value={alto}
+            onChange={e => cambiarAlto(parseFloat(e.target.value) || 0)}
+            style={{ ...inputStyle, textAlign: 'center' }} />
+        </div>
+        <p style={{ margin: '0 0 12px', fontSize: 11, color: '#0abfbc', fontWeight: 700 }}>
+          = {nuevoW} × {nuevoH} px de lienzo
+        </p>
+
+        <label style={labelStyle}>Medidas frecuentes</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
+          {TAMANOS_BOLETO.map(t => (
+            <button key={t.label}
+              onClick={() => { setAncho(t.w); setAlto(t.h); }}
+              style={{
+                padding: '7px 6px', background: '#f8fafa',
+                border: '1px solid #e0e8e8', borderRadius: 6,
+                cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                color: '#333', fontFamily: 'inherit', lineHeight: 1.3,
+              }}>
+              {t.label}
+              <div style={{ color: '#0abfbc', fontWeight: 800, fontSize: 11 }}>
+                {t.w}×{t.h}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <label style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          background: '#fffbe6', border: '1px solid #f0d970',
+          borderRadius: 6, padding: '8px 10px', marginBottom: 12,
+          cursor: 'pointer',
+        }}>
+          <input type="checkbox" checked={reajustar}
+            onChange={e => setReajustar(e.target.checked)}
+            style={{ marginTop: 2 }} />
+          <span style={{ fontSize: 11, color: '#5a4500', lineHeight: 1.45 }}>
+            <strong>Reajustar el contenido</strong><br />
+            Escala posiciones, textos, formas e imágenes para que todo
+            quede proporcional al nuevo tamaño.
+          </span>
+        </label>
+
+        <button
+          onClick={() => { onApply(nuevoW, nuevoH, reajustar); onClose(); }}
+          disabled={!cambia || nuevoW < 60 || nuevoH < 60}
+          style={{
+            width: '100%', padding: '11px',
+            background: (!cambia || nuevoW < 60 || nuevoH < 60)
+              ? '#cfe6e6'
+              : 'linear-gradient(135deg, #0abfbc 0%, #089a98 100%)',
+            color: '#fff', border: 'none', borderRadius: 7,
+            cursor: (!cambia || nuevoW < 60 || nuevoH < 60) ? 'not-allowed' : 'pointer',
+            fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+          }}>
+          ✓ Aplicar tamaño
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PaletasPanel({ onApply, onClose }) {
   return (
     <div style={{
@@ -2002,10 +2467,20 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
   const ticketAvail = containerWidth > (D.ticketWidth + PANEL_W + PANEL_GAP + 32)
     ? D.ticketWidth
     : Math.max(280, containerWidth - PANEL_W - PANEL_GAP - 32);
-  const panelBelow = containerWidth > 0 && containerWidth < (D.ticketWidth + PANEL_W + PANEL_GAP + 32);
-  const ticketScale = panelBelow
-    ? Math.min(1, containerWidth / D.ticketWidth)
-    : Math.min(1, ticketAvail / D.ticketWidth);
+  const panelBelow = !printMode && containerWidth > 0
+    && containerWidth < (D.ticketWidth + PANEL_W + PANEL_GAP + 32);
+
+  // ⚠️ CLAVE PARA EL PDF:
+  // En printMode el ticket SIEMPRE se dibuja a escala 1:1 (sin transform).
+  // Antes, dentro del div oculto el contenedor medía 0 px y ticketScale
+  // terminaba en 0.5 (o 0) → el ticket se pintaba encogido dentro de un
+  // lienzo del tamaño completo y "los objetos se movían".
+  // También ignoramos la medida mientras containerWidth sea 0.
+  const ticketScale = (printMode || containerWidth === 0)
+    ? 1
+    : (panelBelow
+        ? Math.min(1, containerWidth / D.ticketWidth)
+        : Math.min(1, ticketAvail / D.ticketWidth));
 
   // Selección
   const [selection,        setSelection]        = useState(null);
@@ -2014,12 +2489,14 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
   const [showImagen,       setShowImagen]       = useState(false);
   const [showEstilo,       setShowEstilo]       = useState(false);
   const [showPresets,      setShowPresets]      = useState(false);
+  const [showTamano,       setShowTamano]       = useState(false);
   const [showHiddenMenu,   setShowHiddenMenu]   = useState(false);
 
   // Cierra todos los paneles secundarios al abrir uno
   const cerrarTodos = () => {
     setShowPaletas(false); setShowFormas(false); setShowImagen(false);
     setShowEstilo(false);  setShowPresets(false); setShowHiddenMenu(false);
+    setShowTamano(false);
   };
 
   // Recalcula selection.data cuando design cambia
@@ -2195,6 +2672,60 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
     cerrarTodos();
   };
 
+  // ── Cambiar el tamaño REAL del boleto ──
+  // Reescala (opcionalmente) todo el contenido para que el diseño
+  // se mantenga proporcional y nada quede fuera del lienzo.
+  const handleAplicarTamano = (nuevoW, nuevoH, reajustar) => {
+    const viejoW = D.ticketWidth  || nuevoW;
+    const viejoH = D.ticketHeight || nuevoH;
+    const kx = nuevoW / viejoW;
+    const ky = nuevoH / viejoH;
+    const k  = Math.min(kx, ky); // para tipografías
+
+    if (reajustar && (kx !== 1 || ky !== 1)) {
+      // Built-ins: materializamos las posiciones por defecto y las escalamos
+      const base = { ...DEFAULT_POSITIONS, ...positions };
+      const nuevasPos = {};
+      Object.entries(base).forEach(([campo, p]) => {
+        nuevasPos[campo] = {
+          ...p,
+          x: Math.round((p.x || 0) * kx),
+          y: Math.round((p.y || 0) * ky),
+        };
+      });
+      onUpdate('positions', nuevasPos);
+
+      onUpdate('customTexts', customTexts.map(t => ({
+        ...t,
+        x: Math.round((t.x || 0) * kx),
+        y: Math.round((t.y || 0) * ky),
+        fontSize: Math.max(5, +(((t.fontSize || 14) * k)).toFixed(1)),
+      })));
+
+      onUpdate('customShapes', customShapes.map(s => ({
+        ...s,
+        x: Math.round((s.x || 0) * kx),
+        y: Math.round((s.y || 0) * ky),
+        width:  Math.max(4, Math.round((s.width  || 0) * kx)),
+        height: Math.max(4, Math.round((s.height || 0) * ky)),
+      })));
+
+      onUpdate('customImages', customImages.map(i => ({
+        ...i,
+        x: Math.round((i.x || 0) * kx),
+        y: Math.round((i.y || 0) * ky),
+        width:  Math.max(4, Math.round((i.width  || 0) * kx)),
+        height: Math.max(4, Math.round((i.height || 0) * ky)),
+      })));
+
+      onUpdate('globalSizeFactor', +(globalSizeFactor * k).toFixed(3));
+    }
+
+    onUpdate('ticketWidth',  Math.round(nuevoW));
+    onUpdate('ticketHeight', Math.round(nuevoH));
+    setSelection(null);
+  };
+
   // ── Hide / restore built-in ──
   const handleHideBuiltin = (id) => {
     if (hiddenFields.includes(id)) return;
@@ -2337,6 +2868,12 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               }}>{t.label}</button>
           ))}
         </div>
+
+        <BarButton active={showTamano} bg="#0abfbc" color="#0abfbc"
+          onClick={() => { cerrarTodos(); setShowTamano(true); setSelection(null); }}
+          title="Definir el tamaño real del boleto (cm)">
+          📐 {cm1(pxACm(D.ticketWidth))}×{cm1(pxACm(D.ticketHeight))} cm
+        </BarButton>
 
         <div style={{ flex: 1, minWidth: 12 }} />
 
@@ -2662,6 +3199,21 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
                 onSelect={handleSelect} onMove={handleMoveImage} />
             ))}
 
+            {/* ═══ MANIJAS DE REDIMENSIONADO (imagen / forma) ═══ */}
+            {!printMode && selection && (selection.kind === 'image' || selection.kind === 'shape') && (
+              <ResizeOverlay
+                kind={selection.kind}
+                scale={ticketScale}
+                el={selection.kind === 'image'
+                  ? customImages.find(i => i.id === selection.id)
+                  : customShapes.find(s => s.id === selection.id)}
+                onChange={(patch) => {
+                  if (selection.kind === 'image') handleUpdateImageProps(selection.id, patch);
+                  else                            handleUpdateShapeProps(selection.id, patch);
+                }}
+              />
+            )}
+
             {/* ═══ MARCO DECORATIVO ═══ */}
             <FrameLayer design={D} />
           </div>
@@ -2672,7 +3224,13 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
           flex: panelBelow ? 'none' : '0 0 auto',
           width: panelBelow ? '100%' : PANEL_W,
         }}>
-          {showPaletas ? (
+          {showTamano ? (
+            <TamanoPanel
+              anchoPx={D.ticketWidth}
+              altoPx={D.ticketHeight}
+              onApply={handleAplicarTamano}
+              onClose={() => setShowTamano(false)} />
+          ) : showPaletas ? (
             <PaletasPanel onApply={handleApplyPaleta} onClose={() => setShowPaletas(false)} />
           ) : showFormas ? (
             <FormasPanel onAdd={handleAddShape} onClose={() => setShowFormas(false)} />
