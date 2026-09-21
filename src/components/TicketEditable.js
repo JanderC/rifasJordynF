@@ -2283,6 +2283,35 @@ function EstiloPanel({ design, onUpdateDesign, onClose }) {
           value={design.frameWidth || 2.5}
           onChange={v => onUpdateDesign('frameWidth', v)} />
 
+        {/* ── CUADRO DEL NÚMERO ── */}
+        <div style={sectionStyle}>
+          <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
+            🔢 Cuadro del número
+          </strong>
+
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            Contorno — talón (izq.)
+            <input type="checkbox" checked={design.numTalonBorde !== false}
+              onChange={e => onUpdateDesign('numTalonBorde', e.target.checked)} />
+          </label>
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            Fondo blanco — talón (izq.)
+            <input type="checkbox" checked={design.numTalonFondo !== false}
+              onChange={e => onUpdateDesign('numTalonFondo', e.target.checked)} />
+          </label>
+
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+            Contorno — cuerpo (der.)
+            <input type="checkbox" checked={design.numDerBorde !== false}
+              onChange={e => onUpdateDesign('numDerBorde', e.target.checked)} />
+          </label>
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            Fondo blanco — cuerpo (der.)
+            <input type="checkbox" checked={design.numDerFondo !== false}
+              onChange={e => onUpdateDesign('numDerFondo', e.target.checked)} />
+          </label>
+        </div>
+
         {/* ── WATERMARK ── */}
         <div style={sectionStyle}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
