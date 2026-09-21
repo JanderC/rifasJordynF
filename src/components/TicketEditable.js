@@ -2310,6 +2310,16 @@ function EstiloPanel({ design, onUpdateDesign, onClose }) {
             <input type="checkbox" checked={design.numDerFondo !== false}
               onChange={e => onUpdateDesign('numDerFondo', e.target.checked)} />
           </label>
+
+          <NumberSlider label="Contorno del número (texto)" suffix="px"
+            min={0} max={4} step={0.5}
+            value={design.numStrokeWidth || 0}
+            onChange={v => onUpdateDesign('numStrokeWidth', v)} />
+          {(design.numStrokeWidth || 0) > 0 && (
+            <ColorRow label="Color del contorno"
+              value={design.numStrokeColor || '#000'}
+              onChange={v => onUpdateDesign('numStrokeColor', v)} />
+          )}
         </div>
 
         {/* ── WATERMARK ── */}

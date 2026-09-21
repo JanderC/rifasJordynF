@@ -42,6 +42,8 @@ export const DEFAULT_DESIGN = {
   numTalonFondo:  true,   // fondo blanco detrás del número del talón
   numDerBorde:    true,   // contorno del cuadro de la derecha
   numDerFondo:    true,   // fondo blanco detrás del número de la derecha
+  numStrokeWidth: 0,      // contorno del TEXTO del número (0 = sin contorno)
+  numStrokeColor: '#000000',
 
   // ── Tamaños de fuente (pt) ───────────────────────────────
   sizeBrand:       22,
@@ -637,7 +639,8 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
     <div style="${D.numTalonBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 12px;
       font-size:${px(D.sizeNumTalon)}px;font-weight:900;color:${D.colorTalon};
-      letter-spacing:2px;${D.numTalonFondo === false ? '' : 'background:#fff;'}margin-bottom:14px;">
+      letter-spacing:2px;${D.numTalonFondo === false ? '' : 'background:#fff;'}margin-bottom:14px;
+      ${D.numStrokeWidth > 0 ? `-webkit-text-stroke:${D.numStrokeWidth}px ${D.numStrokeColor || '#000'};` : '-webkit-text-stroke:0;'}">
       ${num}
     </div>
 
@@ -686,7 +689,8 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
       <div style="${D.numDerBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 14px;
         font-size:${px(D.sizeNumDer)}px;font-weight:900;color:${D.colorTalon};
-        letter-spacing:2px;${D.numDerFondo === false ? '' : 'background:#fff;'}margin-left:8px;flex-shrink:0;">
+        letter-spacing:2px;${D.numDerFondo === false ? '' : 'background:#fff;'}margin-left:8px;flex-shrink:0;
+        ${D.numStrokeWidth > 0 ? `-webkit-text-stroke:${D.numStrokeWidth}px ${D.numStrokeColor || '#000'};` : '-webkit-text-stroke:0;'}">
         ${num}
       </div>
     </div>
@@ -1326,6 +1330,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
           fontSize:px(D.sizeNumTalon), fontWeight:900, color:D.colorTalon,
           letterSpacing:2,
           ...(D.numTalonFondo === false ? {} : { background:'#fff' }),
+          WebkitTextStroke: D.numStrokeWidth > 0 ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
           marginBottom:14,
         }}>{num}</div>
 
@@ -1386,6 +1391,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
             fontSize:px(D.sizeNumDer), fontWeight:900, color:D.colorTalon,
             letterSpacing:2,
             ...(D.numDerFondo === false ? {} : { background:'#fff' }),
+            WebkitTextStroke: D.numStrokeWidth > 0 ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
             marginLeft:8, flexShrink:0,
           }}>{num}</div>
         </div>
