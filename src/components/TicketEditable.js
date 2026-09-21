@@ -1751,6 +1751,42 @@ function ElementPanel({
           ))}
         </div>
 
+        {/* ═══ CUADRO DEL N° DE BOLETO (solo para esos dos campos) ═══ */}
+        {!isCustom && (selection.id === 'numBoletoIzq' || selection.id === 'numBoletoDer') && (() => {
+          const esIzq      = selection.id === 'numBoletoIzq';
+          const keyBorde   = esIzq ? 'numTalonBorde' : 'numDerBorde';
+          const keyFondo   = esIzq ? 'numTalonFondo' : 'numDerFondo';
+          return (
+            <div style={sectionStyle}>
+              <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
+                🔲 Cuadro de este número
+              </strong>
+
+              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                Contorno del cuadro
+                <input type="checkbox" checked={design[keyBorde] !== false}
+                  onChange={e => onUpdateDesign(keyBorde, e.target.checked)} />
+              </label>
+
+              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                Fondo blanco
+                <input type="checkbox" checked={design[keyFondo] !== false}
+                  onChange={e => onUpdateDesign(keyFondo, e.target.checked)} />
+              </label>
+
+              <NumberSlider label="Contorno del número (texto)" suffix="px"
+                min={0} max={4} step={0.5}
+                value={design.numStrokeWidth || 0}
+                onChange={v => onUpdateDesign('numStrokeWidth', v)} />
+              {(design.numStrokeWidth || 0) > 0 && (
+                <ColorRow label="Color del contorno"
+                  value={design.numStrokeColor || '#000'}
+                  onChange={v => onUpdateDesign('numStrokeColor', v)} />
+              )}
+            </div>
+          );
+        })()}
+
         {/* ═══ EFECTOS AVANZADOS ═══ */}
         <div style={sectionStyle}>
           <div style={collapsibleHeaderStyle} onClick={() => setShowAdvanced(v => !v)}>
