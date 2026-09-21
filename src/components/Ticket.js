@@ -36,6 +36,13 @@ export const DEFAULT_DESIGN = {
   colorBorde:     '#000000',
   bgPaper:        '#f5f5f0',
 
+  // ── Cuadro del número de boleto ─────────────────────────
+  // Se controlan por separado el del talón (izquierda) y el del cuerpo (derecha)
+  numTalonBorde:  true,   // contorno del cuadro del talón
+  numTalonFondo:  true,   // fondo blanco detrás del número del talón
+  numDerBorde:    true,   // contorno del cuadro de la derecha
+  numDerFondo:    true,   // fondo blanco detrás del número de la derecha
+
   // ── Tamaños de fuente (pt) ───────────────────────────────
   sizeBrand:       22,
   sizeNumTalon:    20,
@@ -628,9 +635,9 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   <div style="width:115px;flex-shrink:0;border-right:2px dashed ${D.colorBorde};
     display:flex;flex-direction:column;align-items:center;padding:10px 6px;position:relative;z-index:2;">
 
-    <div style="border:2px solid ${D.colorBorde};padding:6px 12px;
+    <div style="${D.numTalonBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 12px;
       font-size:${px(D.sizeNumTalon)}px;font-weight:900;color:${D.colorTalon};
-      letter-spacing:2px;background:#fff;margin-bottom:14px;">
+      letter-spacing:2px;${D.numTalonFondo === false ? '' : 'background:#fff;'}margin-bottom:14px;">
       ${num}
     </div>
 
@@ -677,9 +684,9 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
         </div>
       </div>
 
-      <div style="border:2px solid ${D.colorBorde};padding:6px 14px;
+      <div style="${D.numDerBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 14px;
         font-size:${px(D.sizeNumDer)}px;font-weight:900;color:${D.colorTalon};
-        letter-spacing:2px;background:#fff;margin-left:8px;flex-shrink:0;">
+        letter-spacing:2px;${D.numDerFondo === false ? '' : 'background:#fff;'}margin-left:8px;flex-shrink:0;">
         ${num}
       </div>
     </div>
@@ -1314,9 +1321,12 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
         padding:'10px 6px', position:'relative', zIndex:2,
       }}>
         <div style={{
-          border:`2px solid ${STROKE}`, padding:'6px 12px',
+          ...(D.numTalonBorde === false ? {} : { border:`2px solid ${STROKE}` }),
+          padding:'6px 12px',
           fontSize:px(D.sizeNumTalon), fontWeight:900, color:D.colorTalon,
-          letterSpacing:2, background:'#fff', marginBottom:14,
+          letterSpacing:2,
+          ...(D.numTalonFondo === false ? {} : { background:'#fff' }),
+          marginBottom:14,
         }}>{num}</div>
 
         <div style={{
@@ -1371,9 +1381,12 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
             }}>{D.fechaPrefix} {fecha}</div>
           </div>
           <div style={{
-            border:`2px solid ${STROKE}`, padding:'6px 14px',
+            ...(D.numDerBorde === false ? {} : { border:`2px solid ${STROKE}` }),
+            padding:'6px 14px',
             fontSize:px(D.sizeNumDer), fontWeight:900, color:D.colorTalon,
-            letterSpacing:2, background:'#fff', marginLeft:8, flexShrink:0,
+            letterSpacing:2,
+            ...(D.numDerFondo === false ? {} : { background:'#fff' }),
+            marginLeft:8, flexShrink:0,
           }}>{num}</div>
         </div>
 
