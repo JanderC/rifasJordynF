@@ -15,7 +15,7 @@
 //   Deduplicación clave: si un vendedor tiene 123 en serie A y 123
 //   en serie B, se imprime UN SOLO boleto con el número 123.
 // ============================================================
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import jsPDF from 'jspdf';
 import API from '../services/api';
@@ -35,6 +35,19 @@ import {
   pxACm,
   cm1,
 } from '../utils/printTicket';
+import {
+  leerPerfiles,
+  guardarPerfil,
+  actualizarPerfil,
+  renombrarPerfil,
+  borrarPerfil,
+  marcarDefault,
+  obtenerDefaultId,
+  perfilDefault,
+  descargarPerfiles,
+  importarPerfiles,
+  disponible as storageDisponible,
+} from '../utils/perfilesImpresion';
 
 // ── Presets de separación entre boletos (mm) ─────────────────
 const SEPARACIONES = [
@@ -152,6 +165,144 @@ export default function ImprimirBoletos() {
     else setGapYMm(n);
   };
 
+  // ── Medidas guardadas (perfiles en localStorage, sin BD) ──
+  const [perfiles, setPerfiles]       = useState([]);
+  const [defaultId, setDefaultId]     = useState(null);
+  const [nombrePerfil, setNombrePerfil] = useState('');
+  const [perfilActivo, setPerfilActivo] = useState(null);
+  const [avisoPerfil, setAvisoPerfil]   = useState('');
+  const importRef = useRef(null);
+  // Cuando se aplica un perfil, el tamaño ya no debe recalcularse
+  // desde el diseño (los refs se actualizan al instante, a diferencia
+  // del estado, así que el efecto de sincronización lo ve de inmediato).
+  const bloquearAutoTamano = useRef(false);
+  const hayStorage = storageDisponible();
+
+  // Configuración actual empaquetada
+  const configActual = {
+    papel,
+    orientacion,
+    anchoCm: ticketAnchoCm,
+    altoCm: ticketAltoCm,
+    mantenerProporcion,
+    modoAjuste,
+    gapXMm,
+    gapYMm,
+    gapLigado,
+    margenMm,
+    rejillaManual,
+    colsManual,
+    rowsManual,
+    dpi,
+    formato,
+    estiloMarcas,
+  };
+
+  const aplicarConfig = (c = {}) => {
+    if (c.papel)       setPapel(c.papel);
+    if (c.orientacion) setOrientacion(c.orientacion);
+    if (c.anchoCm != null) setTicketAnchoCm(c.anchoCm);
+    if (c.altoCm  != null) setTicketAltoCm(c.altoCm);
+    if (c.mantenerProporcion != null) setMantenerProporcion(!!c.mantenerProporcion);
+    if (c.modoAjuste)  setModoAjuste(c.modoAjuste);
+    if (c.gapXMm != null) setGapXMm(c.gapXMm);
+    if (c.gapYMm != null) setGapYMm(c.gapYMm);
+    if (c.gapLigado != null) setGapLigado(!!c.gapLigado);
+    if (c.margenMm != null) setMargenMm(c.margenMm);
+    if (c.rejillaManual != null) setRejillaManual(!!c.rejillaManual);
+    if (c.colsManual != null) setColsManual(c.colsManual);
+    if (c.rowsManual != null) setRowsManual(c.rowsManual);
+    if (c.dpi != null) setDpi(c.dpi);
+    if (c.formato) setFormato(c.formato);
+    if (c.estiloMarcas) setEstiloMarcas(c.estiloMarcas);
+    // Marca el tamaño como "elegido por el usuario" para que no lo
+    // sobreescriba el tamaño del diseño al cargar la plantilla.
+    bloquearAutoTamano.current = true;
+    setTamanoTocado(true);
+  };
+
+  // Carga inicial + aplicación del perfil marcado con ⭐
+  useEffect(() => {
+    const lista = leerPerfiles();
+    setPerfiles(lista);
+    setDefaultId(obtenerDefaultId());
+    const def = perfilDefault();
+    if (def) {
+      aplicarConfig(def.config);
+      setPerfilActivo(def.id);
+      setAvisoPerfil(`Se aplicaron las medidas "${def.nombre}"`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const flash = (msg) => {
+    setAvisoPerfil(msg);
+    setTimeout(() => setAvisoPerfil(''), 3500);
+  };
+
+  const handleGuardarPerfil = () => {
+    const nombre = (nombrePerfil || '').trim()
+      || `${cm1(ticketAnchoCm)}×${cm1(ticketAltoCm)} cm · ${gapXMm}/${gapYMm} mm`;
+    const lista = guardarPerfil(nombre, configActual, {
+      nota: `${PAPELES[papel].label} ${orientacion} · ${layout.perPage || '?'} por hoja`,
+    });
+    setPerfiles(lista);
+    const guardado = lista.find(p => p.nombre.toLowerCase() === nombre.toLowerCase());
+    if (guardado) setPerfilActivo(guardado.id);
+    setNombrePerfil('');
+    flash(`Guardado: "${nombre}"`);
+  };
+
+  const handleAplicarPerfil = (p) => {
+    aplicarConfig(p.config);
+    setPerfilActivo(p.id);
+    flash(`Medidas "${p.nombre}" aplicadas`);
+  };
+
+  const handleSobrescribir = (p) => {
+    if (!window.confirm(`¿Sobrescribir "${p.nombre}" con las medidas actuales?`)) return;
+    setPerfiles(actualizarPerfil(p.id, configActual, {
+      nota: `${PAPELES[papel].label} ${orientacion} · ${layout.perPage || '?'} por hoja`,
+    }));
+    flash(`"${p.nombre}" actualizado`);
+  };
+
+  const handleRenombrar = (p) => {
+    const nuevo = window.prompt('Nuevo nombre:', p.nombre);
+    if (!nuevo) return;
+    setPerfiles(renombrarPerfil(p.id, nuevo));
+  };
+
+  const handleBorrar = (p) => {
+    if (!window.confirm(`¿Borrar las medidas "${p.nombre}"?`)) return;
+    setPerfiles(borrarPerfil(p.id));
+    setDefaultId(obtenerDefaultId());
+    if (perfilActivo === p.id) setPerfilActivo(null);
+  };
+
+  const handleDefault = (p) => {
+    const nuevo = defaultId === p.id ? null : p.id;
+    marcarDefault(nuevo);
+    setDefaultId(nuevo);
+    flash(nuevo
+      ? `"${p.nombre}" se aplicará automáticamente al abrir esta pantalla`
+      : 'Ya no hay medidas por defecto');
+  };
+
+  const handleImportar = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const texto = await file.text();
+      const { perfiles: lista, agregados } = importarPerfiles(texto);
+      setPerfiles(lista);
+      flash(`${agregados} medida(s) importada(s)`);
+    } catch (err) {
+      flash('⚠️ ' + (err.message || 'No se pudo importar'));
+    }
+  };
+
   // ── Carga inicial ──
   useEffect(() => {
     if (!rifaId) {
@@ -238,7 +389,7 @@ export default function ImprimirBoletos() {
   // Al cargar / cambiar de plantilla, adoptamos el tamaño del diseño
   // (1:1 exacto) mientras el usuario no lo haya modificado a mano.
   useEffect(() => {
-    if (tamanoTocado) return;
+    if (tamanoTocado || bloquearAutoTamano.current) return;
     setTicketAnchoCm(disAnchoCm);
     setTicketAltoCm(disAltoCm);
   }, [disAnchoCm, disAltoCm, tamanoTocado]);
@@ -521,6 +672,144 @@ export default function ImprimirBoletos() {
             </div>
           ) : (
             <>
+              {/* ═══ Medidas guardadas (localStorage, sin BD) ═══ */}
+              <div style={S.perfilBox}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  flexWrap: 'wrap', marginBottom: perfiles.length ? 10 : 0,
+                }}>
+                  <strong style={{ fontSize: 12, color: '#7c3aed',
+                    textTransform: 'uppercase', letterSpacing: 1.2 }}>
+                    📌 Mis medidas guardadas
+                  </strong>
+
+                  <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={nombrePerfil}
+                      onChange={e => setNombrePerfil(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleGuardarPerfil(); }}
+                      placeholder="Nombre (ej: Boleto 11×6.5 A4)"
+                      style={{
+                        padding: '7px 10px', border: '1px solid #ddd',
+                        borderRadius: 6, fontSize: 12, fontFamily: 'inherit',
+                        minWidth: 200,
+                      }}
+                    />
+                    <button
+                      onClick={handleGuardarPerfil}
+                      disabled={!hayStorage}
+                      title="Guarda tamaño, separación, margen, hoja y calidad actuales"
+                      style={{
+                        ...S.btnToggle,
+                        padding: '7px 12px',
+                        background: hayStorage ? '#7c3aed' : '#ccc',
+                        borderColor: hayStorage ? '#7c3aed' : '#ccc',
+                        color: '#fff',
+                      }}
+                    >💾 Guardar medidas actuales</button>
+
+                    <input ref={importRef} type="file" accept=".json,application/json"
+                      style={{ display: 'none' }} onChange={handleImportar} />
+                    <button
+                      onClick={() => importRef.current && importRef.current.click()}
+                      title="Importar medidas desde un archivo .json"
+                      style={{ ...S.btnToggle, padding: '7px 10px' }}
+                    >📥</button>
+                    <button
+                      onClick={() => descargarPerfiles()}
+                      disabled={perfiles.length === 0}
+                      title="Descargar respaldo de tus medidas"
+                      style={{
+                        ...S.btnToggle, padding: '7px 10px',
+                        opacity: perfiles.length === 0 ? .5 : 1,
+                      }}
+                    >📤</button>
+                  </div>
+                </div>
+
+                {!hayStorage && (
+                  <p style={{ margin: 0, fontSize: 11, color: '#b45309' }}>
+                    ⚠️ Este navegador no permite guardar datos locales
+                    (¿modo incógnito?). Las medidas no se conservarán al recargar.
+                  </p>
+                )}
+
+                {perfiles.length === 0 ? (
+                  <p style={{ margin: '8px 0 0', fontSize: 11, color: '#888', lineHeight: 1.5 }}>
+                    Ajusta el tamaño, la separación y el margen como los quieres,
+                    ponle un nombre y presiona <strong>Guardar medidas actuales</strong>.
+                    Se quedan en este navegador — no se toca la base de datos.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {perfiles.map(p => {
+                      const activo = perfilActivo === p.id;
+                      const c = p.config || {};
+                      return (
+                        <div key={p.id} style={{
+                          display: 'flex', alignItems: 'stretch',
+                          border: `1.5px solid ${activo ? '#7c3aed' : '#e0e0e0'}`,
+                          background: activo ? '#f5f0ff' : '#fff',
+                          borderRadius: 8, overflow: 'hidden',
+                          boxShadow: activo ? '0 2px 8px rgba(124,58,237,.18)' : 'none',
+                        }}>
+                          <button
+                            onClick={() => handleAplicarPerfil(p)}
+                            title="Aplicar estas medidas"
+                            style={{
+                              border: 'none', background: 'transparent',
+                              padding: '7px 10px', cursor: 'pointer',
+                              textAlign: 'left', fontFamily: 'inherit',
+                            }}>
+                            <div style={{
+                              fontSize: 12, fontWeight: 700,
+                              color: activo ? '#6d28d9' : '#333',
+                              display: 'flex', alignItems: 'center', gap: 5,
+                            }}>
+                              {defaultId === p.id && <span title="Se aplica al abrir">⭐</span>}
+                              {p.nombre}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#888', marginTop: 1 }}>
+                              {cm1(c.anchoCm)}×{cm1(c.altoCm)} cm · sep {c.gapXMm}/{c.gapYMm} mm
+                              {' '}· {PAPELES[c.papel]?.label || c.papel} {c.orientacion}
+                            </div>
+                          </button>
+                          <div style={{
+                            display: 'flex', flexDirection: 'column',
+                            borderLeft: '1px solid #eee',
+                          }}>
+                            <button onClick={() => handleDefault(p)}
+                              title={defaultId === p.id
+                                ? 'Quitar de predeterminada'
+                                : 'Usar como predeterminada al abrir'}
+                              style={S.miniBtn}>
+                              {defaultId === p.id ? '★' : '☆'}
+                            </button>
+                            <button onClick={() => handleSobrescribir(p)}
+                              title="Sobrescribir con las medidas actuales"
+                              style={S.miniBtn}>⟳</button>
+                            <button onClick={() => handleRenombrar(p)}
+                              title="Renombrar" style={S.miniBtn}>✎</button>
+                            <button onClick={() => handleBorrar(p)}
+                              title="Borrar" style={{ ...S.miniBtn, color: '#d92626' }}>×</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {avisoPerfil && (
+                  <p style={{
+                    margin: '10px 0 0', fontSize: 11.5, fontWeight: 600,
+                    color: '#6d28d9', background: '#f5f0ff',
+                    border: '1px solid #ddd6fe', borderRadius: 6,
+                    padding: '6px 10px',
+                  }}>{avisoPerfil}</p>
+                )}
+              </div>
+
               {/* ═══ Panel de configuración de impresión ═══ */}
               <div style={S.configBox}>
                 <div style={{
@@ -535,7 +824,9 @@ export default function ImprimirBoletos() {
                     <button
                       onClick={() => {
                         // Vuelve al tamaño EXACTO del diseño → 1:1 perfecto
+                        bloquearAutoTamano.current = false;
                         setTamanoTocado(false);
+                        setPerfilActivo(null);
                         setTicketAnchoCm(disAnchoCm);
                         setTicketAltoCm(disAltoCm);
                         setMantenerProporcion(true);
@@ -1283,6 +1574,26 @@ const S = {
     fontFamily: 'inherit',
     boxShadow: '0 2px 8px rgba(10,191,188,.3)',
     transition: 'transform .1s',
+  },
+  perfilBox: {
+    background: C.surface,
+    border: '1px solid #e9e2ff',
+    borderLeft: '4px solid #7c3aed',
+    borderRadius: 10,
+    padding: '14px 18px',
+  },
+  miniBtn: {
+    flex: 1,
+    minWidth: 26,
+    padding: '0 7px',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '1px solid #f0f0f0',
+    cursor: 'pointer',
+    fontSize: 12,
+    color: '#888',
+    fontFamily: 'inherit',
+    lineHeight: 1,
   },
   gapBox: {
     marginTop: 12,
