@@ -25,6 +25,7 @@ export const CAMPOS_PERFIL = [
   'gapXMm',
   'gapYMm',
   'gapLigado',
+  'repartirSobrante',
   'margenMm',
   'rejillaManual',
   'colsManual',

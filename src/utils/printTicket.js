@@ -61,6 +61,8 @@ export function calcularLayout({
   gapXMm = 5,
   gapYMm = 5,
   margenMm = 5,
+  repartirSobrante = true,   // el espacio que sobra se pasa a los huecos
+  repartoMaxMm = 20,         // tope para que no queden huecos absurdos
   aspecto = null,
   modoAjuste = 'contener',
   cols: colsFijas = null,
@@ -92,6 +94,7 @@ export function calcularLayout({
     cajaW, cajaH,
     ticketW, ticketH,
     gapXMm: gx, gapYMm: gy, margenMm: mg,
+    gapXReal: gx, gapYReal: gy,
     utilW, utilH,
     aspecto, modoAjuste,
     manual: !!(colsFijas || rowsFijas),
@@ -132,13 +135,36 @@ export function calcularLayout({
   const desbordeY = Math.max(0, usadoY - utilH);
   const cabe = desbordeX < 0.01 && desbordeY < 0.01;
 
+  // ── Reparto del espacio sobrante ────────────────────────────
+  // Sin esto, TODO lo que sobra se va a los márgenes de la hoja y
+  // los boletos quedan pegados entre sí con el hueco mínimo.
+  // Con esto, el sobrante se reparte en los huecos y la separación
+  // entre boletos es pareja en los dos ejes.
+  const libreX = Math.max(0, utilW - usadoX);
+  const libreY = Math.max(0, utilH - usadoY);
+
+  let gapXReal = gx;
+  let gapYReal = gy;
+  if (cabe && repartirSobrante) {
+    if (cols > 1 && libreX > 0.01) {
+      gapXReal = gx + Math.min(repartoMaxMm, libreX / (cols - 1));
+    }
+    if (rows > 1 && libreY > 0.01) {
+      gapYReal = gy + Math.min(repartoMaxMm, libreY / (rows - 1));
+    }
+  }
+
   // Separación MÁXIMA que admite esta rejilla sin desbordar
   const gapMaxX = cols > 1 ? Math.max(0, (utilW - cols * ticketW) / (cols - 1)) : Infinity;
   const gapMaxY = rows > 1 ? Math.max(0, (utilH - rows * ticketH) / (rows - 1)) : Infinity;
 
-  // Espacio libre que sobra (útil para saber si puedes separar más)
-  const sobraX = utilW - usadoX;
-  const sobraY = utilH - usadoY;
+  // Ocupación final ya con los huecos reales
+  const usadoXReal = cols * ticketW + (cols - 1) * gapXReal;
+  const usadoYReal = rows * ticketH + (rows - 1) * gapYReal;
+
+  // Espacio que queda libre en los márgenes
+  const sobraX = utilW - usadoXReal;
+  const sobraY = utilH - usadoYReal;
 
   const offsetX = mg + Math.max(0, sobraX / 2);
   const offsetY = mg + Math.max(0, sobraY / 2);
@@ -155,10 +181,16 @@ export function calcularLayout({
         `Con esta separación caben ${cols * rows} por hoja; sin separación cabrían ${sinGapCols * sinGapRows}.`
       );
     }
-    if (isFinite(gapMaxX) && gapMaxX - gx > 1) {
+    if (repartirSobrante && (gapXReal - gx > 0.3 || gapYReal - gy > 0.3)) {
+      avisos.push(
+        `Se repartió el espacio sobrante: hueco real de ` +
+        `${gapXReal.toFixed(1)} mm horizontal y ${gapYReal.toFixed(1)} mm vertical.`
+      );
+    }
+    if (!repartirSobrante && isFinite(gapMaxX) && gapMaxX - gx > 1) {
       avisos.push(`Puedes separar hasta ${gapMaxX.toFixed(1)} mm en horizontal sin perder boletos.`);
     }
-    if (isFinite(gapMaxY) && gapMaxY - gy > 1) {
+    if (!repartirSobrante && isFinite(gapMaxY) && gapMaxY - gy > 1) {
       avisos.push(`Puedes separar hasta ${gapMaxY.toFixed(1)} mm en vertical sin perder boletos.`);
     }
   }
@@ -181,7 +213,9 @@ export function calcularLayout({
     perPage: cols * rows,
     maxCols, maxRows,
     gapMaxX, gapMaxY,
-    usadoX, usadoY,
+    usadoX: usadoXReal, usadoY: usadoYReal,
+    gapXReal, gapYReal,
+    repartirSobrante,
     sobraX, sobraY,
     desbordeX, desbordeY,
     offsetX, offsetY,
@@ -193,8 +227,8 @@ export function celda(layout, index) {
   const col = index % Math.max(1, layout.cols);
   const row = Math.floor(index / Math.max(1, layout.cols));
   return {
-    x: layout.offsetX + col * (layout.ticketW + layout.gapXMm),
-    y: layout.offsetY + row * (layout.ticketH + layout.gapYMm),
+    x: layout.offsetX + col * (layout.ticketW + (layout.gapXReal ?? layout.gapXMm)),
+    y: layout.offsetY + row * (layout.ticketH + (layout.gapYReal ?? layout.gapYMm)),
     w: layout.ticketW,
     h: layout.ticketH,
   };
@@ -346,8 +380,8 @@ export function marcasDeCorte(pdf, layout, cantidad, estilo = 'esquinas') {
   }
 
   const sep = 0.5; // separación entre el boleto y el inicio de la marca
-  const gx = Number(layout.gapXMm) || 0;
-  const gy = Number(layout.gapYMm) || 0;
+  const gx = Number(layout.gapXReal ?? layout.gapXMm) || 0;
+  const gy = Number(layout.gapYReal ?? layout.gapYMm) || 0;
   // Cada lado usa como máximo la mitad del hueco disponible
   const largoX = Math.max(1, Math.min(4, gx / 2 - sep));
   const largoY = Math.max(1, Math.min(4, gy / 2 - sep));

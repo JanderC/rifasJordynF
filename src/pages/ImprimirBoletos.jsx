@@ -49,6 +49,63 @@ import {
   disponible as storageDisponible,
 } from '../utils/perfilesImpresion';
 
+// ── Vista previa de la hoja (miniatura a escala real) ────────
+function VistaHoja({ layout, cantidad }) {
+  if (!layout || !layout.ok || !layout.perPage) return null;
+
+  const ANCHO = 168; // px de la miniatura
+  const k = ANCHO / layout.pageW;
+  const alto = layout.pageH * k;
+  const n = Math.min(cantidad || layout.perPage, layout.perPage);
+
+  const celdas = [];
+  for (let i = 0; i < layout.perPage; i++) {
+    const col = i % layout.cols;
+    const row = Math.floor(i / layout.cols);
+    const gx = layout.gapXReal != null ? layout.gapXReal : layout.gapXMm;
+    const gy = layout.gapYReal != null ? layout.gapYReal : layout.gapYMm;
+    celdas.push({
+      i,
+      x: (layout.offsetX + col * (layout.ticketW + gx)) * k,
+      y: (layout.offsetY + row * (layout.ticketH + gy)) * k,
+      w: layout.ticketW * k,
+      h: layout.ticketH * k,
+      lleno: i < n,
+    });
+  }
+
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <svg width={ANCHO} height={alto} style={{
+        border: '1px solid #ccc',
+        borderRadius: 3,
+        background: '#fff',
+        boxShadow: '0 1px 4px rgba(0,0,0,.12)',
+      }}>
+        {/* área útil */}
+        <rect
+          x={layout.margenMm * k} y={layout.margenMm * k}
+          width={(layout.pageW - layout.margenMm * 2) * k}
+          height={(layout.pageH - layout.margenMm * 2) * k}
+          fill="none" stroke="#e5e5e5" strokeDasharray="3 3"
+        />
+        {celdas.map(c => (
+          <rect key={c.i} x={c.x} y={c.y} width={c.w} height={c.h}
+            rx={1}
+            fill={c.lleno ? '#0abfbc' : '#f0f0f0'}
+            fillOpacity={c.lleno ? 0.65 : 1}
+            stroke={c.lleno ? '#089a98' : '#ddd'}
+            strokeWidth={0.7}
+          />
+        ))}
+      </svg>
+      <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>
+        Así queda la hoja
+      </div>
+    </div>
+  );
+}
+
 // ── Presets de separación entre boletos (mm) ─────────────────
 const SEPARACIONES = [
   { label: 'Pegados', mm: 0 },
@@ -146,6 +203,7 @@ export default function ImprimirBoletos() {
   const [gapXMm, setGapXMm]                 = useState(6);
   const [gapYMm, setGapYMm]                 = useState(6);
   const [gapLigado, setGapLigado]           = useState(true);         // mover ambos a la vez
+  const [repartirSobrante, setRepartirSobrante] = useState(true);     // el sobrante va a los huecos
   const [margenMm, setMargenMm]             = useState(6);
 
   // Rejilla: automática (los que quepan) o fijada a mano
@@ -189,6 +247,7 @@ export default function ImprimirBoletos() {
     gapXMm,
     gapYMm,
     gapLigado,
+    repartirSobrante,
     margenMm,
     rejillaManual,
     colsManual,
@@ -208,6 +267,7 @@ export default function ImprimirBoletos() {
     if (c.gapXMm != null) setGapXMm(c.gapXMm);
     if (c.gapYMm != null) setGapYMm(c.gapYMm);
     if (c.gapLigado != null) setGapLigado(!!c.gapLigado);
+    if (c.repartirSobrante != null) setRepartirSobrante(!!c.repartirSobrante);
     if (c.margenMm != null) setMargenMm(c.margenMm);
     if (c.rejillaManual != null) setRejillaManual(!!c.rejillaManual);
     if (c.colsManual != null) setColsManual(c.colsManual);
@@ -420,13 +480,15 @@ export default function ImprimirBoletos() {
       gapXMm,
       gapYMm,
       margenMm,
+      repartirSobrante,
       aspecto: aspectoDiseno,
       modoAjuste,
       cols: rejillaManual ? colsManual : null,
       rows: rejillaManual ? rowsManual : null,
     }),
     [ticketAnchoCm, ticketAltoCm, papel, orientacion, gapXMm, gapYMm,
-     margenMm, aspectoDiseno, modoAjuste, rejillaManual, colsManual, rowsManual]
+     margenMm, repartirSobrante, aspectoDiseno, modoAjuste,
+     rejillaManual, colsManual, rowsManual]
   );
 
   // Total de páginas (depende del layout actual)
@@ -846,7 +908,7 @@ export default function ImprimirBoletos() {
                           const hr = cm1(wr / aspectoDiseno);
                           const l = calcularLayout({
                             anchoCm: wr, altoCm: hr, papel, orientacion,
-                            gapXMm, gapYMm, margenMm,
+                            gapXMm, gapYMm, margenMm, repartirSobrante,
                             aspecto: aspectoDiseno, modoAjuste,
                           });
                           if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
@@ -1108,6 +1170,26 @@ export default function ImprimirBoletos() {
                     )}
                   </div>
 
+                  {/* Repartir el espacio sobrante */}
+                  <label style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    marginTop: 10, padding: '8px 10px',
+                    background: repartirSobrante ? '#e6faf9' : '#fff',
+                    border: `1px solid ${repartirSobrante ? '#9ae3e0' : '#e0e0e0'}`,
+                    borderRadius: 6, cursor: 'pointer',
+                  }}>
+                    <input type="checkbox" checked={repartirSobrante}
+                      onChange={e => setRepartirSobrante(e.target.checked)}
+                      style={{ marginTop: 2 }} />
+                    <span style={{ fontSize: 11.5, color: '#444', lineHeight: 1.5 }}>
+                      <strong>Repartir el espacio sobrante entre los boletos</strong><br />
+                      <span style={{ color: '#777' }}>
+                        Sin esto, todo lo que sobra se va a los márgenes de la hoja
+                        y los boletos quedan pegados entre sí con el hueco mínimo.
+                      </span>
+                    </span>
+                  </label>
+
                   {/* Estado / avisos de la hoja */}
                   <div style={{
                     marginTop: 10,
@@ -1120,20 +1202,33 @@ export default function ImprimirBoletos() {
                     color: layout.ok ? '#166534' : '#b91c1c',
                   }}>
                     {layout.ok ? (
-                      <>
-                        <div style={{ fontWeight: 700 }}>
-                          ✅ Cabe en la hoja: {layout.cols}×{layout.rows} = {layout.perPage} boletos
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1, minWidth: 220 }}>
+                          <div style={{ fontWeight: 700 }}>
+                            ✅ Cabe en la hoja: {layout.cols}×{layout.rows} = {layout.perPage} boletos
+                          </div>
+                          <div style={{
+                            fontWeight: 800, color: '#0e7490',
+                            background: '#ecfeff', border: '1px solid #a5f3fc',
+                            borderRadius: 5, padding: '4px 8px',
+                            display: 'inline-block', margin: '4px 0',
+                          }}>
+                            Hueco real entre boletos:{' '}
+                            ↔ {(layout.gapXReal ?? layout.gapXMm).toFixed(1)} mm ·
+                            ↕ {(layout.gapYReal ?? layout.gapYMm).toFixed(1)} mm
+                          </div>
+                          <div style={{ color: '#3f7d52' }}>
+                            Ocupa {layout.usadoX.toFixed(1)}×{layout.usadoY.toFixed(1)} mm de{' '}
+                            {layout.utilW.toFixed(1)}×{layout.utilH.toFixed(1)} mm útiles ·
+                            libre {layout.sobraX.toFixed(1)} mm a los lados y{' '}
+                            {layout.sobraY.toFixed(1)} mm arriba/abajo.
+                          </div>
+                          {(layout.avisos || []).map((a, i) => (
+                            <div key={i} style={{ color: '#a16207' }}>💡 {a}</div>
+                          ))}
                         </div>
-                        <div style={{ color: '#3f7d52' }}>
-                          Ocupa {layout.usadoX.toFixed(1)}×{layout.usadoY.toFixed(1)} mm de{' '}
-                          {layout.utilW.toFixed(1)}×{layout.utilH.toFixed(1)} mm útiles ·
-                          libre {layout.sobraX.toFixed(1)} mm a los lados y{' '}
-                          {layout.sobraY.toFixed(1)} mm arriba/abajo.
-                        </div>
-                        {(layout.avisos || []).map((a, i) => (
-                          <div key={i} style={{ color: '#a16207' }}>💡 {a}</div>
-                        ))}
-                      </>
+                        <VistaHoja layout={layout} cantidad={numerosImprimir.length} />
+                      </div>
                     ) : (
                       <>
                         <div style={{ fontWeight: 800 }}>🚫 SE SALE DE LA HOJA</div>
