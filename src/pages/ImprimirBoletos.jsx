@@ -36,6 +36,15 @@ import {
   cm1,
 } from '../utils/printTicket';
 
+// ── Presets de separación entre boletos (mm) ─────────────────
+const SEPARACIONES = [
+  { label: 'Pegados', mm: 0 },
+  { label: 'Justo',   mm: 3 },
+  { label: 'Normal',  mm: 6 },
+  { label: 'Amplio',  mm: 10 },
+  { label: 'Tijera',  mm: 14 },
+];
+
 // ── Normaliza números respetando serie (numero+serie = 1 boleto) ──
 // Devuelve array de objetos { numero, serie } sin duplicados exactos.
 function dedupNumeros(numerosFijos) {
@@ -119,12 +128,29 @@ export default function ImprimirBoletos() {
   const [ticketAltoCm, setTicketAltoCm]     = useState(6.5);
   const [mantenerProporcion, setMantenerProporcion] = useState(true);
   const [modoAjuste, setModoAjuste]         = useState('contener');   // 'contener' | 'estirar'
-  const [gapMm, setGapMm]                   = useState(3);
-  const [margenMm, setMargenMm]             = useState(5);
+
+  // Separación entre boletos (mm) — independiente en cada eje
+  const [gapXMm, setGapXMm]                 = useState(6);
+  const [gapYMm, setGapYMm]                 = useState(6);
+  const [gapLigado, setGapLigado]           = useState(true);         // mover ambos a la vez
+  const [margenMm, setMargenMm]             = useState(6);
+
+  // Rejilla: automática (los que quepan) o fijada a mano
+  const [rejillaManual, setRejillaManual]   = useState(false);
+  const [colsManual, setColsManual]         = useState(2);
+  const [rowsManual, setRowsManual]         = useState(3);
+
   const [dpi, setDpi]                       = useState(300);
   const [formato, setFormato]               = useState('PNG');        // 'PNG' | 'JPEG'
-  const [marcas, setMarcas]                 = useState(true);
+  const [estiloMarcas, setEstiloMarcas]     = useState('esquinas');   // 'esquinas' | 'marco' | 'ninguna'
   const [tamanoTocado, setTamanoTocado]     = useState(false);
+
+  const setGap = (eje, v) => {
+    const n = Math.max(0, Math.min(40, Number(v) || 0));
+    if (gapLigado) { setGapXMm(n); setGapYMm(n); }
+    else if (eje === 'x') setGapXMm(n);
+    else setGapYMm(n);
+  };
 
   // ── Carga inicial ──
   useEffect(() => {
@@ -240,10 +266,16 @@ export default function ImprimirBoletos() {
       altoCm: ticketAltoCm,
       papel,
       orientacion,
-      gapMm,
+      gapXMm,
+      gapYMm,
       margenMm,
+      aspecto: aspectoDiseno,
+      modoAjuste,
+      cols: rejillaManual ? colsManual : null,
+      rows: rejillaManual ? rowsManual : null,
     }),
-    [ticketAnchoCm, ticketAltoCm, papel, orientacion, gapMm, margenMm]
+    [ticketAnchoCm, ticketAltoCm, papel, orientacion, gapXMm, gapYMm,
+     margenMm, aspectoDiseno, modoAjuste, rejillaManual, colsManual, rowsManual]
   );
 
   // Total de páginas (depende del layout actual)
@@ -287,7 +319,7 @@ export default function ImprimirBoletos() {
         const items = numerosImprimir.slice(p * porPagina, (p + 1) * porPagina);
 
         // Guías de corte debajo de los boletos
-        if (marcas) marcasDeCorte(pdf, layout, items.length);
+        marcasDeCorte(pdf, layout, items.length, estiloMarcas);
 
         for (let k = 0; k < items.length; k++) {
           const { numero } = items[k];
@@ -522,7 +554,9 @@ export default function ImprimirBoletos() {
                           const wr = cm1(w);
                           const hr = cm1(wr / aspectoDiseno);
                           const l = calcularLayout({
-                            anchoCm: wr, altoCm: hr, papel, orientacion, gapMm, margenMm,
+                            anchoCm: wr, altoCm: hr, papel, orientacion,
+                            gapXMm, gapYMm, margenMm,
+                            aspecto: aspectoDiseno, modoAjuste,
                           });
                           if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
                             mejor = { w: wr, h: hr, perPage: l.perPage };
@@ -621,23 +655,15 @@ export default function ImprimirBoletos() {
                     </div>
                   </div>
 
-                  {/* Separación y margen */}
+                  {/* Margen de la hoja */}
                   <div>
-                    <div style={S.infoLabel}>Separación / margen (mm)</div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                      <input
-                        type="number" step={1} min={0} max={20}
-                        value={gapMm}
-                        onChange={e => setGapMm(Math.max(0, parseInt(e.target.value) || 0))}
-                        style={{ ...S.numInput, width: 62, marginTop: 0 }}
-                      />
-                      <input
-                        type="number" step={1} min={0} max={25}
-                        value={margenMm}
-                        onChange={e => setMargenMm(Math.max(0, parseInt(e.target.value) || 0))}
-                        style={{ ...S.numInput, width: 62, marginTop: 0 }}
-                      />
-                    </div>
+                    <div style={S.infoLabel}>Margen de hoja (mm)</div>
+                    <input
+                      type="number" step={1} min={0} max={30}
+                      value={margenMm}
+                      onChange={e => setMargenMm(Math.max(0, parseInt(e.target.value) || 0))}
+                      style={{ ...S.numInput, width: 72, marginTop: 4 }}
+                    />
                   </div>
 
                   {/* Resumen del layout en vivo */}
@@ -659,11 +685,192 @@ export default function ImprimirBoletos() {
                         }}>
                           {layout.cols} × {layout.rows} = <span style={{ fontSize: 18 }}>{layout.perPage}</span> boletos/hoja
                         </div>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                          Boleto impreso: {(layout.ticketW / 10).toFixed(1)}×{(layout.ticketH / 10).toFixed(1)} cm
+                          {' '}· separación {layout.gapXMm}/{layout.gapYMm} mm
+                        </div>
                       </>
                     ) : (
                       <div style={{ fontSize: 12, color: '#a02020', fontWeight: 600 }}>
                         ⚠️ {layout.error}
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ═══ Separación entre boletos ═══ */}
+                <div style={S.gapBox}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: 10, flexWrap: 'wrap', marginBottom: 10,
+                  }}>
+                    <strong style={{ fontSize: 12, color: '#0abfbc',
+                      textTransform: 'uppercase', letterSpacing: 1.2 }}>
+                      ✂️ Separación entre boletos
+                    </strong>
+                    <button
+                      onClick={() => {
+                        const n = !gapLigado;
+                        setGapLigado(n);
+                        if (n) setGapYMm(gapXMm);
+                      }}
+                      title={gapLigado
+                        ? 'Horizontal y vertical se mueven juntos'
+                        : 'Cada eje se ajusta por separado'}
+                      style={{
+                        ...S.btnToggle,
+                        padding: '4px 10px', fontSize: 11,
+                        background: gapLigado ? '#e6faf9' : '#fff',
+                        borderColor: gapLigado ? '#0abfbc' : '#ddd',
+                        color: gapLigado ? '#089a98' : '#888',
+                      }}
+                    >{gapLigado ? '🔗 Ejes ligados' : '⛓️‍💥 Ejes libres'}</button>
+
+                    <div style={{ display: 'flex', gap: 5, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                      {SEPARACIONES.map(p => {
+                        const activo = gapXMm === p.mm && gapYMm === p.mm;
+                        return (
+                          <button key={p.label}
+                            onClick={() => { setGapXMm(p.mm); setGapYMm(p.mm); }}
+                            title={`${p.mm} mm`}
+                            style={{
+                              ...S.btnToggle,
+                              padding: '4px 9px', fontSize: 11,
+                              background: activo ? '#0abfbc' : '#fff',
+                              color: activo ? '#fff' : '#666',
+                              borderColor: activo ? '#0abfbc' : '#ddd',
+                            }}>{p.label}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Sliders por eje */}
+                  {[
+                    { eje: 'x', label: '↔ Horizontal', val: gapXMm, max: layout.gapMaxX },
+                    { eje: 'y', label: '↕ Vertical',   val: gapYMm, max: layout.gapMaxY },
+                  ].map(({ eje, label, val, max }) => (
+                    <div key={eje} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6,
+                    }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, color: '#666',
+                        width: 88, flexShrink: 0,
+                      }}>{label}</span>
+                      <input
+                        type="range" min={0} max={30} step={0.5}
+                        value={val}
+                        onChange={e => setGap(eje, e.target.value)}
+                        style={{ flex: 1, minWidth: 120, accentColor: '#0abfbc' }}
+                      />
+                      <input
+                        type="number" step={0.5} min={0} max={40}
+                        value={val}
+                        onChange={e => setGap(eje, e.target.value)}
+                        style={{ ...S.numInput, width: 68, marginTop: 0 }}
+                      />
+                      <span style={{ fontSize: 11, color: '#999', width: 92, flexShrink: 0 }}>
+                        mm {isFinite(max) && max > 0 && `· máx ${max.toFixed(1)}`}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Rejilla manual */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e0e8e8',
+                    flexWrap: 'wrap',
+                  }}>
+                    <label style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, fontWeight: 600, color: '#666', cursor: 'pointer',
+                    }}>
+                      <input type="checkbox" checked={rejillaManual}
+                        onChange={e => {
+                          setRejillaManual(e.target.checked);
+                          if (e.target.checked) {
+                            setColsManual(layout.cols || 2);
+                            setRowsManual(layout.rows || 3);
+                          }
+                        }} />
+                      Fijar cuántos por hoja
+                    </label>
+                    {rejillaManual && (
+                      <>
+                        <span style={{ fontSize: 11, color: '#999' }}>columnas</span>
+                        <input type="number" min={1} max={12} value={colsManual}
+                          onChange={e => setColsManual(Math.max(1, parseInt(e.target.value) || 1))}
+                          style={{ ...S.numInput, width: 58, marginTop: 0 }} />
+                        <span style={{ fontSize: 11, color: '#999' }}>filas</span>
+                        <input type="number" min={1} max={12} value={rowsManual}
+                          onChange={e => setRowsManual(Math.max(1, parseInt(e.target.value) || 1))}
+                          style={{ ...S.numInput, width: 58, marginTop: 0 }} />
+                        <span style={{ fontSize: 11, color: '#666', fontWeight: 700 }}>
+                          = {colsManual * rowsManual} por hoja
+                        </span>
+                      </>
+                    )}
+                    {!rejillaManual && (
+                      <span style={{ fontSize: 11, color: '#999' }}>
+                        Automático: se acomodan los que quepan ({layout.maxCols || 0}×{layout.maxRows || 0})
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Estado / avisos de la hoja */}
+                  <div style={{
+                    marginTop: 10,
+                    padding: '9px 12px',
+                    borderRadius: 6,
+                    background: layout.ok ? '#f0fdf4' : '#fef2f2',
+                    border: `1px solid ${layout.ok ? '#bbf7d0' : '#fecaca'}`,
+                    fontSize: 11.5,
+                    lineHeight: 1.6,
+                    color: layout.ok ? '#166534' : '#b91c1c',
+                  }}>
+                    {layout.ok ? (
+                      <>
+                        <div style={{ fontWeight: 700 }}>
+                          ✅ Cabe en la hoja: {layout.cols}×{layout.rows} = {layout.perPage} boletos
+                        </div>
+                        <div style={{ color: '#3f7d52' }}>
+                          Ocupa {layout.usadoX.toFixed(1)}×{layout.usadoY.toFixed(1)} mm de{' '}
+                          {layout.utilW.toFixed(1)}×{layout.utilH.toFixed(1)} mm útiles ·
+                          libre {layout.sobraX.toFixed(1)} mm a los lados y{' '}
+                          {layout.sobraY.toFixed(1)} mm arriba/abajo.
+                        </div>
+                        {(layout.avisos || []).map((a, i) => (
+                          <div key={i} style={{ color: '#a16207' }}>💡 {a}</div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontWeight: 800 }}>🚫 SE SALE DE LA HOJA</div>
+                        <div>{layout.error}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                          {layout.cols > 1 && isFinite(layout.gapMaxX) && layout.desbordeX > 0.01 && (
+                            <button
+                              onClick={() => setGapXMm(Math.floor(layout.gapMaxX * 2) / 2)}
+                              style={{ ...S.btnToggle, padding: '5px 10px' }}>
+                              ↔ Bajar a {(Math.floor(layout.gapMaxX * 2) / 2).toFixed(1)} mm
+                            </button>
+                          )}
+                          {layout.rows > 1 && isFinite(layout.gapMaxY) && layout.desbordeY > 0.01 && (
+                            <button
+                              onClick={() => setGapYMm(Math.floor(layout.gapMaxY * 2) / 2)}
+                              style={{ ...S.btnToggle, padding: '5px 10px' }}>
+                              ↕ Bajar a {(Math.floor(layout.gapMaxY * 2) / 2).toFixed(1)} mm
+                            </button>
+                          )}
+                          {rejillaManual && (
+                            <button
+                              onClick={() => setRejillaManual(false)}
+                              style={{ ...S.btnToggle, padding: '5px 10px' }}>
+                              🔄 Volver a automático
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -750,15 +957,18 @@ export default function ImprimirBoletos() {
                       <option value="JPEG">JPEG · archivo liviano</option>
                     </select>
                   </div>
-                  <label style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    fontSize: 12, color: '#666', fontWeight: 600,
-                    cursor: 'pointer', paddingBottom: 8,
-                  }}>
-                    <input type="checkbox" checked={marcas}
-                      onChange={e => setMarcas(e.target.checked)} />
-                    ✂️ Marcas de corte
-                  </label>
+                  <div>
+                    <div style={S.infoLabel}>Guías de corte</div>
+                    <select
+                      value={estiloMarcas}
+                      onChange={e => setEstiloMarcas(e.target.value)}
+                      style={{ ...S.numInput, width: 190, textAlign: 'left' }}
+                    >
+                      <option value="esquinas">✂️ Marcas en las esquinas</option>
+                      <option value="marco">▭ Recuadro completo</option>
+                      <option value="ninguna">∅ Sin guías</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1073,6 +1283,13 @@ const S = {
     fontFamily: 'inherit',
     boxShadow: '0 2px 8px rgba(10,191,188,.3)',
     transition: 'transform .1s',
+  },
+  gapBox: {
+    marginTop: 12,
+    padding: '12px 14px',
+    background: '#f8fafa',
+    border: '1px solid #e0e8e8',
+    borderRadius: 8,
   },
   configBox: {
     background: C.surface,

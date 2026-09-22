@@ -40,66 +40,161 @@ export function tamanoHoja(papel = 'a4', orientacion = 'horizontal') {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   calcularLayout — cuántos boletos caben y dónde va cada uno
+   calcularLayout — cuántos boletos caben, con qué separación,
+   y AVISA si la combinación se sale de la hoja.
    Todo en milímetros.
+
+   • gapXMm / gapYMm → separación entre boletos (columnas / filas)
+   • margenMm        → margen de la hoja (zona que no imprime)
+   • aspecto         → proporción real del diseño (w/h). Si el modo es
+                       'contener' se usa el tamaño EFECTIVO del boleto
+                       dibujado, no la caja pedida: así la separación
+                       que ves es la separación real entre boletos.
+   • cols / rows     → si se pasan, la rejilla es MANUAL y entonces sí
+                       puede desbordar (lo reportamos en `error`).
 ════════════════════════════════════════════════════════════════ */
 export function calcularLayout({
   anchoCm,
   altoCm,
   papel = 'a4',
   orientacion = 'horizontal',
-  gapMm = 3,
+  gapXMm = 5,
+  gapYMm = 5,
   margenMm = 5,
+  aspecto = null,
+  modoAjuste = 'contener',
+  cols: colsFijas = null,
+  rows: rowsFijas = null,
 }) {
   const { pageW, pageH } = tamanoHoja(papel, orientacion);
 
-  const ticketW = Math.max(1, (Number(anchoCm) || 0) * 10);
-  const ticketH = Math.max(1, (Number(altoCm) || 0) * 10);
+  const cajaW = Math.max(1, (Number(anchoCm) || 0) * 10);
+  const cajaH = Math.max(1, (Number(altoCm) || 0) * 10);
 
-  // Área útil descontando el margen físico de la impresora
-  const utilW = pageW - margenMm * 2;
-  const utilH = pageH - margenMm * 2;
+  // Tamaño realmente ocupado por el boleto impreso
+  let ticketW = cajaW;
+  let ticketH = cajaH;
+  if (aspecto && modoAjuste === 'contener') {
+    const r = ajustarEnCelda(aspecto, cajaW, cajaH, 'contener');
+    ticketW = r.w;
+    ticketH = r.h;
+  }
 
-  if (ticketW > utilW || ticketH > utilH) {
+  const gx = Math.max(0, Number(gapXMm) || 0);
+  const gy = Math.max(0, Number(gapYMm) || 0);
+  const mg = Math.max(0, Number(margenMm) || 0);
+
+  const utilW = pageW - mg * 2;
+  const utilH = pageH - mg * 2;
+
+  const base = {
+    pageW, pageH,
+    cajaW, cajaH,
+    ticketW, ticketH,
+    gapXMm: gx, gapYMm: gy, margenMm: mg,
+    utilW, utilH,
+    aspecto, modoAjuste,
+    manual: !!(colsFijas || rowsFijas),
+  };
+
+  // ── El boleto por sí solo no cabe ───────────────────────────
+  if (ticketW > utilW + 0.01 || ticketH > utilH + 0.01) {
     return {
+      ...base,
       ok: false,
-      pageW, pageH, ticketW, ticketH,
-      cols: 0, rows: 0, perPage: 0, offsetX: 0, offsetY: 0, gapMm, margenMm,
-      error: `El boleto (${cm1(anchoCm)}×${cm1(altoCm)} cm) no cabe en ${PAPELES[papel].label} ${orientacion} `
-           + `(área útil ${cm1(utilW / 10)}×${cm1(utilH / 10)} cm). Reduce el tamaño o el margen.`,
+      cols: 0, rows: 0, perPage: 0,
+      offsetX: 0, offsetY: 0,
+      maxCols: 0, maxRows: 0,
+      gapMaxX: 0, gapMaxY: 0,
+      sobraX: 0, sobraY: 0,
+      desbordeX: Math.max(0, ticketW - utilW),
+      desbordeY: Math.max(0, ticketH - utilH),
+      avisos: [],
+      error: `Un solo boleto de ${(ticketW / 10).toFixed(1)}×${(ticketH / 10).toFixed(1)} cm `
+           + `no cabe en ${PAPELES[papel].label} ${orientacion} con margen de ${mg} mm `
+           + `(área útil ${(utilW / 10).toFixed(1)}×${(utilH / 10).toFixed(1)} cm). `
+           + `Reduce el tamaño del boleto o el margen.`,
     };
   }
 
+  // ── Cuántos caben con esta separación ───────────────────────
   // n·W + (n-1)·gap ≤ util  →  n ≤ (util + gap) / (W + gap)
-  const cols = Math.max(1, Math.floor((utilW + gapMm) / (ticketW + gapMm)));
-  const rows = Math.max(1, Math.floor((utilH + gapMm) / (ticketH + gapMm)));
+  const maxCols = Math.max(1, Math.floor((utilW + gx) / (ticketW + gx) + 1e-9));
+  const maxRows = Math.max(1, Math.floor((utilH + gy) / (ticketH + gy) + 1e-9));
 
-  const usadoX = cols * ticketW + (cols - 1) * gapMm;
-  const usadoY = rows * ticketH + (rows - 1) * gapMm;
+  const cols = colsFijas ? Math.max(1, Math.round(colsFijas)) : maxCols;
+  const rows = rowsFijas ? Math.max(1, Math.round(rowsFijas)) : maxRows;
 
-  // Centrado dentro del área útil
-  const offsetX = margenMm + Math.max(0, (utilW - usadoX) / 2);
-  const offsetY = margenMm + Math.max(0, (utilH - usadoY) / 2);
+  const usadoX = cols * ticketW + (cols - 1) * gx;
+  const usadoY = rows * ticketH + (rows - 1) * gy;
+
+  const desbordeX = Math.max(0, usadoX - utilW);
+  const desbordeY = Math.max(0, usadoY - utilH);
+  const cabe = desbordeX < 0.01 && desbordeY < 0.01;
+
+  // Separación MÁXIMA que admite esta rejilla sin desbordar
+  const gapMaxX = cols > 1 ? Math.max(0, (utilW - cols * ticketW) / (cols - 1)) : Infinity;
+  const gapMaxY = rows > 1 ? Math.max(0, (utilH - rows * ticketH) / (rows - 1)) : Infinity;
+
+  // Espacio libre que sobra (útil para saber si puedes separar más)
+  const sobraX = utilW - usadoX;
+  const sobraY = utilH - usadoY;
+
+  const offsetX = mg + Math.max(0, sobraX / 2);
+  const offsetY = mg + Math.max(0, sobraY / 2);
+
+  // ── Avisos (no bloquean, solo informan) ─────────────────────
+  const avisos = [];
+  if (cabe) {
+    // ¿Cuántos caldrían si los pegara más?
+    const sinGapCols = Math.max(1, Math.floor(utilW / ticketW + 1e-9));
+    const sinGapRows = Math.max(1, Math.floor(utilH / ticketH + 1e-9));
+    const perdidos = sinGapCols * sinGapRows - cols * rows;
+    if (perdidos > 0 && (gx > 0 || gy > 0)) {
+      avisos.push(
+        `Con esta separación caben ${cols * rows} por hoja; sin separación cabrían ${sinGapCols * sinGapRows}.`
+      );
+    }
+    if (isFinite(gapMaxX) && gapMaxX - gx > 1) {
+      avisos.push(`Puedes separar hasta ${gapMaxX.toFixed(1)} mm en horizontal sin perder boletos.`);
+    }
+    if (isFinite(gapMaxY) && gapMaxY - gy > 1) {
+      avisos.push(`Puedes separar hasta ${gapMaxY.toFixed(1)} mm en vertical sin perder boletos.`);
+    }
+  }
+
+  let error = null;
+  if (!cabe) {
+    const partes = [];
+    if (desbordeX > 0.01) partes.push(`${desbordeX.toFixed(1)} mm de ancho`);
+    if (desbordeY > 0.01) partes.push(`${desbordeY.toFixed(1)} mm de alto`);
+    error = `La rejilla de ${cols}×${rows} con ${gx}/${gy} mm de separación `
+          + `se sale de la hoja por ${partes.join(' y ')}.`;
+  }
 
   return {
-    ok: true,
-    error: null,
-    pageW, pageH,
-    ticketW, ticketH,
+    ...base,
+    ok: cabe,
+    error,
+    avisos,
     cols, rows,
     perPage: cols * rows,
+    maxCols, maxRows,
+    gapMaxX, gapMaxY,
+    usadoX, usadoY,
+    sobraX, sobraY,
+    desbordeX, desbordeY,
     offsetX, offsetY,
-    gapMm, margenMm,
   };
 }
 
 // Posición (mm) de la celda `index` dentro de la hoja
 export function celda(layout, index) {
-  const col = index % layout.cols;
-  const row = Math.floor(index / layout.cols);
+  const col = index % Math.max(1, layout.cols);
+  const row = Math.floor(index / Math.max(1, layout.cols));
   return {
-    x: layout.offsetX + col * (layout.ticketW + layout.gapMm),
-    y: layout.offsetY + row * (layout.ticketH + layout.gapMm),
+    x: layout.offsetX + col * (layout.ticketW + layout.gapXMm),
+    y: layout.offsetY + row * (layout.ticketH + layout.gapYMm),
     w: layout.ticketW,
     h: layout.ticketH,
   };
@@ -230,24 +325,46 @@ export async function capturarNodo(nodo, { dpi = 300, fondo = '#ffffff' } = {}) 
 }
 
 /* ════════════════════════════════════════════════════════════════
-   marcasDeCorte — guías finas en las esquinas de cada boleto
+   marcasDeCorte — guías para tijera/guillotina
+   estilo: 'esquinas' (marcas en L) | 'marco' (rectángulo fino)
+   Las marcas se separan 0.5 mm del boleto y nunca se tocan entre
+   celdas: antes, con 3 mm de separación, las marcas de boletos
+   vecinos se unían y parecía que los boletos estaban pegados.
 ════════════════════════════════════════════════════════════════ */
-export function marcasDeCorte(pdf, layout, cantidad) {
-  const largo = Math.min(3, layout.gapMm > 0 ? layout.gapMm : 3);
-  pdf.setDrawColor(170);
+export function marcasDeCorte(pdf, layout, cantidad, estilo = 'esquinas') {
+  if (!cantidad || estilo === 'ninguna') return;
+
+  pdf.setDrawColor(150);
   pdf.setLineWidth(0.08);
+
+  if (estilo === 'marco') {
+    for (let i = 0; i < cantidad; i++) {
+      const c = celda(layout, i);
+      pdf.rect(c.x, c.y, c.w, c.h);
+    }
+    return;
+  }
+
+  const sep = 0.5; // separación entre el boleto y el inicio de la marca
+  const gx = Number(layout.gapXMm) || 0;
+  const gy = Number(layout.gapYMm) || 0;
+  // Cada lado usa como máximo la mitad del hueco disponible
+  const largoX = Math.max(1, Math.min(4, gx / 2 - sep));
+  const largoY = Math.max(1, Math.min(4, gy / 2 - sep));
 
   for (let i = 0; i < cantidad; i++) {
     const c = celda(layout, i);
     const esquinas = [
-      [c.x, c.y, -1, -1],
-      [c.x + c.w, c.y, 1, -1],
-      [c.x, c.y + c.h, -1, 1],
-      [c.x + c.w, c.y + c.h, 1, 1],
+      [c.x,       c.y,       -1, -1],
+      [c.x + c.w, c.y,        1, -1],
+      [c.x,       c.y + c.h, -1,  1],
+      [c.x + c.w, c.y + c.h,  1,  1],
     ];
     esquinas.forEach(([x, y, sx, sy]) => {
-      pdf.line(x, y, x + sx * largo, y);
-      pdf.line(x, y, x, y + sy * largo);
+      // marca horizontal (se aleja en X)
+      pdf.line(x + sx * sep, y, x + sx * (sep + largoX), y);
+      // marca vertical (se aleja en Y)
+      pdf.line(x, y + sy * sep, x, y + sy * (sep + largoY));
     });
   }
 }
