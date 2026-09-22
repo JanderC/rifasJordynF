@@ -232,7 +232,7 @@ export default function ImprimirBoletos() {
       setPerfilActivo(def.id);
       setAvisoPerfil(`Se aplicaron las medidas "${def.nombre}"`);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Solo al montar: aplica el perfil ⭐ una única vez.
   }, []);
 
   const flash = (msg) => {
