@@ -16,6 +16,12 @@ export const DEFAULT_DESIGN = {
   boletoLabel:      'BOLETO',
   valorSufijo:      'PESOS',
   talonText:        'BOLETO SIN CANCELAR NO JUEGA',
+
+  // ── Líneas estructurales (se pueden ocultar desde el editor) ──
+  lineaTalon:       true,   // línea punteada que separa el talón
+  lineaTira:        true,   // línea fina de la tira vertical
+  lineaPie:         true,   // línea punteada sobre el pie
+  bordeTicket:      true,   // marco exterior del boleto
   footerText:       'Conserve este boleto · Válido solo con número legible',
 
   // ── Colores ─────────────────────────────────────────────
@@ -621,7 +627,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
 
   return `
 <div style="width:${D.ticketWidth}px;margin:14px auto;font-family:'Poppins','Arial Black',sans-serif;
-  page-break-inside:avoid;${paperBg}${paperTex}border:${D.frameWidth || 2.5}px solid ${D.frameColor || D.colorBorde};
+  page-break-inside:avoid;${paperBg}${paperTex}border:${D.frameWidth === 0 ? 0 : (D.frameWidth || 2.5)}px solid ${D.bordeTicket === false ? 'transparent' : (D.frameColor || D.colorBorde)};
   display:flex;min-height:${D.ticketHeight}px;position:relative;overflow:hidden;">
 
   <!-- ═══ CAPA 0: Imágenes de fondo ═══ -->
@@ -634,7 +640,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   ${watermark}
 
   <!-- ═══ TALÓN VERTICAL IZQUIERDO ═══ -->
-  <div style="width:115px;flex-shrink:0;border-right:2px dashed ${D.colorBorde};
+  <div style="width:115px;flex-shrink:0;border-right:2px dashed ${D.lineaTalon === false ? 'transparent' : D.colorBorde};
     display:flex;flex-direction:column;align-items:center;padding:10px 6px;position:relative;z-index:2;">
 
     <div style="${D.numTalonBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 12px;
@@ -662,7 +668,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   </div>
 
   <!-- Tira vertical "BOLETO SIN CANCELAR..." -->
-  <div style="width:22px;flex-shrink:0;border-right:1px solid ${D.colorBorde};
+  <div style="width:22px;flex-shrink:0;border-right:1px solid ${D.lineaTira === false ? 'transparent' : D.colorBorde};
     display:flex;align-items:center;justify-content:center;position:relative;z-index:2;">
     <div style="transform:rotate(-90deg);white-space:nowrap;
       font-size:${px(D.sizeTalonText)}px;font-weight:800;color:#000;letter-spacing:2px;">
@@ -754,7 +760,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:flex-end;
-      margin-top:6px;padding-top:6px;border-top:1px dashed ${D.colorBorde}40;">
+      margin-top:6px;padding-top:6px;border-top:1px dashed ${D.lineaPie === false ? 'transparent' : D.colorBorde + '40'};">
 
       <div style="flex:1;font-size:${px(D.sizeMotivac)}px;font-weight:600;color:${D.colorMotivac};
         font-style:italic;line-height:1.2;padding-right:10px;max-width:55%;">
@@ -1300,7 +1306,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
       width:'100%', maxWidth:D.ticketWidth, margin:'0 auto',
       fontFamily:"'Poppins','Arial Black',sans-serif",
       ...paperBg,
-      border:`${D.frameWidth || 2.5}px solid ${D.frameColor || STROKE}`,
+      border:`${D.frameWidth === 0 ? 0 : (D.frameWidth || 2.5)}px solid ${D.bordeTicket === false ? 'transparent' : (D.frameColor || STROKE)}`,
       display:'flex', minHeight:D.ticketHeight, position:'relative',
       overflow:'hidden',
     }}>
@@ -1320,7 +1326,8 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
 
       {/* ── Talón vertical izquierdo ── */}
       <div style={{
-        width:115, flexShrink:0, borderRight:`2px dashed ${STROKE}`,
+        width:115, flexShrink:0,
+        borderRight:`2px dashed ${D.lineaTalon === false ? 'transparent' : STROKE}`,
         display:'flex', flexDirection:'column', alignItems:'center',
         padding:'10px 6px', position:'relative', zIndex:2,
       }}>
@@ -1356,7 +1363,8 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
 
       {/* ── Tira vertical ── */}
       <div style={{
-        width:22, flexShrink:0, borderRight:`1px solid ${STROKE}`,
+        width:22, flexShrink:0,
+        borderRight:`1px solid ${D.lineaTira === false ? 'transparent' : STROKE}`,
         display:'flex', alignItems:'center', justifyContent:'center',
         position:'relative', zIndex:2,
       }}>
@@ -1467,7 +1475,8 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
 
         <div style={{
           display:'flex', justifyContent:'space-between', alignItems:'flex-end',
-          marginTop:6, paddingTop:6, borderTop:`1px dashed ${STROKE}40`,
+          marginTop:6, paddingTop:6,
+          borderTop:`1px dashed ${D.lineaPie === false ? 'transparent' : STROKE + '40'}`,
         }}>
           <div style={{
             flex:1, fontSize:px(D.sizeMotivac), fontWeight:600, color:D.colorMotivac,

@@ -24,6 +24,7 @@ import { DEFAULT_DESIGN } from '../components/Ticket';
 import {
   PAPELES,
   calcularLayout,
+  tamanoHoja,
   celda,
   ajustarEnCelda,
   capturarNodo,
@@ -490,6 +491,49 @@ export default function ImprimirBoletos() {
      margenMm, repartirSobrante, aspectoDiseno, modoAjuste,
      rejillaManual, colsManual, rowsManual]
   );
+
+  // ── ¿Qué tamaño debe tener el boleto para que quepan los mismos
+  //    por hoja PERO con la separación que pediste? ──
+  // Es el cálculo inverso: fijas rejilla + separación y sale el tamaño.
+  const sugerenciaTamano = useMemo(() => {
+    const cols = rejillaManual ? colsManual : (layout.cols || 1);
+    const rows = rejillaManual ? rowsManual : (layout.rows || 1);
+    if (!cols || !rows) return null;
+
+    const { pageW, pageH } = tamanoHoja(papel, orientacion);
+    const utilW = pageW - margenMm * 2;
+    const utilH = pageH - margenMm * 2;
+
+    let w = (utilW - (cols - 1) * gapXMm) / cols;
+    let h = (utilH - (rows - 1) * gapYMm) / rows;
+    if (w <= 10 || h <= 10) return null;
+
+    // Si respetamos la proporción del diseño, manda el lado que se queda corto
+    if (modoAjuste === 'contener' && aspectoDiseno) {
+      const wAjustado = Math.min(w, h * aspectoDiseno);
+      w = wAjustado;
+      h = wAjustado / aspectoDiseno;
+    }
+
+    // Redondeo hacia abajo al milímetro: nunca de más
+    const anchoCm = Math.floor(w) / 10;
+    const altoCm  = Math.floor(h) / 10;
+    const cambia = Math.abs(anchoCm - ticketAnchoCm) > 0.05
+                || Math.abs(altoCm - ticketAltoCm) > 0.05;
+
+    return { cols, rows, anchoCm, altoCm, cambia };
+  }, [layout.cols, layout.rows, rejillaManual, colsManual, rowsManual,
+      papel, orientacion, margenMm, gapXMm, gapYMm, modoAjuste,
+      aspectoDiseno, ticketAnchoCm, ticketAltoCm]);
+
+  const aplicarSugerencia = () => {
+    if (!sugerenciaTamano) return;
+    bloquearAutoTamano.current = true;
+    setTamanoTocado(true);
+    setTicketAnchoCm(sugerenciaTamano.anchoCm);
+    setTicketAltoCm(sugerenciaTamano.altoCm);
+    flash(`Boleto ajustado a ${sugerenciaTamano.anchoCm}×${sugerenciaTamano.altoCm} cm`);
+  };
 
   // Total de páginas (depende del layout actual)
   const totalPaginas = layout.ok && layout.perPage > 0
@@ -1169,6 +1213,42 @@ export default function ImprimirBoletos() {
                       </span>
                     )}
                   </div>
+
+                  {/* Ajuste inverso: mismo número de boletos, con separación real */}
+                  {sugerenciaTamano && (
+                    <div style={{
+                      marginTop: 10, padding: '9px 12px',
+                      background: sugerenciaTamano.cambia ? '#fff7ed' : '#f8fafa',
+                      border: `1px solid ${sugerenciaTamano.cambia ? '#fed7aa' : '#e0e8e8'}`,
+                      borderRadius: 6,
+                      display: 'flex', alignItems: 'center',
+                      gap: 10, flexWrap: 'wrap',
+                    }}>
+                      <span style={{ fontSize: 11.5, color: '#7c4a13', lineHeight: 1.5, flex: 1, minWidth: 220 }}>
+                        {sugerenciaTamano.cambia ? (
+                          <>
+                            ¿No te deja separar? El boleto ocupa casi toda la hoja.
+                            Para conservar <strong>{sugerenciaTamano.cols}×{sugerenciaTamano.rows} = {sugerenciaTamano.cols * sugerenciaTamano.rows} boletos</strong>
+                            {' '}con {gapXMm}/{gapYMm} mm de separación, cada boleto debe medir{' '}
+                            <strong>{sugerenciaTamano.anchoCm}×{sugerenciaTamano.altoCm} cm</strong>.
+                          </>
+                        ) : (
+                          <>✅ El tamaño actual ya es el máximo para {sugerenciaTamano.cols}×{sugerenciaTamano.rows} con esta separación.</>
+                        )}
+                      </span>
+                      {sugerenciaTamano.cambia && (
+                        <button
+                          onClick={aplicarSugerencia}
+                          style={{
+                            ...S.btnToggle,
+                            padding: '7px 12px',
+                            background: '#f0a500', borderColor: '#f0a500', color: '#fff',
+                          }}>
+                          📏 Ajustar a {sugerenciaTamano.anchoCm}×{sugerenciaTamano.altoCm} cm
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Repartir el espacio sobrante */}
                   <label style={{

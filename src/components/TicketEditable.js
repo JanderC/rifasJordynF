@@ -1751,42 +1751,6 @@ function ElementPanel({
           ))}
         </div>
 
-        {/* ═══ CUADRO DEL N° DE BOLETO (solo para esos dos campos) ═══ */}
-        {!isCustom && (selection.id === 'numBoletoIzq' || selection.id === 'numBoletoDer') && (() => {
-          const esIzq      = selection.id === 'numBoletoIzq';
-          const keyBorde   = esIzq ? 'numTalonBorde' : 'numDerBorde';
-          const keyFondo   = esIzq ? 'numTalonFondo' : 'numDerFondo';
-          return (
-            <div style={sectionStyle}>
-              <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
-                🔲 Cuadro de este número
-              </strong>
-
-              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                Contorno del cuadro
-                <input type="checkbox" checked={design[keyBorde] !== false}
-                  onChange={e => onUpdateDesign(keyBorde, e.target.checked)} />
-              </label>
-
-              <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                Fondo blanco
-                <input type="checkbox" checked={design[keyFondo] !== false}
-                  onChange={e => onUpdateDesign(keyFondo, e.target.checked)} />
-              </label>
-
-              <NumberSlider label="Contorno del número (texto)" suffix="px"
-                min={0} max={4} step={0.5}
-                value={design.numStrokeWidth || 0}
-                onChange={v => onUpdateDesign('numStrokeWidth', v)} />
-              {(design.numStrokeWidth || 0) > 0 && (
-                <ColorRow label="Color del contorno"
-                  value={design.numStrokeColor || '#000'}
-                  onChange={v => onUpdateDesign('numStrokeColor', v)} />
-              )}
-            </div>
-          );
-        })()}
-
         {/* ═══ EFECTOS AVANZADOS ═══ */}
         <div style={sectionStyle}>
           <div style={collapsibleHeaderStyle} onClick={() => setShowAdvanced(v => !v)}>
@@ -2315,47 +2279,42 @@ function EstiloPanel({ design, onUpdateDesign, onClose }) {
           value={design.frameColor || design.colorBorde || '#000'}
           onChange={v => onUpdateDesign('frameColor', v)} />
         <NumberSlider label="Grosor del marco" suffix="px"
-          min={1} max={8} step={0.5}
-          value={design.frameWidth || 2.5}
+          min={0} max={8} step={0.5}
+          value={design.frameWidth === 0 ? 0 : (design.frameWidth ?? 2.5)}
           onChange={v => onUpdateDesign('frameWidth', v)} />
 
-        {/* ── CUADRO DEL NÚMERO ── */}
+        {/* ── LÍNEAS ESTRUCTURALES ── */}
         <div style={sectionStyle}>
-          <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 8 }}>
-            🔢 Cuadro del número
+          <strong style={{ fontSize: 12, color: '#7c3aed', display: 'block', marginBottom: 4 }}>
+            📏 Líneas del boleto
           </strong>
-
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            Contorno — talón (izq.)
-            <input type="checkbox" checked={design.numTalonBorde !== false}
-              onChange={e => onUpdateDesign('numTalonBorde', e.target.checked)} />
-          </label>
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            Fondo blanco — talón (izq.)
-            <input type="checkbox" checked={design.numTalonFondo !== false}
-              onChange={e => onUpdateDesign('numTalonFondo', e.target.checked)} />
-          </label>
-
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-            Contorno — cuerpo (der.)
-            <input type="checkbox" checked={design.numDerBorde !== false}
-              onChange={e => onUpdateDesign('numDerBorde', e.target.checked)} />
-          </label>
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            Fondo blanco — cuerpo (der.)
-            <input type="checkbox" checked={design.numDerFondo !== false}
-              onChange={e => onUpdateDesign('numDerFondo', e.target.checked)} />
-          </label>
-
-          <NumberSlider label="Contorno del número (texto)" suffix="px"
-            min={0} max={4} step={0.5}
-            value={design.numStrokeWidth || 0}
-            onChange={v => onUpdateDesign('numStrokeWidth', v)} />
-          {(design.numStrokeWidth || 0) > 0 && (
-            <ColorRow label="Color del contorno"
-              value={design.numStrokeColor || '#000'}
-              onChange={v => onUpdateDesign('numStrokeColor', v)} />
-          )}
+          <p style={{ margin: '0 0 8px', fontSize: 11, color: '#888', lineHeight: 1.45 }}>
+            Quita las que no uses. El espacio y la posición de los textos
+            no cambian: solo se oculta la línea.
+          </p>
+          {[
+            { k: 'lineaTalon',  t: 'Línea punteada del talón',   d: 'Separa NOMBRE / TEL del cuerpo' },
+            { k: 'lineaTira',   t: 'Línea de la tira vertical',  d: 'Junto a "BOLETO SIN CANCELAR…"' },
+            { k: 'lineaPie',    t: 'Línea punteada del pie',     d: 'Sobre el valor del boleto' },
+            { k: 'bordeTicket', t: 'Marco exterior',             d: 'Recuadro alrededor de todo' },
+          ].map(({ k, t, d }) => (
+            <label key={k} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+              padding: '7px 9px', marginBottom: 5,
+              background: design[k] === false ? '#faf7ff' : '#f8fafa',
+              border: '1px solid ' + (design[k] === false ? '#e5d9ff' : '#e0e8e8'),
+              borderRadius: 6, cursor: 'pointer',
+            }}>
+              <input type="checkbox"
+                checked={design[k] !== false}
+                onChange={e => onUpdateDesign(k, e.target.checked)}
+                style={{ marginTop: 2 }} />
+              <span style={{ fontSize: 11.5, color: '#333', lineHeight: 1.4 }}>
+                <strong>{t}</strong><br />
+                <span style={{ color: '#999', fontSize: 10.5 }}>{d}</span>
+              </span>
+            </label>
+          ))}
         </div>
 
         {/* ── WATERMARK ── */}
@@ -3079,7 +3038,7 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               width: D.ticketWidth, height: D.ticketHeight,
               fontFamily: "'Poppins','Arial Black',sans-serif",
               ...paperBg,
-              border: `${D.frameWidth || 2.5}px solid ${D.frameColor || STROKE}`,
+              border: `${D.frameWidth === 0 ? 0 : (D.frameWidth || 2.5)}px solid ${D.bordeTicket === false ? 'transparent' : (D.frameColor || STROKE)}`,
               position: 'relative', overflow: 'hidden',
               transform: ticketScale < 1 ? `scale(${ticketScale})` : 'none',
               transformOrigin: 'top left',
@@ -3101,24 +3060,26 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
             ))}
             <WatermarkLayer design={D} />
 
-            {/* Líneas decorativas fijas (talón) */}
-            <div style={{ position: 'absolute', left: 115, top: 0, bottom: 0,
-              borderLeft: `2px dashed ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
-            <div style={{ position: 'absolute', left: 137, top: 0, bottom: 0,
-              borderLeft: `1px solid ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
-            <div style={{ position: 'absolute', left: 145, right: 10,
-              bottom: 50, height: 0,
-              borderTop: `1px dashed ${STROKE}40`, pointerEvents: 'none', zIndex: 1 }} />
+            {/* Líneas estructurales (opcionales desde 🎨 Estilo) */}
+            {D.lineaTalon !== false && (
+              <div style={{ position: 'absolute', left: 115, top: 0, bottom: 0,
+                borderLeft: `2px dashed ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
+            )}
+            {D.lineaTira !== false && (
+              <div style={{ position: 'absolute', left: 137, top: 0, bottom: 0,
+                borderLeft: `1px solid ${STROKE}`, pointerEvents: 'none', zIndex: 1 }} />
+            )}
+            {D.lineaPie !== false && (
+              <div style={{ position: 'absolute', left: 145, right: 10,
+                bottom: 50, height: 0,
+                borderTop: `1px dashed ${STROKE}40`, pointerEvents: 'none', zIndex: 1 }} />
+            )}
 
             {/* ═══ TEXTOS BUILT-IN ═══ */}
             {F('numBoletoIzq', numBoleto, 'numBoleto', {
-              ...(D.numTalonBorde === false ? {} : { border: `2px solid ${STROKE}` }),
-              padding: '6px 12px',
+              border: `2px solid ${STROKE}`, padding: '6px 12px',
               fontSize: pxScaled(D.sizeNumTalon), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2,
-              ...(D.numTalonFondo === false ? {} : { background: '#fff' }),
-              WebkitTextStroke: D.numStrokeWidth > 0
-                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
+              color: D.colorTalon, letterSpacing: 2, background: '#fff',
             })}
             {F('nombreLabel', 'NOMBRE:', '_label_NOMBRE', {
               fontSize: pxScaled(D.sizeNombre), fontWeight: 700, color: '#000',
@@ -3152,13 +3113,9 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               color: D.colorFecha, fontStyle: 'italic', letterSpacing: .5,
             })}
             {F('numBoletoDer', numBoleto, 'numBoleto', {
-              ...(D.numDerBorde === false ? {} : { border: `2px solid ${STROKE}` }),
-              padding: '6px 14px',
+              border: `2px solid ${STROKE}`, padding: '6px 14px',
               fontSize: pxScaled(D.sizeNumDer), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2,
-              ...(D.numDerFondo === false ? {} : { background: '#fff' }),
-              WebkitTextStroke: D.numStrokeWidth > 0
-                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
+              color: D.colorTalon, letterSpacing: 2, background: '#fff',
             })}
 
             {F('premioLabel', D.premioLabel, 'premioLabel', {
