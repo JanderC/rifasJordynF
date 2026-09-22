@@ -1613,6 +1613,71 @@ function ElementPanel({
 
       <div style={{ padding: 14, overflowY: 'auto' }}>
 
+        {/* ── Recuadro y contorno del N° de boleto ── */}
+        {!isCustom && (selection.id === 'numBoletoIzq' || selection.id === 'numBoletoDer') && (() => {
+          const esDer   = selection.id === 'numBoletoDer';
+          const kBorde  = esDer ? 'numDerBorde' : 'numTalonBorde';
+          const kFondo  = esDer ? 'numDerFondo' : 'numTalonFondo';
+          const conBorde = design[kBorde] !== false;
+          const conFondo = design[kFondo] !== false;
+          return (
+            <div style={{
+              background: '#f8fafa', border: '1px solid #e0e8e8',
+              borderRadius: 8, padding: 10, marginBottom: 12,
+            }}>
+              <strong style={{ fontSize: 12, color: '#089a98', display: 'block', marginBottom: 8 }}>
+                🔲 Recuadro del número
+              </strong>
+
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 12, color: '#444', cursor: 'pointer', marginBottom: 6,
+              }}>
+                <input type="checkbox" checked={conBorde}
+                  onChange={e => onUpdateDesign(kBorde, e.target.checked)} />
+                Mostrar el borde del recuadro
+              </label>
+
+              {conBorde && (
+                <>
+                  <NumberSlider label="Grosor del borde" suffix="px"
+                    min={0.5} max={8} step={0.5}
+                    value={design.numBordeGrosor ?? 2}
+                    onChange={v => onUpdateDesign('numBordeGrosor', v)} />
+                  <ColorRow label="Color del borde"
+                    value={design.numBordeColor || design.colorBorde || '#000000'}
+                    onChange={v => onUpdateDesign('numBordeColor', v)} />
+                </>
+              )}
+
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 12, color: '#444', cursor: 'pointer', margin: '8px 0 10px',
+              }}>
+                <input type="checkbox" checked={conFondo}
+                  onChange={e => onUpdateDesign(kFondo, e.target.checked)} />
+                Fondo blanco detrás del número
+              </label>
+
+              <strong style={{ fontSize: 12, color: '#089a98', display: 'block', marginBottom: 6 }}>
+                ✒️ Contorno de los dígitos
+              </strong>
+              <NumberSlider label="Grosor del contorno" suffix="px"
+                min={0} max={4} step={0.5}
+                value={design.numStrokeWidth || 0}
+                onChange={v => onUpdateDesign('numStrokeWidth', v)} />
+              {design.numStrokeWidth > 0 && (
+                <ColorRow label="Color del contorno"
+                  value={design.numStrokeColor || '#000000'}
+                  onChange={v => onUpdateDesign('numStrokeColor', v)} />
+              )}
+              <p style={{ margin: '6px 0 0', fontSize: 10.5, color: '#999', lineHeight: 1.45 }}>
+                Aplica a los dos números del boleto (talón y cuerpo).
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Texto */}
         {(isCustom || (meta.valueKey && !meta.valueKey.startsWith('_label_'))) && (
           <>
@@ -3077,9 +3142,15 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
 
             {/* ═══ TEXTOS BUILT-IN ═══ */}
             {F('numBoletoIzq', numBoleto, 'numBoleto', {
-              border: `2px solid ${STROKE}`, padding: '6px 12px',
+              border: D.numTalonBorde === false
+                ? '2px solid transparent'
+                : `${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || STROKE}`,
+              padding: '6px 12px',
               fontSize: pxScaled(D.sizeNumTalon), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2, background: '#fff',
+              color: D.colorTalon, letterSpacing: 2,
+              background: D.numTalonFondo === false ? 'transparent' : '#fff',
+              WebkitTextStroke: D.numStrokeWidth > 0
+                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
             })}
             {F('nombreLabel', 'NOMBRE:', '_label_NOMBRE', {
               fontSize: pxScaled(D.sizeNombre), fontWeight: 700, color: '#000',
@@ -3113,9 +3184,15 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               color: D.colorFecha, fontStyle: 'italic', letterSpacing: .5,
             })}
             {F('numBoletoDer', numBoleto, 'numBoleto', {
-              border: `2px solid ${STROKE}`, padding: '6px 14px',
+              border: D.numDerBorde === false
+                ? '2px solid transparent'
+                : `${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || STROKE}`,
+              padding: '6px 14px',
               fontSize: pxScaled(D.sizeNumDer), fontWeight: 900,
-              color: D.colorTalon, letterSpacing: 2, background: '#fff',
+              color: D.colorTalon, letterSpacing: 2,
+              background: D.numDerFondo === false ? 'transparent' : '#fff',
+              WebkitTextStroke: D.numStrokeWidth > 0
+                ? `${D.numStrokeWidth}px ${D.numStrokeColor || '#000'}` : '0',
             })}
 
             {F('premioLabel', D.premioLabel, 'premioLabel', {

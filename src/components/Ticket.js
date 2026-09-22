@@ -22,6 +22,8 @@ export const DEFAULT_DESIGN = {
   lineaTira:        true,   // línea fina de la tira vertical
   lineaPie:         true,   // línea punteada sobre el pie
   bordeTicket:      true,   // marco exterior del boleto
+  numBordeGrosor:   2,      // grosor del recuadro del N° de boleto
+  numBordeColor:    null,   // null = usa colorBorde
   footerText:       'Conserve este boleto · Válido solo con número legible',
 
   // ── Colores ─────────────────────────────────────────────
@@ -643,7 +645,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   <div style="width:115px;flex-shrink:0;border-right:2px dashed ${D.lineaTalon === false ? 'transparent' : D.colorBorde};
     display:flex;flex-direction:column;align-items:center;padding:10px 6px;position:relative;z-index:2;">
 
-    <div style="${D.numTalonBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 12px;
+    <div style="${D.numTalonBorde === false ? '' : `border:${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || D.colorBorde};`}padding:6px 12px;
       font-size:${px(D.sizeNumTalon)}px;font-weight:900;color:${D.colorTalon};
       letter-spacing:2px;${D.numTalonFondo === false ? '' : 'background:#fff;'}margin-bottom:14px;
       ${D.numStrokeWidth > 0 ? `-webkit-text-stroke:${D.numStrokeWidth}px ${D.numStrokeColor || '#000'};` : '-webkit-text-stroke:0;'}">
@@ -693,7 +695,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
         </div>
       </div>
 
-      <div style="${D.numDerBorde === false ? '' : `border:2px solid ${D.colorBorde};`}padding:6px 14px;
+      <div style="${D.numDerBorde === false ? '' : `border:${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || D.colorBorde};`}padding:6px 14px;
         font-size:${px(D.sizeNumDer)}px;font-weight:900;color:${D.colorTalon};
         letter-spacing:2px;${D.numDerFondo === false ? '' : 'background:#fff;'}margin-left:8px;flex-shrink:0;
         ${D.numStrokeWidth > 0 ? `-webkit-text-stroke:${D.numStrokeWidth}px ${D.numStrokeColor || '#000'};` : '-webkit-text-stroke:0;'}">
@@ -1332,7 +1334,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
         padding:'10px 6px', position:'relative', zIndex:2,
       }}>
         <div style={{
-          ...(D.numTalonBorde === false ? {} : { border:`2px solid ${STROKE}` }),
+          ...(D.numTalonBorde === false ? {} : { border:`${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || STROKE}` }),
           padding:'6px 12px',
           fontSize:px(D.sizeNumTalon), fontWeight:900, color:D.colorTalon,
           letterSpacing:2,
@@ -1394,7 +1396,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
             }}>{D.fechaPrefix} {fecha}</div>
           </div>
           <div style={{
-            ...(D.numDerBorde === false ? {} : { border:`2px solid ${STROKE}` }),
+            ...(D.numDerBorde === false ? {} : { border:`${D.numBordeGrosor ?? 2}px solid ${D.numBordeColor || STROKE}` }),
             padding:'6px 14px',
             fontSize:px(D.sizeNumDer), fontWeight:900, color:D.colorTalon,
             letterSpacing:2,

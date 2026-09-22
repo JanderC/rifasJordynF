@@ -204,7 +204,9 @@ export default function ImprimirBoletos() {
   const [gapXMm, setGapXMm]                 = useState(6);
   const [gapYMm, setGapYMm]                 = useState(6);
   const [gapLigado, setGapLigado]           = useState(true);         // mover ambos a la vez
-  const [repartirSobrante, setRepartirSobrante] = useState(true);     // el sobrante va a los huecos
+  const [reparto, setReparto]               = useState('mixto');      // huecos | mixto | margenes
+  const [objCols, setObjCols]               = useState(null);         // rejilla deseada (cálculo inverso)
+  const [objRows, setObjRows]               = useState(null);
   const [margenMm, setMargenMm]             = useState(6);
 
   // Rejilla: automática (los que quepan) o fijada a mano
@@ -248,7 +250,7 @@ export default function ImprimirBoletos() {
     gapXMm,
     gapYMm,
     gapLigado,
-    repartirSobrante,
+    reparto,
     margenMm,
     rejillaManual,
     colsManual,
@@ -268,7 +270,8 @@ export default function ImprimirBoletos() {
     if (c.gapXMm != null) setGapXMm(c.gapXMm);
     if (c.gapYMm != null) setGapYMm(c.gapYMm);
     if (c.gapLigado != null) setGapLigado(!!c.gapLigado);
-    if (c.repartirSobrante != null) setRepartirSobrante(!!c.repartirSobrante);
+    if (c.reparto) setReparto(c.reparto);
+    else if (c.repartirSobrante != null) setReparto(c.repartirSobrante ? 'huecos' : 'margenes');
     if (c.margenMm != null) setMargenMm(c.margenMm);
     if (c.rejillaManual != null) setRejillaManual(!!c.rejillaManual);
     if (c.colsManual != null) setColsManual(c.colsManual);
@@ -481,14 +484,14 @@ export default function ImprimirBoletos() {
       gapXMm,
       gapYMm,
       margenMm,
-      repartirSobrante,
+      reparto,
       aspecto: aspectoDiseno,
       modoAjuste,
       cols: rejillaManual ? colsManual : null,
       rows: rejillaManual ? rowsManual : null,
     }),
     [ticketAnchoCm, ticketAltoCm, papel, orientacion, gapXMm, gapYMm,
-     margenMm, repartirSobrante, aspectoDiseno, modoAjuste,
+     margenMm, reparto, aspectoDiseno, modoAjuste,
      rejillaManual, colsManual, rowsManual]
   );
 
@@ -496,8 +499,8 @@ export default function ImprimirBoletos() {
   //    por hoja PERO con la separación que pediste? ──
   // Es el cálculo inverso: fijas rejilla + separación y sale el tamaño.
   const sugerenciaTamano = useMemo(() => {
-    const cols = rejillaManual ? colsManual : (layout.cols || 1);
-    const rows = rejillaManual ? rowsManual : (layout.rows || 1);
+    const cols = objCols || (rejillaManual ? colsManual : (layout.cols || 1));
+    const rows = objRows || (rejillaManual ? rowsManual : (layout.rows || 1));
     if (!cols || !rows) return null;
 
     const { pageW, pageH } = tamanoHoja(papel, orientacion);
@@ -522,7 +525,7 @@ export default function ImprimirBoletos() {
                 || Math.abs(altoCm - ticketAltoCm) > 0.05;
 
     return { cols, rows, anchoCm, altoCm, cambia };
-  }, [layout.cols, layout.rows, rejillaManual, colsManual, rowsManual,
+  }, [layout.cols, layout.rows, rejillaManual, colsManual, rowsManual, objCols, objRows,
       papel, orientacion, margenMm, gapXMm, gapYMm, modoAjuste,
       aspectoDiseno, ticketAnchoCm, ticketAltoCm]);
 
@@ -952,7 +955,7 @@ export default function ImprimirBoletos() {
                           const hr = cm1(wr / aspectoDiseno);
                           const l = calcularLayout({
                             anchoCm: wr, altoCm: hr, papel, orientacion,
-                            gapXMm, gapYMm, margenMm, repartirSobrante,
+                            gapXMm, gapYMm, margenMm, reparto,
                             aspecto: aspectoDiseno, modoAjuste,
                           });
                           if (l.ok && (!mejor || l.perPage > mejor.perPage)) {
@@ -1055,12 +1058,26 @@ export default function ImprimirBoletos() {
                   {/* Margen de la hoja */}
                   <div>
                     <div style={S.infoLabel}>Margen de hoja (mm)</div>
-                    <input
-                      type="number" step={1} min={0} max={30}
-                      value={margenMm}
-                      onChange={e => setMargenMm(Math.max(0, parseInt(e.target.value) || 0))}
-                      style={{ ...S.numInput, width: 72, marginTop: 4 }}
-                    />
+                    <div style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 4 }}>
+                      <input
+                        type="number" step={1} min={0} max={30}
+                        value={margenMm}
+                        onChange={e => setMargenMm(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={{ ...S.numInput, width: 66, marginTop: 0 }}
+                      />
+                      {[0, 3, 5, 8].map(m => (
+                        <button key={m} onClick={() => setMargenMm(m)}
+                          title={m === 0 ? 'Sin margen (la impresora recortará la orilla)'
+                            : m >= 5 ? 'Margen seguro para casi cualquier impresora'
+                            : 'Margen ajustado'}
+                          style={{
+                            ...S.btnToggle, padding: '6px 8px', fontSize: 11,
+                            background: margenMm === m ? '#0abfbc' : '#fff',
+                            color: margenMm === m ? '#fff' : '#777',
+                            borderColor: margenMm === m ? '#0abfbc' : '#ddd',
+                          }}>{m}</button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Resumen del layout en vivo */}
@@ -1250,25 +1267,32 @@ export default function ImprimirBoletos() {
                     </div>
                   )}
 
-                  {/* Repartir el espacio sobrante */}
-                  <label style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 8,
-                    marginTop: 10, padding: '8px 10px',
-                    background: repartirSobrante ? '#e6faf9' : '#fff',
-                    border: `1px solid ${repartirSobrante ? '#9ae3e0' : '#e0e0e0'}`,
-                    borderRadius: 6, cursor: 'pointer',
+                  {/* Qué hacer con el espacio sobrante */}
+                  <div style={{
+                    marginTop: 10, padding: '9px 12px',
+                    background: '#fff', border: '1px solid #e0e8e8', borderRadius: 6,
                   }}>
-                    <input type="checkbox" checked={repartirSobrante}
-                      onChange={e => setRepartirSobrante(e.target.checked)}
-                      style={{ marginTop: 2 }} />
-                    <span style={{ fontSize: 11.5, color: '#444', lineHeight: 1.5 }}>
-                      <strong>Repartir el espacio sobrante entre los boletos</strong><br />
-                      <span style={{ color: '#777' }}>
-                        Sin esto, todo lo que sobra se va a los márgenes de la hoja
-                        y los boletos quedan pegados entre sí con el hueco mínimo.
-                      </span>
-                    </span>
-                  </label>
+                    <div style={{
+                      fontSize: 11.5, fontWeight: 700, color: '#555', marginBottom: 6,
+                    }}>
+                      El espacio que sobra en la hoja va a…
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'margenes', label: '🗒 Los márgenes', tip: 'Boletos con el hueco mínimo, orillas amplias' },
+                        { id: 'mixto',    label: '⚖️ Mitad y mitad', tip: 'Recomendado: separa y deja orilla segura' },
+                        { id: 'huecos',   label: '↔ Entre boletos', tip: 'Máxima separación, orillas al mínimo' },
+                      ].map(o => (
+                        <button key={o.id} onClick={() => setReparto(o.id)} title={o.tip}
+                          style={{
+                            ...S.btnToggle, padding: '6px 11px',
+                            background: reparto === o.id ? '#0abfbc' : '#fff',
+                            color: reparto === o.id ? '#fff' : '#666',
+                            borderColor: reparto === o.id ? '#0abfbc' : '#ddd',
+                          }}>{o.label}</button>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Estado / avisos de la hoja */}
                   <div style={{

@@ -61,8 +61,13 @@ export function calcularLayout({
   gapXMm = 5,
   gapYMm = 5,
   margenMm = 5,
-  repartirSobrante = true,   // el espacio que sobra se pasa a los huecos
-  repartoMaxMm = 20,         // tope para que no queden huecos absurdos
+  // Qué hacer con el espacio que sobra en la hoja:
+  //   'huecos'   → todo a la separación entre boletos (márgenes al mínimo)
+  //   'margenes' → todo a los márgenes (boletos con el hueco mínimo)
+  //   'mixto'    → mitad y mitad  ← recomendado
+  reparto = 'mixto',
+  repartoMaxMm = 12,         // tope para que no queden huecos absurdos
+  repartirSobrante = null,   // compatibilidad con perfiles antiguos (booleano)
   aspecto = null,
   modoAjuste = 'contener',
   cols: colsFijas = null,
@@ -81,6 +86,12 @@ export function calcularLayout({
     ticketW = r.w;
     ticketH = r.h;
   }
+
+  // Perfiles guardados antes de existir `reparto`
+  const modoReparto = repartirSobrante === null || repartirSobrante === undefined
+    ? reparto
+    : (repartirSobrante ? 'huecos' : 'margenes');
+  const fraccion = modoReparto === 'huecos' ? 1 : modoReparto === 'mixto' ? 0.5 : 0;
 
   const gx = Math.max(0, Number(gapXMm) || 0);
   const gy = Math.max(0, Number(gapYMm) || 0);
@@ -145,12 +156,12 @@ export function calcularLayout({
 
   let gapXReal = gx;
   let gapYReal = gy;
-  if (cabe && repartirSobrante) {
+  if (cabe && fraccion > 0) {
     if (cols > 1 && libreX > 0.01) {
-      gapXReal = gx + Math.min(repartoMaxMm, libreX / (cols - 1));
+      gapXReal = gx + Math.min(repartoMaxMm, (libreX * fraccion) / (cols - 1));
     }
     if (rows > 1 && libreY > 0.01) {
-      gapYReal = gy + Math.min(repartoMaxMm, libreY / (rows - 1));
+      gapYReal = gy + Math.min(repartoMaxMm, (libreY * fraccion) / (rows - 1));
     }
   }
 
@@ -181,16 +192,23 @@ export function calcularLayout({
         `Con esta separación caben ${cols * rows} por hoja; sin separación cabrían ${sinGapCols * sinGapRows}.`
       );
     }
-    if (repartirSobrante && (gapXReal - gx > 0.3 || gapYReal - gy > 0.3)) {
+    if (fraccion > 0 && (gapXReal - gx > 0.3 || gapYReal - gy > 0.3)) {
       avisos.push(
-        `Se repartió el espacio sobrante: hueco real de ` +
+        `Espacio sobrante repartido: hueco real de ` +
         `${gapXReal.toFixed(1)} mm horizontal y ${gapYReal.toFixed(1)} mm vertical.`
       );
     }
-    if (!repartirSobrante && isFinite(gapMaxX) && gapMaxX - gx > 1) {
+    if (offsetX < 4 || offsetY < 4) {
+      avisos.push(
+        `Margen real de solo ${Math.min(offsetX, offsetY).toFixed(1)} mm: ` +
+        `casi ninguna impresora llega al borde del papel y la orilla se recorta. ` +
+        `Sube el margen de hoja a 5 mm o más.`
+      );
+    }
+    if (fraccion === 0 && isFinite(gapMaxX) && gapMaxX - gx > 1) {
       avisos.push(`Puedes separar hasta ${gapMaxX.toFixed(1)} mm en horizontal sin perder boletos.`);
     }
-    if (!repartirSobrante && isFinite(gapMaxY) && gapMaxY - gy > 1) {
+    if (fraccion === 0 && isFinite(gapMaxY) && gapMaxY - gy > 1) {
       avisos.push(`Puedes separar hasta ${gapMaxY.toFixed(1)} mm en vertical sin perder boletos.`);
     }
   }
@@ -215,7 +233,12 @@ export function calcularLayout({
     gapMaxX, gapMaxY,
     usadoX: usadoXReal, usadoY: usadoYReal,
     gapXReal, gapYReal,
-    repartirSobrante,
+    reparto: modoReparto,
+    repartoMaxMm,
+    // Margen REAL que queda en el papel (lo que decide si la
+    // impresora recorta la orilla)
+    margenRealX: offsetX,
+    margenRealY: offsetY,
     sobraX, sobraY,
     desbordeX, desbordeY,
     offsetX, offsetY,
