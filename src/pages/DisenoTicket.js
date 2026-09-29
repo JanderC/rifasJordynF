@@ -296,7 +296,10 @@ export default function DisenoTicket() {
         toast.success(`✅ Plantilla "${r.data.nombre}" creada`);
         nav(`/plantillas/${r.data.id}`, { replace:true });
       } else {
-        await API.put(`/ticket-templates/${id}`, payload);
+        const r = await API.put(`/ticket-templates/${id}`, payload);
+        // El backend sube las imágenes base64 a Cloudinary y devuelve el design con URLs;
+        // lo usamos para no volver a subir las mismas imágenes en el próximo guardado.
+        if (r.data?.design) setDesign({ ...DEFAULT_DESIGN, ...r.data.design });
         toast.success('✅ Plantilla guardada');
         setDirty(false);
       }

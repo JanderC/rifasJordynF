@@ -109,7 +109,8 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
     .map(r => ({
       numero: r.numero,
       metodo: r.metodo_pago || null,
-      src: r.comprobante_base64.startsWith('data:')
+      // Nuevos: URL de Cloudinary. Antiguos: base64 (con o sin prefijo data:)
+      src: /^(data:|https?:\/\/)/.test(r.comprobante_base64)
         ? r.comprobante_base64
         : `data:image/jpeg;base64,${r.comprobante_base64}`,
     }));
