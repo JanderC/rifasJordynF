@@ -792,6 +792,10 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
 /* ════════════════════════════════════════════════════════════
    MODAL BOLETERÍA — Gestión de números por vendedor en una rifa
 ════════════════════════════════════════════════════════════ */
+// Cifras con que se muestran/validan los números de una rifa.
+// Terminal (2 cifras) usa 00–99; las demás rifas mantienen el formato de 3.
+const digitosRifa = (rifa) => (Number(rifa?.cifras) === 2 ? 2 : 3);
+
 function ModalBoleteria({ rifa, onClose }) {
   const [data,          setData]          = useState(null);
   const [loading,       setLoading]       = useState(true);
@@ -955,6 +959,7 @@ function ModalBoleteria({ rifa, onClose }) {
             </div>
           ) : modoBusqueda === 'numero' ? (
             <ResultadoBusquedaNumero
+              rifa={rifa}
               numero={busquedaNum}
               vendedores={data.vendedores}
               esSimultanea={esSimultanea}
@@ -1013,7 +1018,8 @@ function ModalBoleteria({ rifa, onClose }) {
    SOLO LECTURA: muestra qué vendedor(es) tienen ese número, en qué
    serie (A/B) y de qué origen (categoría global vs extra de esta rifa).
    No toca la BD, no modifica nada. */
-function ResultadoBusquedaNumero({ numero, vendedores, esSimultanea, onAbrirVendedor }) {
+function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbrirVendedor }) {
+  const dig = digitosRifa(rifa);
   // Sin texto → mensaje guía
   if (!numero || !numero.trim()) {
     return (
@@ -1029,14 +1035,14 @@ function ResultadoBusquedaNumero({ numero, vendedores, esSimultanea, onAbrirVend
     );
   }
 
-  // Normalizar el número buscado a 3 dígitos (000–999)
-  const numNorm = /^\d+$/.test(numero.trim()) ? numero.trim().padStart(3, '0') : numero.trim();
+  // Normalizar el número buscado a las cifras de la rifa (00–99 / 000–999)
+  const numNorm = /^\d+$/.test(numero.trim()) ? numero.trim().padStart(dig, '0') : numero.trim();
 
   // Buscar en todos los vendedores. Cada hit incluye el vendedor + la entrada de numeros_fijos
   const hits = [];
   for (const v of vendedores) {
     for (const n of (v.numeros_fijos || [])) {
-      if (String(n.numero).padStart(3, '0') === numNorm) {
+      if (String(n.numero).padStart(dig, '0') === numNorm) {
         hits.push({ vendedor: v, asignacion: n });
       }
     }
@@ -1226,6 +1232,7 @@ function ResultadoBusquedaNumero({ numero, vendedores, esSimultanea, onAbrirVend
    Muestra fijos + extras mezclados, con badge azul "EXTRA" para
    los números que solo aplican a esta rifa (no afectan categorías). */
 function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, disponiblesB, abierto, onToggle, onAsignar, onQuitar, saving }) {
+  const dig = digitosRifa(rifa);
   const [tabSerie,      setTabSerie]      = useState('A'); // tab activa para agregar (A o B)
   const [modoAgregar,   setModoAgregar]   = useState('aleatorio'); // 'aleatorio' | 'manual'
   const [cantAleatorio, setCantAleatorio] = useState('');
@@ -1234,7 +1241,7 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
   // Números que ya tiene este vendedor en esta rifa, agrupados por serie.
   // Cada item conserva `origen` ('fijo' | 'extra') para mostrar el badge.
   const todos = (vendedor.numeros_fijos || []).map(n => ({
-    numero: String(n.numero).padStart(3, '0'),
+    numero: String(n.numero).padStart(dig, '0'),
     serie:  n.serie || 'A',
     origen: n.origen || 'fijo',
   }));
@@ -1249,8 +1256,8 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
   const numsB = fijosB.map(n => n.numero);
 
   const disponiblesActivos = tabSerie === 'A'
-    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(3, '0')))
-    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(3, '0')));
+    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(dig, '0')))
+    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(dig, '0')));
 
   const toggleSeleccion = (n) => {
     setSeleccionados(prev => {
@@ -1269,14 +1276,14 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
       const j = i + Math.floor(Math.random() * (arr.length - i));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    const picks = arr.slice(0, cant).map(n => String(n).padStart(3, '0'));
+    const picks = arr.slice(0, cant).map(n => String(n).padStart(dig, '0'));
     await onAsignar(picks, tabSerie);
     setCantAleatorio('');
   };
 
   const handleAgregarManual = async () => {
     if (seleccionados.size === 0) { toast.error('Selecciona al menos un número'); return; }
-    const nums = [...seleccionados].map(n => String(n).padStart(3, '0'));
+    const nums = [...seleccionados].map(n => String(n).padStart(dig, '0'));
     await onAsignar(nums, tabSerie);
     setSeleccionados(new Set());
   };
@@ -1432,8 +1439,8 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
                 {['A','B'].map(s => {
                   const cs = colorSerie(s);
                   const disp = s === 'A'
-                    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(3,'0'))).length
-                    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(3,'0'))).length;
+                    ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(dig, '0'))).length
+                    : disponiblesB.filter(n => !numsB.includes(String(n).padStart(dig, '0'))).length;
                   return (
                     <button key={s} onClick={() => { setTabSerie(s); setSeleccionados(new Set()); setCantAleatorio(''); }}
                       style={{
@@ -1491,7 +1498,7 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(52px,1fr))', gap:5, maxHeight:220, overflowY:'auto', padding:'4px', border:'1px solid var(--jordyn-border)', borderRadius:10, background:'#fff', marginBottom:10 }}>
                   {disponiblesActivos.map(n => {
-                    const nStr = String(n).padStart(3,'0');
+                    const nStr = String(n).padStart(dig, '0');
                     const sel  = seleccionados.has(nStr);
                     const cs   = esSimultanea ? colorSerie(tabSerie) : { bg:'rgba(5,150,105,.08)', border:'rgba(5,150,105,.3)', color:'#059669' };
                     return (
@@ -1854,12 +1861,13 @@ function ModalProgramarDesactivacion({ rifa, onClose, onSaved }) {
    tiene ese número. Si es simultánea muestra ambas series.
 ════════════════════════════════════════════════════════════ */
 function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
+  const dig = digitosRifa(rifa);
   const [busqueda, setBusqueda] = useState('');
   const [resultado, setResultado] = useState(null);
   const [buscando, setBuscando] = useState(false);
 
   const buscar = useCallback(async (numero) => {
-    if (!/^\d{3}$/.test(numero)) {
+    if (numero.length !== dig || !/^\d+$/.test(numero)) {
       setResultado(null);
       return;
     }
@@ -1871,7 +1879,7 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
       const hits = [];
       for (const v of (data.vendedores || [])) {
         for (const nf of (v.numeros_fijos || [])) {
-          const nStr = String(nf.numero).padStart(3, '0');
+          const nStr = String(nf.numero).padStart(dig, '0');
           if (nStr === numero) {
             hits.push({
               vendedor_id:     v.vendedor_id,
@@ -1890,12 +1898,12 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
     } finally {
       setBuscando(false);
     }
-  }, [rifa.id]);
+  }, [rifa.id, dig]);
 
   const handleChange = (val) => {
-    const v = val.replace(/\D/g, '').slice(0, 3);
+    const v = val.replace(/\D/g, '').slice(0, dig);
     setBusqueda(v);
-    if (v.length === 3) buscar(v);
+    if (v.length === dig) buscar(v);
     else setResultado(null);
   };
 
@@ -1924,10 +1932,10 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
         <input
           type="tel"
           inputMode="numeric"
-          maxLength={3}
+          maxLength={dig}
           value={busqueda}
           onChange={e => handleChange(e.target.value)}
-          placeholder="Ej: 007"
+          placeholder={dig === 2 ? 'Ej: 07' : 'Ej: 007'}
           style={{
             width: '100%', padding: '8px 32px 8px 36px',
             border: '1.5px solid rgba(124,58,237,0.25)',
@@ -2071,6 +2079,7 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
             { numero, serie, origen }          → quitar (solo extras)
 ════════════════════════════════════════════════════════════ */
 function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
+  const dig = digitosRifa(rifa);
   const [data,        setData]        = useState(null);   // respuesta de boleteria-vendedores
   const [loading,     setLoading]     = useState(true);
   const [inputNums,   setInputNums]   = useState('');
@@ -2100,14 +2109,14 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
   const numerosFijos  = (vendData?.numeros_fijos || []).filter(n => n.origen === 'fijo');
   const numerosExtras = (vendData?.numeros_fijos || []).filter(n => n.origen === 'extra');
 
-  // Parsear el input: separar por coma, espacio o salto de línea, validar 3 dígitos
+  // Parsear el input: separar por coma, espacio o salto de línea, validar cifras de la rifa
   const parsearInput = (txt) => {
     return txt
       .split(/[\s,;]+/)
       .map(s => s.trim())
       .filter(s => s.length > 0)
-      .map(s => s.padStart(3, '0'))
-      .filter(s => /^\d{3}$/.test(s));
+      .map(s => s.padStart(dig, '0'))
+      .filter(s => s.length === dig && /^\d+$/.test(s));
   };
 
   const numerosParsed = parsearInput(inputNums);
@@ -2281,7 +2290,7 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {numerosExtras.map((n) => {
-                      const numStr = String(n.numero).padStart(3, '0');
+                      const numStr = String(n.numero).padStart(dig, '0');
                       const key = `${numStr}-${n.serie}`;
                       const borrando = eliminando === key;
                       return (
@@ -2334,7 +2343,7 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                   </summary>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                     {numerosFijos.map((n, i) => {
-                      const numStr = String(n.numero).padStart(3, '0');
+                      const numStr = String(n.numero).padStart(dig, '0');
                       return (
                         <span key={`${numStr}-${n.serie}-${i}`} style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -2405,7 +2414,7 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                     rows={3}
                     value={inputNums}
                     onChange={e => setInputNums(e.target.value)}
-                    placeholder="Ej: 001, 045, 123 o uno por línea"
+                    placeholder={dig === 2 ? 'Ej: 01, 45, 99 o uno por línea' : 'Ej: 001, 045, 123 o uno por línea'}
                     style={{ resize: 'vertical', fontFamily: 'monospace', letterSpacing: 2, fontSize: '.9rem', fontWeight: 700 }}
                   />
                   {numerosParsed.length > 0 && (
@@ -3177,6 +3186,7 @@ export default function GestionRifas() {
                   disabled={!!editId}
                   onChange={e => setForm(p => ({ ...p, cifras: Number(e.target.value) }))}
                 >
+                  <option value={2}>2 cifras · 00–99 (terminal)</option>
                   <option value={3}>3 cifras · 000–999 (cuadrícula)</option>
                   <option value={4}>4 cifras · 0000–9999 (buscador)</option>
                 </select>

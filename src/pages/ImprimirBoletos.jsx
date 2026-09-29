@@ -118,12 +118,13 @@ const SEPARACIONES = [
 
 // ── Normaliza números respetando serie (numero+serie = 1 boleto) ──
 // Devuelve array de objetos { numero, serie } sin duplicados exactos.
-function dedupNumeros(numerosFijos) {
+// `dig` = 2 en rifas de terminal (00–99); 3 en el resto (formato de siempre).
+function dedupNumeros(numerosFijos, dig = 3) {
   if (!Array.isArray(numerosFijos)) return [];
   const seen = new Set();
   const result = [];
   for (const n of numerosFijos) {
-    const num   = String(n.numero || n).padStart(3, '0');
+    const num   = String(n.numero || n).padStart(dig, '0');
     const serie = String(n.serie || '').toUpperCase();
     const key   = `${num}-${serie}`;
     if (!seen.has(key)) {
@@ -420,9 +421,11 @@ export default function ImprimirBoletos() {
     [vendedores, vendedorId]
   );
 
+  const digRifa = Number(rifa?.cifras) === 2 ? 2 : 3;
+
   const numerosImprimir = useMemo(
-    () => vendedorActual ? dedupNumeros(vendedorActual.numeros_fijos) : [],
-    [vendedorActual]
+    () => vendedorActual ? dedupNumeros(vendedorActual.numeros_fijos, digRifa) : [],
+    [vendedorActual, digRifa]
   );
 
   // Design de la plantilla (o default si no hay)
@@ -732,7 +735,7 @@ export default function ImprimirBoletos() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {vendedores.map(v => {
-                const nums = dedupNumeros(v.numeros_fijos);
+                const nums = dedupNumeros(v.numeros_fijos, digRifa);
                 const isSelected = String(v.vendedor_id) === String(vendedorId);
                 return (
                   <button

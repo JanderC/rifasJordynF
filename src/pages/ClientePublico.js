@@ -1579,6 +1579,9 @@ function BuscadorNumeros4({ rifa, onComprar }) {
 }
 
 function GridNumeros({ rifa, onComprar }) {
+  // 2 cifras = terminal (00–99) · 3 cifras = 000–999
+  const cifras    = Number(rifa.cifras) || 3;
+  const totalNums = 10 ** cifras;
   const [todos,       setTodos]      = useState([]);
   const [loading,     setLoading]    = useState(true);
   const [busqueda,    setBusqueda]   = useState('');
@@ -1608,7 +1611,7 @@ function GridNumeros({ rifa, onComprar }) {
 
   // En búsqueda mostramos todos los estados del número para informar al cliente
   const visible = busqueda
-    ? todos.filter(n => n.numero === busqueda.padStart(3,'0').slice(-3))
+    ? todos.filter(n => n.numero === busqueda.padStart(cifras,'0').slice(-cifras))
     : disponibles;
 
   // seleccion guarda idx (numero unico por entrada), no el numero en si
@@ -1686,7 +1689,7 @@ function GridNumeros({ rifa, onComprar }) {
         <div style={{ flex:1, minWidth:180 }}>
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
             <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
-              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de 1000
+              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de {totalNums}
             </span>
             <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>{pct}% ocupado</span>
           </div>
@@ -1875,8 +1878,8 @@ function GridNumeros({ rifa, onComprar }) {
       {/* Buscador */}
       <div style={{ position:'relative', marginBottom:14 }}>
         <span style={{ position:'absolute', left:16, top:'50%', transform:'translateY(-50%)', fontSize:'.8rem', color:'#aaa' }}>🔍</span>
-        <input className="pub-input" value={busqueda} onChange={e => setBusqueda(e.target.value.replace(/\D/,'').slice(0,3))}
-          placeholder="Buscar número (ej: 007)" style={{ paddingLeft:44 }} maxLength={3} />
+        <input className="pub-input" value={busqueda} onChange={e => setBusqueda(e.target.value.replace(/\D/,'').slice(0,cifras))}
+          placeholder={`Buscar número (ej: ${cifras === 2 ? '07' : '007'})`} style={{ paddingLeft:44 }} maxLength={cifras} />
         {busqueda && (
           <button onClick={() => setBusqueda('')}
             style={{ position:'absolute', right:14, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:'.8rem', color:'#aaa' }}>✕</button>
@@ -1959,13 +1962,13 @@ function GridNumeros({ rifa, onComprar }) {
             })}
             {visible.length === 0 && busqueda && (
               <div style={{ gridColumn:'1/-1', textAlign:'center', padding:36, color:'#aaa', fontSize:'.88rem' }}>
-                El número <strong>{busqueda.padStart(3,'0')}</strong> no está disponible en este momento
+                El número <strong>{busqueda.padStart(cifras,'0')}</strong> no está disponible en este momento
               </div>
             )}
           </div>
           <div style={{ fontSize:'.65rem', color:`${DARK}44`, textAlign:'center', marginTop:10 }}>
             {busqueda
-              ? `Resultado para "${busqueda.padStart(3,'0')}"`
+              ? `Resultado para "${busqueda.padStart(cifras,'0')}"`
               : `Mostrando ${visible.length} número${visible.length !== 1 ? 's' : ''} disponible${visible.length !== 1 ? 's' : ''}`}
           </div>
         </>

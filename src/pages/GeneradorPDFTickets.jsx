@@ -121,7 +121,7 @@ function TicketCard({ rifa, vendedor, numero, design }) {
             textShadow: `0 0 12px ${ac}50`,
             position: 'relative', zIndex: 1, textAlign: 'center',
           }}>
-            {String(numero).padStart(3, '0')}
+            {String(numero).padStart(Number(rifa?.cifras) === 2 ? 2 : 3, '0')}
           </div>
           <div style={{
             fontSize: 5, fontWeight: 700, color: 'rgba(255,255,255,0.25)',
@@ -306,11 +306,15 @@ export default function GeneradorPDFTickets() {
     ? vendedores.filter(v => rifaActual.vendedores.some(rv => rv.id === v.id))
     : vendedores;
 
+  // Rifas de terminal (2 cifras) solo tienen 00–99; las demás no tienen tope aquí
+  const esTerminal = Number(rifaActual?.cifras) === 2;
+  const enRango    = n => !esTerminal || n < 100;
+
   // Números para previsualización (10 tickets en grid)
-  const numerosPreview = Array.from({ length: 10 }, (_, i) => numInicio + i);
+  const numerosPreview = Array.from({ length: 10 }, (_, i) => numInicio + i).filter(enRango);
 
   // Números totales para el PDF (paginas × 10)
-  const numerosTotal = Array.from({ length: paginas * 10 }, (_, i) => numInicio + i);
+  const numerosTotal = Array.from({ length: paginas * 10 }, (_, i) => numInicio + i).filter(enRango);
 
   // ── Generar PDF ────────────────────────────────────────────
   async function handleGenerarPDF() {
@@ -337,6 +341,7 @@ export default function GeneradorPDFTickets() {
     try {
       for (let pg = 0; pg < paginas; pg++) {
         const pageNumeros = numerosTotal.slice(pg * 10, pg * 10 + 10);
+        if (pageNumeros.length === 0) break; // terminal: no hay más de 99
 
         root.render(createElement(PdfSheet, {
           rifa: rifaActual,
@@ -478,7 +483,7 @@ export default function GeneradorPDFTickets() {
             <input
               type="number"
               min={0}
-              max={9990}
+              max={esTerminal ? 90 : 9990}
               style={styles.input}
               value={numInicio}
               onChange={e => setNumInicio(Math.max(0, parseInt(e.target.value) || 0))}
