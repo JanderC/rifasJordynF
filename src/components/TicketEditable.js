@@ -16,6 +16,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   DEFAULT_DESIGN,
+  formatNumBoleto,
   DecorativeShape,
   DecorativeImage,
   WatermarkLayer,
@@ -2551,7 +2552,7 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
     ? `${r.loteria_ref}${horaRifa ? ` ${horaRifa}` : ''}`
     : D.loteriaText;
 
-  const numBoleto    = resolveValue(D, 'numBoleto',    numBoletoRifa);
+  const numBoleto    = formatNumBoleto(resolveValue(D, 'numBoleto', numBoletoRifa), D.formatoNumero);
   const premioNum    = resolveValue(D, 'premioNum',    premioNumRifa || '500');
   const premioTexto  = resolveValue(D, 'premioTexto',  premioTxtRifa);
   const fechaTexto   = resolveValue(D, 'fechaTexto',   fechaRifa);
@@ -2966,6 +2967,28 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
                 fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
               }}>{t.label}</button>
           ))}
+        </div>
+
+        <span style={{ fontWeight: 600, color: '#333' }}>N° boleto:</span>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[
+            { value: 'auto',     label: 'Normal (000)',   title: 'Como viene de la rifa: 000, 0000 o 00' },
+            { value: 'terminal', label: 'Terminal (00)',  title: 'Siempre 2 cifras (00–99)' },
+          ].map(o => {
+            const activo = (D.formatoNumero || 'auto') === o.value;
+            return (
+              <button key={o.value} title={o.title}
+                onClick={() => onUpdate('formatoNumero', o.value)}
+                style={{
+                  padding: '6px 12px',
+                  background: activo ? '#0abfbc' : '#fff',
+                  color: activo ? '#fff' : '#333',
+                  border: '1px solid ' + (activo ? '#0abfbc' : '#ddd'),
+                  borderRadius: 5, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                }}>{o.label}</button>
+            );
+          })}
         </div>
 
         <BarButton active={showTamano} bg="#0abfbc" color="#0abfbc"

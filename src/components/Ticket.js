@@ -116,6 +116,10 @@ export const DEFAULT_DESIGN = {
   positions:      {},
   hiddenFields:   [],
   globalSizeFactor: 1.0,
+  // Cómo se muestra el N° de boleto:
+  //   'auto'     → tal cual viene de la rifa (000, 0000 o 00)
+  //   'terminal' → siempre 2 cifras (00–99), últimos 2 dígitos
+  formatoNumero:  'auto',
 
   // ── Compatibilidad ──────────────────────────────────────
   accentColor:  '#0abfbc',
@@ -123,6 +127,15 @@ export const DEFAULT_DESIGN = {
   bgDark:       '#1a2e2e',
   horaSort:     '',
 };
+
+// ── N° de boleto según el formato elegido en el diseño ──
+export function formatNumBoleto(numero, formato) {
+  const s = String(numero ?? '');
+  if (formato !== 'terminal') return s;
+  const digitos = s.replace(/\D/g, '');
+  if (!digitos) return s;
+  return digitos.slice(-2).padStart(2, '0');
+}
 
 // ── Conversión pt → px ──────────────────────────────────
 const PT_TO_PX = 96 / 72;
@@ -603,7 +616,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
   const subPremio= r?.premio_secundario ? fmtMilesPunto(r.premio_secundario) : '';
   const isOrig   = copia === 1;
   const nom      = comprador?.nombre || '';
-  const num      = numero || '000';
+  const num      = formatNumBoleto(numero || '000', D.formatoNumero);
 
   const loteriaCompleta = r?.loteria_ref
     ? `${r.loteria_ref}${hora ? ` ${hora}` : ''}`
@@ -1289,7 +1302,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
   const valorTxt  = fmtValorBoleto(rifaData?.precio || 0);
   const subPremio = rifaData?.premio_secundario ? fmtMilesPunto(rifaData.premio_secundario) : '';
   const nom       = comprador?.nombre || '';
-  const num       = numero || '000';
+  const num       = formatNumBoleto(numero || '000', D.formatoNumero);
 
   const loteriaCompleta = rifaData?.loteria_ref
     ? `${rifaData.loteria_ref}${hora ? ` ${hora}` : ''}`
