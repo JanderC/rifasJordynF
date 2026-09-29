@@ -720,8 +720,10 @@ function DraggableEditable({
   };
 
   if (printMode) {
+    // data-field también en impresión: ImprimirBoletos lo usa para
+    // capturar el diseño una vez y superponer solo el número.
     return (
-      <div style={wrapperStyle}>
+      <div data-field={id} style={wrapperStyle}>
         <span style={{ ...textStyle, display: 'inline-block' }}>{value || ''}</span>
       </div>
     );

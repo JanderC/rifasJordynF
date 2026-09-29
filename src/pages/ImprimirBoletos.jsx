@@ -20,7 +20,7 @@ import { createRoot } from 'react-dom/client';
 import jsPDF from 'jspdf';
 import API from '../services/api';
 import TicketEditable from '../components/TicketEditable';
-import { DEFAULT_DESIGN } from '../components/Ticket';
+import { DEFAULT_DESIGN, formatNumBoleto } from '../components/Ticket';
 import {
   PAPELES,
   calcularLayout,
@@ -35,6 +35,11 @@ import {
   marcasDeCorte,
   pxACm,
   cm1,
+  SELECTOR_CAMPOS_NUMERO,
+  ocultarNumerosEnClon,
+  soloNumeroEnClon,
+  regionesDeNumero,
+  recortePNG,
 } from '../utils/printTicket';
 import {
   leerPerfiles,
@@ -217,6 +222,7 @@ export default function ImprimirBoletos() {
 
   const [dpi, setDpi]                       = useState(300);
   const [formato, setFormato]               = useState('PNG');        // 'PNG' | 'JPEG'
+  const [modoRapido, setModoRapido]         = useState(true);         // diseño 1 vez + solo el número
   const [estiloMarcas, setEstiloMarcas]     = useState('esquinas');   // 'esquinas' | 'marco' | 'ninguna'
   const [tamanoTocado, setTamanoTocado]     = useState(false);
 
@@ -258,6 +264,7 @@ export default function ImprimirBoletos() {
     rowsManual,
     dpi,
     formato,
+    modoRapido,
     estiloMarcas,
   };
 
@@ -279,6 +286,7 @@ export default function ImprimirBoletos() {
     if (c.rowsManual != null) setRowsManual(c.rowsManual);
     if (c.dpi != null) setDpi(c.dpi);
     if (c.formato) setFormato(c.formato);
+    if (c.modoRapido != null) setModoRapido(!!c.modoRapido);
     if (c.estiloMarcas) setEstiloMarcas(c.estiloMarcas);
     // Marca el tamaño como "elegido por el usuario" para que no lo
     // sobreescriba el tamaño del diseño al cargar la plantilla.
@@ -575,6 +583,40 @@ export default function ImprimirBoletos() {
       const porPagina  = layout.perPage;
       const totalPag   = Math.ceil(numerosImprimir.length / porPagina);
       let hechos       = 0;
+      let ultimoPct    = -1;
+      // setProgreso re-renderiza toda la página: solo cuando cambia el %
+      const avanzar = () => {
+        hechos++;
+        const pct = Math.round((hechos / numerosImprimir.length) * 100);
+        if (pct !== ultimoPct) { ultimoPct = pct; setProgreso(pct); }
+      };
+
+      // ── Modo rápido: diseño capturado UNA vez + solo el número por boleto ──
+      const primero = numerosImprimir[0].numero;
+      root.render(
+        <TicketEditable
+          r={rifa}
+          numero={primero}
+          design={{ ...design, numBoleto: primero }}
+          printMode={true}
+        />
+      );
+      await esperarRecursos(cont, 40);
+      const nodoBase = cont.querySelector('[data-ticket-canvas="true"]');
+      if (!nodoBase) throw new Error('No se encontró el lienzo del boleto');
+
+      const rapido = modoRapido && nodoBase.querySelector(SELECTOR_CAMPOS_NUMERO) != null;
+      let base = null;
+      if (rapido) {
+        const canvasBase = await capturarNodo(nodoBase, { dpi, fondo, alClonar: ocultarNumerosEnClon });
+        base = {
+          ancho: canvasBase.width,
+          alto:  canvasBase.height,
+          regiones: regionesDeNumero(nodoBase, canvasBase, 16),
+          ...canvasADato(canvasBase, formato, 0.95),
+        };
+      }
+      const formatoNumero = design.formatoNumero ?? DEFAULT_DESIGN.formatoNumero;
 
       for (let p = 0; p < totalPag; p++) {
         if (p > 0) pdf.addPage();
@@ -587,6 +629,34 @@ export default function ImprimirBoletos() {
         for (let k = 0; k < items.length; k++) {
           const { numero } = items[k];
 
+          if (rapido) {
+            const c = celda(layout, k);
+            const r = ajustarEnCelda(base.ancho / base.alto, c.w, c.h, modoAjuste);
+            const X = c.x + r.x;
+            const Y = c.y + r.y;
+
+            // Diseño: mismo alias → jsPDF lo incrusta una sola vez en todo el PDF
+            pdf.addImage(base.data, base.fmt, X, Y, r.w, r.h, 'ticket-base', 'FAST');
+
+            // Número de este boleto, capturado con fondo transparente
+            const texto = formatNumBoleto(numero, formatoNumero);
+            const capa = await capturarNodo(nodoBase, {
+              dpi, fondo: null, alClonar: (doc) => soloNumeroEnClon(doc, texto),
+            });
+            const kx = r.w / base.ancho;
+            const ky = r.h / base.alto;
+            for (const g of base.regiones) {
+              pdf.addImage(
+                recortePNG(capa, g), 'PNG',
+                X + g.x * kx, Y + g.y * ky, g.w * kx, g.h * ky,
+                undefined, 'FAST'
+              );
+            }
+            avanzar();
+            continue;
+          }
+
+          // ── Modo clásico: se captura el boleto completo ──
           // 1. Renderizar el boleto con su número real
           root.render(
             <TicketEditable
@@ -623,8 +693,7 @@ export default function ImprimirBoletos() {
             'FAST'
           );
 
-          hechos++;
-          setProgreso(Math.round((hechos / numerosImprimir.length) * 100));
+          avanzar();
         }
       }
 
@@ -1449,6 +1518,20 @@ export default function ImprimirBoletos() {
                       <option value="PNG">PNG · texto nítido</option>
                       <option value="JPEG">JPEG · archivo liviano</option>
                     </select>
+                  </div>
+                  <div>
+                    <div style={S.infoLabel}>Generación</div>
+                    <label
+                      title="Captura el diseño una sola vez y por cada boleto solo el número. Desactívalo si algún boleto sale distinto a la vista previa."
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, height: 34, cursor: 'pointer', fontSize: 13 }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={modoRapido}
+                        onChange={e => setModoRapido(e.target.checked)}
+                      />
+                      ⚡ Modo rápido
+                    </label>
                   </div>
                   <div>
                     <div style={S.infoLabel}>Guías de corte</div>

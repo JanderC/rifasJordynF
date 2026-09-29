@@ -354,8 +354,17 @@ export function destruirLienzoOculto(cont) {
    • NO se pasan width/height/windowWidth: html2canvas usa el
      tamaño real del elemento y así nada se recorta ni se desplaza.
 ════════════════════════════════════════════════════════════════ */
-export async function capturarNodo(nodo, { dpi = 300, fondo = '#ffffff' } = {}) {
+export async function capturarNodo(nodo, { dpi = 300, fondo = '#ffffff', alClonar } = {}) {
   const escala = Math.min(6, Math.max(1, dpi / 96));
+
+  // html2canvas clona TODO el documento en cada captura. Si el nodo está
+  // dentro de un lienzo oculto, ignoramos el resto de la app (#root, toasts…):
+  // la captura es idéntica y el clonado pasa de miles de nodos a unos pocos.
+  const lienzo = nodo.closest('[data-ticket-capture="true"]');
+  const estilosDelBody = lienzo
+    ? Array.from(document.body.querySelectorAll('style, link[rel="stylesheet"]'))
+        .filter((el) => !lienzo.contains(el))
+    : [];
 
   return html2canvas(nodo, {
     scale: escala,
@@ -367,7 +376,14 @@ export async function capturarNodo(nodo, { dpi = 300, fondo = '#ffffff' } = {}) 
     removeContainer: true,
     scrollX: 0,
     scrollY: 0,
+    ignoreElements: lienzo
+      ? (el) => el.parentNode === document.body && el !== lienzo
+          && !/^(STYLE|LINK|SCRIPT)$/.test(el.tagName)
+      : undefined,
     onclone: (doc) => {
+      // Los <style> que vivían dentro de la app ignorada se re-inyectan
+      // en el <head> del clon para no perder fuentes ni reglas CSS.
+      estilosDelBody.forEach((el) => doc.head.appendChild(el.cloneNode(true)));
       // Devolvemos la opacidad real al clon que html2canvas va a pintar
       doc.querySelectorAll('[data-ticket-capture="true"]').forEach((el) => {
         el.style.opacity = '1';
@@ -377,6 +393,7 @@ export async function capturarNodo(nodo, { dpi = 300, fondo = '#ffffff' } = {}) 
       const style = doc.createElement('style');
       style.textContent = '*{animation:none!important;transition:none!important}';
       doc.head.appendChild(style);
+      if (alClonar) alClonar(doc);
     },
   });
 }
@@ -424,6 +441,73 @@ export function marcasDeCorte(pdf, layout, cantidad, estilo = 'esquinas') {
       pdf.line(x, y + sy * sep, x, y + sy * (sep + largoY));
     });
   }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Generación rápida: el diseño es idéntico en todos los boletos,
+   solo cambia el número. Se captura el diseño UNA vez (sin número)
+   y por cada boleto solo se captura el número (fondo transparente)
+   recortado a su caja, para superponerlo en el PDF.
+════════════════════════════════════════════════════════════════ */
+export const SELECTOR_CAMPOS_NUMERO =
+  '[data-field="numBoletoIzq"], [data-field="numBoletoDer"]';
+
+const lienzoDelClon = (doc) =>
+  doc.querySelector('[data-ticket-capture="true"] [data-ticket-canvas="true"]');
+
+// Para la captura del diseño base: número oculto (conserva su espacio)
+export function ocultarNumerosEnClon(doc) {
+  const lienzo = lienzoDelClon(doc);
+  if (!lienzo) return;
+  lienzo.querySelectorAll(SELECTOR_CAMPOS_NUMERO).forEach((el) => {
+    el.style.visibility = 'hidden';
+  });
+}
+
+// Para la capa del número: se oculta todo lo demás, el lienzo queda
+// transparente (mismo tamaño y borde, para no mover nada) y se escribe
+// el número de este boleto directamente en el clon (sin re-render de React).
+export function soloNumeroEnClon(doc, texto) {
+  const lienzo = lienzoDelClon(doc);
+  if (!lienzo) return;
+  lienzo.style.background = 'transparent';
+  lienzo.style.borderColor = 'transparent';
+  const ocultarExcepto = (padre) => {
+    Array.from(padre.children).forEach((hijo) => {
+      if (hijo.matches(SELECTOR_CAMPOS_NUMERO)) return;
+      if (hijo.querySelector(SELECTOR_CAMPOS_NUMERO)) ocultarExcepto(hijo);
+      else hijo.style.visibility = 'hidden';
+    });
+  };
+  ocultarExcepto(lienzo);
+  lienzo.querySelectorAll(SELECTOR_CAMPOS_NUMERO).forEach((el) => {
+    const span = el.querySelector('span') || el;
+    span.textContent = texto;
+  });
+}
+
+// Cajas (en px del canvas capturado) de cada campo de número, con margen
+// para bordes/trazos. Se miden en el DOM real respecto al lienzo del boleto.
+export function regionesDeNumero(nodo, canvas, margenPx = 8) {
+  const base = nodo.getBoundingClientRect();
+  const k = canvas.width / base.width;
+  return Array.from(nodo.querySelectorAll(SELECTOR_CAMPOS_NUMERO)).map((el) => {
+    const r = el.getBoundingClientRect();
+    const x = Math.max(0, Math.floor((r.left - base.left - margenPx) * k));
+    const y = Math.max(0, Math.floor((r.top  - base.top  - margenPx) * k));
+    const x2 = Math.min(canvas.width,  Math.ceil((r.right  - base.left + margenPx) * k));
+    const y2 = Math.min(canvas.height, Math.ceil((r.bottom - base.top  + margenPx) * k));
+    return { x, y, w: x2 - x, h: y2 - y };
+  }).filter((g) => g.w > 0 && g.h > 0);
+}
+
+// PNG (con transparencia) de un pedazo del canvas
+export function recortePNG(canvas, g) {
+  const c = document.createElement('canvas');
+  c.width = g.w;
+  c.height = g.h;
+  c.getContext('2d').drawImage(canvas, g.x, g.y, g.w, g.h, 0, 0, g.w, g.h);
+  return c.toDataURL('image/png');
 }
 
 /* ════════════════════════════════════════════════════════════════
