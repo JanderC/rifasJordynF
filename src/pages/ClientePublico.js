@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import API from '../services/api';
 
 const TURQ    = '#0abfbc';
@@ -959,6 +960,7 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
   const [sending,    setSending]  = useState(false);
   const [reservaIds, setReservaIds] = useState([]);
   const [conflictos, setConflictos] = useState([]);
+  const [acepta,     setAcepta]   = useState(false);
   const fileRef = useRef();
 
   /* ── Tasas desde /api/tasas/hoy ── */
@@ -995,6 +997,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
     if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
       setError('El correo electrónico no tiene un formato válido'); return;
     }
+    if (!acepta) { setError('Debes aceptar los Términos y Condiciones y la Política de Privacidad'); return; }
     setError(''); setSending(true);
     try {
       const r = await API.post('/publico/reservar', {
@@ -1250,6 +1253,17 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 )}
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFile} style={{ display:'none' }} />
               </div>
+
+              <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:16, cursor:'pointer', fontSize:'.78rem', color:`${DARK}aa`, lineHeight:1.5 }}>
+                <input type="checkbox" checked={acepta} onChange={e => setAcepta(e.target.checked)}
+                  style={{ marginTop:3, width:16, height:16, accentColor:TURQ_DK, flexShrink:0 }} />
+                <span>
+                  Soy mayor de 18 años y acepto los{' '}
+                  <Link to="/terminos" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Términos y Condiciones</Link>{' '}y la{' '}
+                  <Link to="/privacidad" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Política de Privacidad</Link>,
+                  incluido el tratamiento de mis datos para gestionar mi compra.
+                </span>
+              </label>
 
               {error && (
                 <div style={{ background:'#fff0f0', border:'1px solid #ffcccc', borderRadius:8, padding:'8px 12px', marginTop:10, fontSize:'.78rem', color:'#c0392b', fontWeight:500 }}>⚠️ {error}</div>
@@ -2442,7 +2456,15 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
             </div>
           </div>
           <div style={{ borderTop:'1px solid rgba(255,255,255,.08)', paddingTop:22, textAlign:'center' }}>
-            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RIFAS JORDYN · TODOS LOS DERECHOS RESERVADOS</span>
+            <div style={{ display:'flex', justifyContent:'center', flexWrap:'wrap', gap:'6px 18px', marginBottom:12 }}>
+              {[['/terminos','Términos y Condiciones'],['/privacidad','Política de Privacidad'],['/aviso-legal','Aviso Legal']].map(([to, label]) => (
+                <Link key={to} to={to} style={{ fontSize:'.78rem', color:'rgba(255,255,255,.6)', textDecoration:'none' }}
+                  onMouseEnter={e => e.target.style.color = TURQ} onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,.6)'}>
+                  {label}
+                </Link>
+              ))}
+            </div>
+            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RESUELVE TU SEMANA · RIFAS JORDYN · TODOS LOS DERECHOS RESERVADOS</span>
           </div>
         </div>
       </footer>

@@ -18,6 +18,7 @@ import Plantillas            from './pages/Plantillas';
 import GeneradorPDFTickets  from './pages/GeneradorPDFTickets';
 import ImprimirBoletos     from './pages/ImprimirBoletos';
 import ClientePublico       from './pages/ClientePublico';
+import Legal                from './pages/Legal';
 import GestionReservas   from './pages/GestionReservas';
 import Tasas             from './pages/Tasas';
 import WhatsApp          from './pages/WhatsApp';   // ← NUEVO
@@ -68,6 +69,9 @@ function AppRoutes() {
 
       {/* PÚBLICA — sin autenticación */}
       <Route path="/comprar" element={<ClientePublico />} />
+      <Route path="/terminos"    element={<Legal />} />
+      <Route path="/privacidad"  element={<Legal />} />
+      <Route path="/aviso-legal" element={<Legal />} />
 
       {/* ── DISEÑO DE TICKETS (sistema de plantillas) ── */}
       <Route path="/plantillas"        element={<PrivateRoute rol="dueno"><Plantillas /></PrivateRoute>} />
