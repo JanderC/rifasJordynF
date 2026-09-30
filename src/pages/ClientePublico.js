@@ -988,6 +988,12 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
   const [error,      setError]    = useState('');
   const [sending,    setSending]  = useState(false);
   const [reservaIds, setReservaIds] = useState([]);
+  // WhatsApp del negocio (solo si está conectado) para el botón "Recibir mi ticket"
+  const [waNegocio, setWaNegocio] = useState(null);
+  useEffect(() => {
+    fetch('https://rifasjordynb-production.up.railway.app/api/publico/whatsapp-negocio')
+      .then(r => (r.ok ? r.json() : null)).then(d => setWaNegocio(d?.numero || null)).catch(() => {});
+  }, []);
   const [conflictos, setConflictos] = useState([]);
   const [acepta,     setAcepta]   = useState(false);
   const fileRef = useRef();
@@ -1382,6 +1388,22 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
               {/* Botones de acción */}
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {/* Que el cliente nos escriba primero: así su ticket llega al instante
+                    y sin riesgo de bloqueo para el WhatsApp del negocio */}
+                {waNegocio && (
+                  <a href={`https://wa.me/${waNegocio}?text=${encodeURIComponent(
+                      `Hola! Soy ${form.nombre.trim()}, reservé ${numerosObjs.filter(n => !conflictos.map(c=>c.numero).includes(n.numero)).map(n => n.numero).join(', ')} en ${rifa.nombre} (reserva #${(reservaIds[0] || '').slice(0,8).toUpperCase()}) 🎟️`
+                    )}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, width:'100%', borderRadius:14, padding:'14px', background:'linear-gradient(135deg,#128c7e,#25d366)', color:'#fff', fontWeight:800, fontSize:'1rem', textDecoration:'none', boxShadow:'0 6px 20px rgba(37,211,102,.35)' }}>
+                    <span style={{ fontSize:'1.3rem' }}>📲</span> Recibir mi ticket por WhatsApp
+                  </a>
+                )}
+                {waNegocio && (
+                  <div style={{ fontSize:'.74rem', color:'#6b9090', marginTop:-4, lineHeight:1.5 }}>
+                    Escríbenos con ese mensaje y tu ticket te llega por ahí apenas verifiquemos el pago.
+                  </div>
+                )}
                 <button className="pub-btn-outline" onClick={onClose} style={{ width:'100%', justifyContent:'center', borderRadius:14, padding:'14px' }}>
                   ¡Entendido! 🎉
                 </button>

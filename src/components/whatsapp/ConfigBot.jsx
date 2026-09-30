@@ -22,6 +22,8 @@ const ANTIBAN = [
   ['escribiendo_cps', 'Velocidad al escribir (letras/seg)', 'El bot muestra "escribiendo…" el tiempo que tardaría una persona.'],
   ['ignorar_viejos_min', 'No responder mensajes de más de (min)', 'Al reconectar no contesta en ráfaga lo viejo: lo marca para que lo atiendas tú.'],
   ['max_respuestas_5min', 'Máx. respuestas a un chat en 5 min', 'Si se supera (p. ej. otro bot contestando), el bot se pausa en ese chat.'],
+  ['frio_espera_min_seg', 'Tickets a desconocidos: pausa mínima (seg)', 'Clientes de la página que nunca escribieron: sus tickets salen espaciados.'],
+  ['frio_espera_max_seg', 'Tickets a desconocidos: pausa máxima (seg)', ''],
 ];
 
 const SUGERENCIAS_SIM = ['hola, qué rifas tienen?', 'está disponible el 7?', 'quiero 3 números que terminen en 5', 'quiero el 087, soy Ana Pérez V-12345678, pago por pago móvil'];
@@ -356,6 +358,11 @@ export default function ConfigBot() {
                   {ayuda && <div className="wcb-ayuda">{ayuda}</div>}
                 </div>
               ))}
+            </div>
+            <div className="wcb-fila" style={{ marginTop: 12 }}>
+              <div style={{ flex: '0 0 170px' }}><label className="wcb-label">Tickets a desconocidos desde</label><input type="time" className="jd-input" value={cfg.antiban.frio_desde || '08:00'} onChange={(e) => setSub('antiban', 'frio_desde', e.target.value)} /></div>
+              <div style={{ flex: '0 0 170px' }}><label className="wcb-label">hasta</label><input type="time" className="jd-input" value={cfg.antiban.frio_hasta || '20:30'} onChange={(e) => setSub('antiban', 'frio_hasta', e.target.value)} /></div>
+              <div className="wcb-ayuda" style={{ alignSelf: 'center' }}>De noche no se le escribe a quien nunca escribió; esos tickets salen en la mañana (o al instante si el cliente escribe).</div>
             </div>
             <div className="wcb-consejos">
               <b style={{ fontSize: '.78rem' }}>Buenas prácticas para no ser bloqueado</b>

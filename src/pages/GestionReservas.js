@@ -31,6 +31,35 @@ const WaIcon = ({ size=18 }) => (
   </svg>
 );
 
+/* ─── Estado del envío del ticket por WhatsApp (cola anti-bloqueo) ─── */
+const ENVIO_ESTADOS = {
+  en_cola:           { txt: 'Ticket en cola',            color: '#0b6e8e', bg: 'rgba(17,138,178,.10)' },
+  enviando:          { txt: 'Enviando ticket…',          color: '#0b6e8e', bg: 'rgba(17,138,178,.10)' },
+  esperando_cliente: { txt: 'Ticket: espera que escriba', color: '#a36d00', bg: 'rgba(240,165,0,.12)' },
+  enviado:           { txt: 'Ticket enviado',            color: '#047857', bg: 'rgba(6,214,160,.12)' },
+  error:             { txt: 'Ticket no enviado',         color: '#c62e3a', bg: 'rgba(230,57,70,.10)' },
+};
+function EnvioTicketChip({ r, onCambio }) {
+  const e = ENVIO_ESTADOS[r.envio_estado];
+  if (!e) return null;
+  const titulo = r.envio_estado === 'en_cola' && r.envio_frio
+    ? 'El cliente nunca ha escrito: sale con pausas de seguridad para no arriesgar el número (o al instante si escribe)'
+    : r.envio_error || '';
+  return (
+    <span title={titulo} onClick={ev => ev.stopPropagation()}
+      style={{ fontSize:'.65rem', fontWeight:700, background:e.bg, color:e.color, borderRadius:20, padding:'1px 8px', display:'inline-flex', alignItems:'center', gap:4 }}>
+      <WaIcon size={10}/> {e.txt}
+      {r.envio_estado === 'error' && (
+        <button onClick={async ev => {
+          ev.stopPropagation();
+          try { await API.post(`/baileys/envios/${r.envio_id}/reintentar`); toast.info('Reintentando el envío del ticket'); onCambio?.(); }
+          catch { toast.error('No se pudo reintentar'); }
+        }} style={{ border:'none', background:'#c62e3a', color:'#fff', borderRadius:10, padding:'0 7px', fontSize:'.6rem', fontWeight:800, cursor:'pointer' }}>Reintentar</button>
+      )}
+    </span>
+  );
+}
+
 /* ─── Construir mensaje WhatsApp — ahora acepta urlsTicket ─── */
 function buildTicketMsg(r, nota, tasas = {}, urlsTicket = []) {
   const id     = r.id?.slice(0,8).toUpperCase() || '-------';
@@ -387,13 +416,14 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
       };
       const ticketsBase64 = [];
       const urlsCloud     = [];
+      const ticketsPorNumero = [];   // [{ numero, url }] — cada foto con su número
 
       for (const num of todosNumeros) {
         const imgDataUrl = await generarImagenTicketTemplate({ rifa: rifaPara, numero: num, plantilla });
         if (imgDataUrl) {
           ticketsBase64.push(imgDataUrl);
           const urlPublica = await subirTicketACloudinary(imgDataUrl, `ticket-${reserva.id?.slice(0,8)}-${num}.png`);
-          if (urlPublica) urlsCloud.push(urlPublica);
+          if (urlPublica) { urlsCloud.push(urlPublica); ticketsPorNumero.push({ numero: num, url: urlPublica }); }
         }
       }
 
@@ -407,16 +437,19 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
       const resp  = await fetch(`${API_BASE}/api/baileys/reservas/${reserva.id}/confirmar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ nota, ticketUrls: urlsCloud, mensajeTexto: msg }),
+        body: JSON.stringify({ nota, ticketUrls: urlsCloud, tickets: ticketsPorNumero, mensajeTexto: msg }),
       });
       const data = await resp.json();
 
       if (resp.ok && data.ok) {
         setBaileysStatus('ok');
-        setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota }));
+        setReserva(p => ({ ...p, estado: 'aprobado', nota_admin: nota, envio_estado: data.envio?.estado, envio_frio: data.envio?.frio }));
         setMostrandoPreview(false);
-        if (data.waSent) {
-          toast.success(`✅ Aprobada y ticket enviado por WhatsApp 🎉 (${data.imagenesEnviadas || 0} imagen${(data.imagenesEnviadas || 0) !== 1 ? 'es' : ''})`);
+        if (data.waEncolado) {
+          // El ticket sale solo desde la cola anti-bloqueo (no hay que esperar aquí)
+          toast.success(data.envio?.frio
+            ? '✅ Aprobada. El cliente nunca ha escrito: su ticket sale por WhatsApp con pausas de seguridad (o al instante si escribe).'
+            : '✅ Aprobada. El ticket sale por WhatsApp en unos segundos 🎉', { autoClose: 6000 });
         } else if (data.sinTelefono) {
           toast.success('✅ Aprobada — cliente sin teléfono registrado');
         } else if (data.waError) {
@@ -973,6 +1006,7 @@ export default function GestionReservas() {
                     {r.nombre_cliente}
                     {r.comprobante_base64 && <span style={{ fontSize:'.7rem', color:'var(--jordyn-primary)', fontWeight:600 }}><i className="bi bi-paperclip me-1"></i>Comprobante</span>}
                     {r.origen === 'whatsapp' && <span style={{ fontSize:'.65rem', fontWeight:700, background:'rgba(37,211,102,.12)', color:'#128c7e', border:'1px solid rgba(37,211,102,.3)', borderRadius:20, padding:'1px 8px', display:'inline-flex', alignItems:'center', gap:3 }}><WaIcon size={10}/> WhatsApp</span>}
+                    {r.estado === 'aprobado' && r.envio_estado && <EnvioTicketChip r={r} onCambio={() => { load(); loadTodas(); }} />}
                     {esGrupo && <span style={{ fontSize:'.68rem', background:'rgba(10,191,188,.1)', color:'var(--jordyn-primary)', border:'1px solid rgba(10,191,188,.25)', borderRadius:20, padding:'1px 8px', fontWeight:700 }}>🎟 {numeros.length} números</span>}
                   </div>
                   <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)' }}>
