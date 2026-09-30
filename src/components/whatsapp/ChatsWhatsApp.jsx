@@ -153,6 +153,7 @@ const ETIQUETAS_PASO = {
   esperando_comprobante: 'Números apartados · esperando pago',
   esperando_confirmacion: 'Comprobante recibido · por aprobar',
   comprobante_sin_compra: 'Mandó una foto sin compra',
+  apartado_vencido: 'Se le venció el apartado',
 };
 
 // ═════════════════════════════════════════════
@@ -399,6 +400,22 @@ export default function ChatsWhatsApp() {
     } catch (e) { toast.error(e.response?.data?.error || 'No se pudo actualizar'); return null; }
   };
 
+  // "Este es el comprobante": registra la reserva con esa foto (último paso de la compra)
+  const [marcandoComprobante, setMarcandoComprobante] = useState(null);
+  const marcarComprobante = async (m) => {
+    const ec = chatActivo?.estado_compra;
+    const detalle = ec?.numeros?.length ? `\n\n${ec.rifa_nombre} · ${ec.numeros.length > 1 ? 'números' : 'número'} ${ec.numeros.join(', ')}` : '';
+    if (!window.confirm(`¿Registrar esta foto como el comprobante de pago de ${nombreChat(chatActivo)}?${detalle}\n\nLa reserva queda pendiente en Reservas y se le avisa al cliente.`)) return;
+    setMarcandoComprobante(m.id);
+    try {
+      const r = await API.post(`/wa-chat/chats/${enc(activo)}/mensajes/${m.id}/es-comprobante`);
+      toast.success(`🧾 Reserva registrada: ${r.data.rifa} · #${r.data.numeros.join(', #')}${r.data.conflictos?.length ? ` (se ocuparon: ${r.data.conflictos.join(', ')})` : ''}`);
+      cargarInfo(activo);
+      cargarResumen();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar'); }
+    finally { setMarcandoComprobante(null); }
+  };
+
   const responderYo = async (jid) => {
     await abrirChat(jid);
     setTimeout(() => textareaRef.current?.focus(), 250);
@@ -504,6 +521,16 @@ export default function ChatsWhatsApp() {
             {m.tipo === 'imagen' && (m.media_url
               ? <img className="wac-img" src={m.media_url} alt="Foto" loading="lazy" onClick={() => setVisor(m.media_url)} />
               : <div className="wac-texto" style={{ opacity: 0.7 }}><i className="bi bi-image me-1" />Foto</div>)}
+            {m.tipo === 'imagen' && !m.de_mi && m.media_url && (
+              (info?.reservas || []).some((r) => r.comprobante_url === m.media_url)
+                ? <div className="wac-comprobante-ok"><i className="bi bi-receipt" />Registrado como comprobante</div>
+                : (
+                  <button className="wac-es-comprobante" disabled={marcandoComprobante === m.id} onClick={() => marcarComprobante(m)}
+                    title="Registra la reserva con esta foto como comprobante de pago">
+                    {marcandoComprobante === m.id ? 'Registrando…' : <><i className="bi bi-check2-circle" />Este es el comprobante</>}
+                  </button>
+                )
+            )}
             {m.tipo === 'sticker' && m.media_url && <img className="wac-sticker" src={m.media_url} alt="Sticker" loading="lazy" />}
             {m.tipo === 'audio' && (m.media_url
               ? <audio className="wac-audio" controls preload="none" src={m.media_url} />

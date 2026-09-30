@@ -316,3 +316,9 @@ mark.wac-mark.actual { background: #ff9f43; }
 .wac-cola-instruccion input:focus { border-color: var(--jordyn-primary); }
 .wac-cola-instruccion button { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--jordyn-primary); color: #fff; cursor: pointer; flex-shrink: 0; }
 .wac-cola-instruccion button:disabled { opacity: .45; cursor: default; }
+
+/* Botón "Este es el comprobante" en las fotos del cliente */
+.wac-es-comprobante { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 2px 0 4px; border: 1.5px solid #128c7e; background: #e7f8f1; color: #0b6b5f; border-radius: 8px; padding: 6px 10px; font-family: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.wac-es-comprobante:hover { background: #d3f3e6; }
+.wac-es-comprobante:disabled { opacity: .6; cursor: default; }
+.wac-comprobante-ok { display: flex; align-items: center; gap: 5px; margin: 2px 0 4px; font-size: .72rem; font-weight: 700; color: #047857; }
