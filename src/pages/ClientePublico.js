@@ -2499,13 +2499,6 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 <div>📍 Táchira, Venezuela</div>
               </div>
             </div>
-            <div>
-              <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'0.5px', marginBottom:14, fontWeight:600 }}>ACCESO ADMINISTRADOR</div>
-              <a href="/login" style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', textDecoration:'none', display:'flex', alignItems:'center', gap:6 }}
-                onMouseEnter={e => e.target.style.color = TURQ} onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,.5)'}>
-                🔐 Iniciar sesión
-              </a>
-            </div>
           </div>
           <div style={{ borderTop:'1px solid rgba(255,255,255,.08)', paddingTop:22, textAlign:'center' }}>
             <div style={{ display:'flex', justifyContent:'center', flexWrap:'wrap', gap:'6px 18px', marginBottom:12 }}>

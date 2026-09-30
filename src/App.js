@@ -22,7 +22,9 @@ import Legal                from './pages/Legal';
 import GestionReservas   from './pages/GestionReservas';
 import Tasas             from './pages/Tasas';
 import WhatsApp          from './pages/WhatsApp';   // ← NUEVO
+import { LOGIN_PATH, rutaInicio } from './config/rutas';
 
+// Sin sesión se manda a la página pública (nunca al login, para no revelar su ruta)
 function PrivateRoute({ children, rol }) {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -30,8 +32,8 @@ function PrivateRoute({ children, rol }) {
       <div className="jd-spinner"></div>
     </div>
   );
-  if (!user) return <Navigate to="/login" />;
-  if (rol && user.rol !== rol) return <Navigate to="/" />;
+  if (!user) return <Navigate to="/" replace />;
+  if (rol && user.rol !== rol) return <Navigate to={rutaInicio(user)} replace />;
   return children;
 }
 
@@ -39,16 +41,11 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+      {/* Login administrativo en ruta privada; /login ya no existe */}
+      <Route path={LOGIN_PATH} element={!user ? <Login /> : <Navigate to={rutaInicio(user)} replace />} />
 
-      {/* Redirección raíz según rol */}
-      <Route path="/" element={
-        <PrivateRoute>
-          {user?.rol === 'dueno'
-            ? <Navigate to="/rifas" />
-            : <Navigate to="/vender" />}
-        </PrivateRoute>
-      } />
+      {/* Página principal del dominio: la tienda pública donde los clientes compran sus números */}
+      <Route path="/" element={<ClientePublico />} />
 
       {/* ── DUEÑO ── */}
       {/* La pantalla principal del dueño quedó fuera: /dashboard manda a /rifas.
@@ -68,7 +65,7 @@ function AppRoutes() {
       <Route path="/whatsapp"      element={<PrivateRoute rol="dueno"><WhatsApp /></PrivateRoute>} />
 
       {/* PÚBLICA — sin autenticación */}
-      <Route path="/comprar" element={<ClientePublico />} />
+      <Route path="/comprar" element={<Navigate to="/" replace />} />
       <Route path="/terminos"    element={<Legal />} />
       <Route path="/privacidad"  element={<Legal />} />
       <Route path="/aviso-legal" element={<Legal />} />
@@ -86,7 +83,7 @@ function AppRoutes() {
       <Route path="/mis-ventas"    element={<PrivateRoute><Historial /></PrivateRoute>} />
       <Route path="/mi-dashboard"  element={<PrivateRoute><DashboardVendedor /></PrivateRoute>} />
 
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

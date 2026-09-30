@@ -409,11 +409,11 @@ export default function Legal() {
   return (
     <div style={{ minHeight: '100vh', background: '#f0fafa', fontFamily: "'Poppins',sans-serif", color: DARK }}>
       <nav style={{ background: 'rgba(255,255,255,.95)', borderBottom: '1px solid #e0f0f0', padding: '0 5vw', position: 'sticky', top: 0, zIndex: 100, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <Link to="/comprar" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <div style={{ width: 36, height: 36, background: `linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>🎰</div>
           <span style={{ fontSize: '1.15rem', color: DARK, fontWeight: 700 }}>{EMPRESA.marca}</span>
         </Link>
-        <Link to="/comprar" style={{ fontSize: '.85rem', color: TURQ_DK, fontWeight: 600, textDecoration: 'none' }}>← Volver a las rifas</Link>
+        <Link to="/" style={{ fontSize: '.85rem', color: TURQ_DK, fontWeight: 600, textDecoration: 'none' }}>← Volver a las rifas</Link>
       </nav>
 
       <main style={{ maxWidth: 860, margin: '0 auto', padding: '36px 16px 60px' }}>

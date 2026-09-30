@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import API from '../services/api';
+import { LOGIN_PATH } from '../config/rutas';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -37,7 +38,7 @@ export default function Sidebar() {
   const handleLogout = () => {
     logout();
     toast.info('Sesión cerrada');
-    navigate('/login');
+    navigate(LOGIN_PATH, { replace: true });
   };
 
   const navsDueno = [

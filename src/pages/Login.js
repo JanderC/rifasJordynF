@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import { rutaInicio } from '../config/rutas';
 
 export default function Login() {
   const [usuario,  setUsuario]  = useState('');
@@ -11,14 +12,28 @@ export default function Login() {
   const { login } = useAuth();
   const navigate  = useNavigate();
 
+  // Que los buscadores no indexen esta página ni la sigan (la ruta del login es privada)
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow';
+    document.head.appendChild(meta);
+    const tituloAnterior = document.title;
+    document.title = 'Acceso privado';
+    return () => {
+      meta.remove();
+      document.title = tituloAnterior;
+    };
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!usuario || !password) { toast.error('Completa todos los campos'); return; }
     setLoading(true);
     try {
-      const user = await login(usuario, password);
+      const user = await login(usuario.trim(), password);
       toast.success(`¡Bienvenido, ${user.nombre}!`);
-      navigate(user.rol === 'dueno' ? '/dashboard' : '/vender');
+      navigate(rutaInicio(user), { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error al iniciar sesión');
     } finally {
@@ -100,6 +115,8 @@ export default function Login() {
                   placeholder="tu_usuario"
                   autoFocus
                   autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   style={{ paddingLeft: '2.5rem' }}
                 />
               </div>
