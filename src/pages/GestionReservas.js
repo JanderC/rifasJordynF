@@ -83,7 +83,7 @@ async function subirTicketACloudinary(dataUrl, nombreArchivo) {
     const fd   = new FormData();
     fd.append('ticket', blob, nombreArchivo);
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jordyn_token');
     const res   = await fetch(`${API_BASE}/api/upload/ticket`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -384,7 +384,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
       const msg = buildTicketMsg({ ...reserva, _numeros: todosNumeros }, nota, tasas, urlsCloud);
 
       // 3. Llamar al endpoint de Baileys que aprueba en BD y envía WA
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('jordyn_token');
       const resp  = await fetch(`${API_BASE}/api/baileys/reservas/${reserva.id}/confirmar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },

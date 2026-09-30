@@ -34,7 +34,7 @@ export default function ImagenRifa({ rifaId, imagenActual, onImagenActualizada }
   const handleSubir = async () => {
     if (!archivo) return;
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jordyn_token');
     const formData = new FormData();
     formData.append('imagen', archivo);  // debe llamarse "imagen"
 
@@ -66,7 +66,7 @@ export default function ImagenRifa({ rifaId, imagenActual, onImagenActualizada }
   const handleEliminar = async () => {
     if (!window.confirm('¿Eliminar imagen de esta rifa?')) return;
 
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jordyn_token');
     setCargando(true);
     try {
       await axios.delete(`${API}/api/upload/rifa/${rifaId}/imagen`, {

@@ -116,7 +116,7 @@ const Modal = ({ title, children, onClose, size = '600px' }) => (
 
 // Llama a la API de Baileys (mismo origen del backend)
 function baileys(path, opts = {}) {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('jordyn_token');
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   return fetch(`${API_BASE}/api/baileys${path}`, { headers, ...opts });
 }
@@ -428,7 +428,7 @@ function TabChat() {
       if (imgFile) {
         const fd = new FormData();
         fd.append('numero', numero.trim()); fd.append('caption', caption); fd.append('imagen', imgFile);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('jordyn_token');
         r = await fetch(`${API_BASE}/api/baileys/send/image`, {
           method: 'POST',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
