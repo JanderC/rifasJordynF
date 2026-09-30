@@ -26,6 +26,17 @@ const ANTIBAN = [
 
 const SUGERENCIAS_SIM = ['hola, qué rifas tienen?', 'está disponible el 7?', 'quiero 3 números que terminen en 5', 'cuánto cuesta?'];
 
+// Reconoce de qué proveedor es una clave por su prefijo
+function proveedorDeClave(k) {
+  const c = String(k || '').trim();
+  if (c.startsWith('gsk_')) return 'groq';
+  if (c.startsWith('AIza')) return 'gemini';
+  if (c.startsWith('sk-ant-')) return 'anthropic';
+  if (c.startsWith('sk-or-')) return 'openrouter';
+  if (c.startsWith('sk-proj-')) return 'openai';
+  return null;
+}
+
 function Toggle({ on, onClick, title }) {
   return <button type="button" className={`wcb-toggle${on ? ' on' : ''}`} onClick={onClick} title={title} aria-pressed={on} />;
 }
@@ -170,7 +181,18 @@ export default function ConfigBot() {
               <div style={{ position: 'relative' }}>
                 <input className="jd-input" type={verClave ? 'text' : 'password'} autoComplete="off"
                   placeholder={claveGuardada ? `Guardada: ${claveGuardada} — escribe para reemplazarla` : prov?.claveEnServidor ? 'Usando la clave del servidor (.env)' : 'Pega aquí tu API key'}
-                  value={claveNueva} onChange={(e) => setClaveNueva(e.target.value)} style={{ paddingRight: 38 }} />
+                  value={claveNueva} style={{ paddingRight: 38 }}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const detectado = proveedorDeClave(v);
+                    // Evita el error de pegar una clave de Groq con Gemini seleccionado (y viceversa)
+                    if (detectado && detectado !== cfg.proveedor) {
+                      setCfg((c) => ({ ...c, proveedor: detectado, modelo: '' }));
+                      setModelos([]); setPrueba(null);
+                      toast.info(`Esa clave es de ${proveedores.find((p) => p.id === detectado)?.nombre || detectado}: lo seleccioné por ti`);
+                    }
+                    setClaveNueva(v);
+                  }} />
                 <button type="button" onClick={() => setVerClave((v) => !v)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', color: 'var(--jordyn-muted)', cursor: 'pointer' }}>
                   <i className={`bi ${verClave ? 'bi-eye-slash' : 'bi-eye'}`} />
                 </button>
