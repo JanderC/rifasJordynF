@@ -348,6 +348,8 @@ export default function Caja() {
               />
             )}
 
+            <VentasOnline rifaId={rifaActiva.id} />
+
             {datos && (
               <div style={S.toolbar}>
                 <div style={S.filtrosBg}>
@@ -1070,6 +1072,105 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
 /* ════════════════════════════════════════════════════════════
    COMPONENTES MENORES
 ════════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════
+   VENTAS EN LÍNEA — página web y WhatsApp
+   El pago ya se verificó al aprobar el comprobante en Reservas,
+   así que estos números cuadran aparte de los vendedores.
+════════════════════════════════════════════════════════════ */
+function VentasOnline({ rifaId }) {
+  const [data, setData] = useState(null);
+  const [abierto, setAbierto] = useState(false);
+  const [origen, setOrigen] = useState('todos');
+
+  useEffect(() => {
+    setData(null);
+    API.get(`/caja/rifas/${rifaId}/ventas-online`).then(r => setData(r.data)).catch(() => setData({ error: true }));
+  }, [rifaId]);
+
+  if (!data) return null;
+  if (data.error) return null;
+
+  const lista = origen === 'todos' ? data.ventas : data.ventas.filter(v => v.origen === origen);
+  const chip = (o) => o === 'whatsapp'
+    ? <span style={{ background: 'rgba(37,211,102,.12)', color: '#128c7e', borderRadius: 6, padding: '2px 8px', fontSize: '.68rem', fontWeight: 800 }}><i className="bi bi-whatsapp me-1" />WHATSAPP</span>
+    : <span style={{ background: 'var(--jordyn-primary-l)', color: 'var(--jordyn-primary-d)', borderRadius: 6, padding: '2px 8px', fontSize: '.68rem', fontWeight: 800 }}><i className="bi bi-globe2 me-1" />WEB</span>;
+
+  const bloque = (icono, color, titulo, n, monto) => (
+    <div style={{ flex: '1 1 150px', background: 'var(--jordyn-bg)', border: '1px solid var(--jordyn-border)', borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ fontSize: '.64rem', fontWeight: 800, letterSpacing: 1, color: 'var(--jordyn-muted)' }}><i className={`bi ${icono} me-1`} style={{ color }} />{titulo}</div>
+      <div style={{ fontWeight: 900, fontSize: '1.1rem', color: 'var(--jordyn-text)' }}>{COP(monto)}</div>
+      <div style={{ fontSize: '.72rem', color: 'var(--jordyn-muted)' }}>{fmtNum(n)} número{n === 1 ? '' : 's'}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ background: 'var(--jordyn-card)', border: '1px solid var(--jordyn-border)', borderLeft: '4px solid #25d366', borderRadius: 12, padding: '14px 16px', marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', cursor: 'pointer' }} onClick={() => setAbierto(a => !a)}>
+        <div style={{ fontWeight: 900, fontSize: '.85rem', letterSpacing: 1, color: 'var(--jordyn-text)' }}>
+          <i className="bi bi-cart-check-fill me-2" style={{ color: '#25d366' }} />VENTAS EN LÍNEA
+        </div>
+        <span style={{ fontSize: '.72rem', color: '#047857', fontWeight: 700 }}>✅ pagos verificados al aprobar el comprobante</span>
+        <span style={{ marginLeft: 'auto', fontSize: '.8rem', color: 'var(--jordyn-muted)', fontWeight: 700 }}>
+          {fmtNum(data.total_numeros)} números · {COP(data.total_monto)} <i className={`bi bi-chevron-${abierto ? 'up' : 'down'} ms-1`} />
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+        {bloque('bi-whatsapp', '#25d366', 'POR WHATSAPP', data.por_origen.whatsapp.numeros, data.por_origen.whatsapp.monto)}
+        {bloque('bi-globe2', 'var(--jordyn-primary)', 'POR LA PÁGINA', data.por_origen.web.numeros, data.por_origen.web.monto)}
+        {bloque('bi-cash-stack', '#f0a500', 'TOTAL EN LÍNEA', data.total_numeros, data.total_monto)}
+      </div>
+
+      {abierto && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {[['todos', 'Todos'], ['whatsapp', 'WhatsApp'], ['web', 'Página']].map(([k, t]) => (
+              <button key={k} onClick={() => setOrigen(k)} style={{
+                border: 'none', borderRadius: 16, padding: '4px 12px', fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                background: origen === k ? 'var(--jordyn-primary)' : 'var(--jordyn-bg2)', color: origen === k ? '#fff' : 'var(--jordyn-muted)',
+              }}>{t}</button>
+            ))}
+          </div>
+          {lista.length === 0 ? (
+            <div style={{ fontSize: '.8rem', color: 'var(--jordyn-muted)', padding: '8px 2px' }}>Aún no hay ventas en línea en esta rifa.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--jordyn-muted)', fontSize: '.66rem', letterSpacing: .8 }}>
+                    <th style={{ padding: '6px 8px' }}>NÚMERO</th><th style={{ padding: '6px 8px' }}>CLIENTE</th>
+                    <th style={{ padding: '6px 8px' }}>CANAL</th><th style={{ padding: '6px 8px', textAlign: 'right' }}>MONTO</th>
+                    <th style={{ padding: '6px 8px' }}>FECHA</th><th style={{ padding: '6px 8px' }}>COMPROBANTE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map(v => (
+                    <tr key={v.id} style={{ borderTop: '1px solid var(--jordyn-border)' }}>
+                      <td style={{ padding: '7px 8px', fontWeight: 900, letterSpacing: 1 }}>#{v.numero}</td>
+                      <td style={{ padding: '7px 8px' }}>
+                        <div style={{ fontWeight: 600 }}>{v.nombre_comprador}</div>
+                        <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>{[v.cedula, v.telefono].filter(Boolean).join(' · ')}</div>
+                      </td>
+                      <td style={{ padding: '7px 8px' }}>{chip(v.origen)}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700 }}>{COP(v.precio_venta)}</td>
+                      <td style={{ padding: '7px 8px', color: 'var(--jordyn-muted)' }}>{fmtFecha(v.created_at)}</td>
+                      <td style={{ padding: '7px 8px' }}>
+                        {v.comprobante_url
+                          ? <a href={v.comprobante_url} target="_blank" rel="noreferrer"><i className="bi bi-image me-1" />Ver</a>
+                          : <span style={{ color: 'var(--jordyn-muted)' }}>—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SelectorRifa({ rifas, rifaSeleccionada, loading, onSeleccionar }) {
   const fmt = f => f ? new Date(f).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Caracas' }) : '—';
   if (loading) return (

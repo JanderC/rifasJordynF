@@ -109,6 +109,7 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
     .map(r => ({
       numero: r.numero,
       metodo: r.metodo_pago || null,
+      datos: r.comprobante_datos || null,   // leído con IA (compras por WhatsApp)
       // Nuevos: URL de Cloudinary. Antiguos: base64 (con o sin prefijo data:)
       src: /^(data:|https?:\/\/)/.test(r.comprobante_base64)
         ? r.comprobante_base64
@@ -150,6 +151,16 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
           <span style={{ fontSize:'.65rem', fontWeight:700, color:'var(--jordyn-muted)' }}>{pagina+1} de {total}</span>
           <span style={{ background:'rgba(124,58,237,.1)', border:'1px solid rgba(124,58,237,.25)', color:'#7c3aed', borderRadius:20, padding:'2px 10px', fontSize:'.7rem', fontWeight:800, letterSpacing:1 }}>🎟 #{actual.numero}</span>
           {actual.metodo && <span style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', background:'var(--jordyn-bg2)', border:'1px solid var(--jordyn-border)', borderRadius:20, padding:'2px 8px' }}><i className="bi bi-credit-card me-1"></i>{actual.metodo}</span>}
+        </div>
+      )}
+      {actual.datos && actual.datos.es_comprobante !== false && (actual.datos.monto || actual.datos.referencia) && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginBottom:8, fontSize:'.72rem' }}>
+          <span style={{ fontWeight:700, color:'var(--jordyn-muted)' }}><i className="bi bi-stars me-1" style={{ color:'var(--jordyn-primary)' }}></i>Leído por IA:</span>
+          {actual.datos.monto != null && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px', fontWeight:700 }}>{actual.datos.monto} {actual.datos.moneda || ''}</span>}
+          {actual.datos.referencia && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>Ref. {actual.datos.referencia}</span>}
+          {actual.datos.banco && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>{actual.datos.banco}</span>}
+          {actual.datos.fecha && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>{actual.datos.fecha}</span>}
+          {Number(actual.datos.diferencia) < 0 && <span style={{ background:'rgba(230,57,70,.1)', color:'#c62e3a', borderRadius:20, padding:'2px 9px', fontWeight:700 }}>⚠️ Faltan {Math.abs(actual.datos.diferencia)}</span>}
         </div>
       )}
       <ComprobanteVisor key={`visor-${pagina}`} src={actual.src} />
