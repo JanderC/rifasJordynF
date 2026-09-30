@@ -141,7 +141,7 @@ const AUTORES = {
 const EMOJIS = ['😊', '😂', '🙏', '👍', '👌', '🙌', '🎉', '🍀', '✅', '❌', '⏳', '💰', '💸', '🎟️', '🔥', '⭐', '❤️', '😉', '🤞', '😅', '🥳', '📲', '📸', '👋', '🤝', '💪', '😎', '🤗', '👀', '📍', '🕐', '🎯'];
 
 const ETIQUETAS_PASO = {
-  esperando_comprobante: 'Esperando comprobante',
+  esperando_comprobante: 'Números apartados · esperando pago',
   esperando_confirmacion: 'Comprobante recibido · por aprobar',
   comprobante_sin_compra: 'Mandó una foto sin compra',
 };
@@ -181,7 +181,7 @@ export default function ChatsWhatsApp() {
   const [mostrarInfo, setMostrarInfo] = useState(false);
   const [info, setInfo] = useState(null);                // { chat, reservas }
   const [editNombre, setEditNombre] = useState(null);
-  const [datosPago, setDatosPago] = useState('');
+  const [metodosPago, setMetodosPago] = useState({});   // mismos datos de la pantalla del cliente
 
   const msgsRef = useRef(null);
   const activoRef = useRef(null);
@@ -211,7 +211,7 @@ export default function ChatsWhatsApp() {
   useEffect(() => { cargarChats(); }, [cargarChats]);
   useEffect(() => { cargarResumen(); }, [cargarResumen]);
   useEffect(() => {
-    API.get('/wa-chat/bot/config').then((r) => setDatosPago(r.data?.datos_pago || '')).catch(() => {});
+    API.get('/publico/metodos-pago').then((r) => setMetodosPago(r.data?.metodos || {})).catch(() => {});
   }, []);
 
   // Búsqueda con espera (y búsqueda dentro de las conversaciones)
@@ -412,13 +412,16 @@ export default function ChatsWhatsApp() {
   const autoAltura = (el) => { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 140)}px`; };
 
   const RAPIDAS = useMemo(() => [
-    ...(datosPago ? [{ t: 'Datos de pago', v: datosPago }] : []),
+    ...Object.entries(metodosPago).filter(([, m]) => !m.presencial).map(([nombre, m]) => ({
+      t: `Datos de ${nombre}`,
+      v: [`${m.icono} *${nombre}*`, ...m.campos.map((c) => `${c.label}: ${c.valor}`), ...(m.nota ? [m.nota] : [])].join('\n'),
+    })),
     { t: 'Pago verificado', v: '¡Listo! Tu pago fue verificado ✅ ya te envío tu ticket 🎟️' },
     { t: 'Pedir comprobante', v: 'Cuando hagas el pago me mandas la captura del comprobante por aquí 📸' },
     { t: 'Número ocupado', v: 'Ese número ya está ocupado 😕 ¿quieres que te busque otro parecido?' },
     { t: 'Saludo', v: '¡Hola! ¿En qué te puedo ayudar? 😊' },
     { t: 'Gracias', v: '¡Gracias por tu compra y mucha suerte! 🍀' },
-  ], [datosPago]);
+  ], [metodosPago]);
 
   // ── Búsqueda dentro del chat ───────────────────────────────
   const coincidencias = useMemo(() => {
@@ -758,7 +761,9 @@ export default function ChatsWhatsApp() {
                 {ec.numeros && <div className="wac-dato"><span>Números</span><span>{ec.numeros.join(', ')}</span></div>}
                 {ec.nombre && <div className="wac-dato"><span>A nombre de</span><span>{ec.nombre}</span></div>}
                 {ec.cedula && <div className="wac-dato"><span>Cédula</span><span>{ec.cedula}</span></div>}
-                {ec.total != null && <div className="wac-dato"><span>Total</span><span>{Number(ec.total).toLocaleString('es-VE')}</span></div>}
+                {ec.total != null && <div className="wac-dato"><span>Total</span><span>{Number(ec.total).toLocaleString('es-CO')} pesos</span></div>}
+                {ec.metodo && <div className="wac-dato"><span>Paga por</span><span>{ec.metodo}{ec.monto?.texto ? ` · ${ec.monto.texto}` : ''}</span></div>}
+                {ec.paso === 'esperando_comprobante' && ec.apartado_hasta && <div className="wac-dato"><span>Apartado hasta</span><span>{new Date(ec.apartado_hasta).toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit' })}</span></div>}
                 {ec.comprobante?.url && <img src={ec.comprobante.url} alt="Foto" style={{ width: '100%', borderRadius: 8, marginTop: 8, cursor: 'zoom-in' }} onClick={() => setVisor(ec.comprobante.url)} />}
                 <button className="wac-accion peligro" style={{ marginTop: 6 }}
                   onClick={() => { if (window.confirm('¿Reiniciar la compra en curso de este cliente?')) actualizarChat({ estado_compra: null }, 'Compra reiniciada'); }}>

@@ -153,6 +153,14 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
           {actual.metodo && <span style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', background:'var(--jordyn-bg2)', border:'1px solid var(--jordyn-border)', borderRadius:20, padding:'2px 8px' }}><i className="bi bi-credit-card me-1"></i>{actual.metodo}</span>}
         </div>
       )}
+      {actual.datos?.monto_esperado && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginBottom:8, fontSize:'.76rem', background:'rgba(37,211,102,.08)', border:'1px solid rgba(37,211,102,.25)', borderRadius:10, padding:'7px 10px' }}>
+          <span style={{ fontWeight:700, color:'#128c7e' }}><i className="bi bi-whatsapp me-1"></i>Se le pidió pagar:</span>
+          <span style={{ fontWeight:900, color:'var(--jordyn-text)' }}>{actual.datos.monto_esperado}</span>
+          {actual.datos.metodo && <span style={{ color:'var(--jordyn-muted)' }}>por {actual.datos.metodo}</span>}
+          <span style={{ color:'var(--jordyn-muted)' }}>· revisa que la captura coincida</span>
+        </div>
+      )}
       {actual.datos && actual.datos.es_comprobante !== false && (actual.datos.monto || actual.datos.referencia) && (
         <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginBottom:8, fontSize:'.72rem' }}>
           <span style={{ fontWeight:700, color:'var(--jordyn-muted)' }}><i className="bi bi-stars me-1" style={{ color:'var(--jordyn-primary)' }}></i>Leído por IA:</span>

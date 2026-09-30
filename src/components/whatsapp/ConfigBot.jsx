@@ -24,7 +24,7 @@ const ANTIBAN = [
   ['max_respuestas_5min', 'Máx. respuestas a un chat en 5 min', 'Si se supera (p. ej. otro bot contestando), el bot se pausa en ese chat.'],
 ];
 
-const SUGERENCIAS_SIM = ['hola, qué rifas tienen?', 'está disponible el 7?', 'quiero 3 números que terminen en 5', 'cuánto cuesta?'];
+const SUGERENCIAS_SIM = ['hola, qué rifas tienen?', 'está disponible el 7?', 'quiero 3 números que terminen en 5', 'quiero el 087, soy Ana Pérez V-12345678, pago por pago móvil'];
 
 // Reconoce de qué proveedor es una clave por su prefijo
 function proveedorDeClave(k) {
@@ -57,12 +57,15 @@ export default function ConfigBot() {
   const [sim, setSim] = useState([]);               // [{ role, content, llamadas? }]
   const [simTexto, setSimTexto] = useState('');
   const [simPensando, setSimPensando] = useState(false);
+  const [simEstado, setSimEstado] = useState(null);  // compra en curso de la simulación
+  const [pagos, setPagos] = useState(null);           // { metodos, tasas } — mismos datos de la pantalla del cliente
   const simRef = useRef(null);
 
   useEffect(() => {
     Promise.all([API.get('/wa-chat/bot/config'), API.get('/wa-chat/bot/proveedores')])
       .then(([c, p]) => { setCfg(c.data); setOriginal(JSON.stringify(c.data)); setProveedores(p.data); })
       .catch(() => toast.error('No se pudo cargar la configuración del bot'));
+    API.get('/publico/metodos-pago').then((r) => setPagos(r.data)).catch(() => {});
   }, []);
   useEffect(() => { simRef.current?.scrollTo({ top: simRef.current.scrollHeight, behavior: 'smooth' }); }, [sim, simPensando]);
 
@@ -131,7 +134,8 @@ export default function ConfigBot() {
     const nuevo = [...sim, { role: 'user', content: t }];
     setSim(nuevo); setSimTexto(''); setSimPensando(true);
     try {
-      const r = await API.post('/wa-chat/bot/probar-conversacion', { mensajes: nuevo.map(({ role, content }) => ({ role, content })) });
+      const r = await API.post('/wa-chat/bot/probar-conversacion', { mensajes: nuevo.map(({ role, content }) => ({ role, content })), estado_compra: simEstado });
+      setSimEstado(r.data.estado_compra || null);
       const partes = r.data.partes?.length ? r.data.partes : [r.data.respuesta || '(sin respuesta)'];
       setSim([...nuevo, ...partes.map((p, i) => ({ role: 'assistant', content: p, llamadas: i === 0 ? r.data.llamadas : [] }))]);
     } catch (e) {
@@ -229,10 +233,6 @@ export default function ConfigBot() {
             </div>
             <label className="wcb-label">Forma de hablar</label>
             <textarea className="jd-input" rows={6} value={cfg.personalidad} onChange={(e) => set('personalidad', e.target.value)} />
-            <label className="wcb-label">Datos de pago <span style={{ color: '#e63946' }}>*</span></label>
-            <textarea className="jd-input" rows={4} value={cfg.datos_pago} onChange={(e) => set('datos_pago', e.target.value)}
-              placeholder={'Pago móvil: Banco …, C.I. …, Teléfono …\nZelle: …\nBinance: …'} />
-            <div className="wcb-ayuda">El bot se los envía tal cual al cliente cuando aparta sus números. {!cfg.datos_pago?.trim() && <b style={{ color: '#e63946' }}>Sin esto el bot no puede cerrar ventas: te pasa el chat a ti.</b>}</div>
             <label className="wcb-label">Información extra (horarios, redes, página web, preguntas frecuentes)</label>
             <textarea className="jd-input" rows={4} value={cfg.info_extra} onChange={(e) => set('info_extra', e.target.value)}
               placeholder={'Los sorteos se transmiten en vivo por Instagram @…\nPágina para comprar: https://…'} />
@@ -245,6 +245,41 @@ export default function ConfigBot() {
             <label className="wcb-label">Mensaje si la IA falla</label>
             <input className="jd-input" value={cfg.mensaje_sin_ia} onChange={(e) => set('mensaje_sin_ia', e.target.value)} />
             <div className="wcb-ayuda">Se envía una sola vez y el chat queda marcado para que lo atiendas tú.</div>
+          </div>
+
+          {/* Pagos y apartado */}
+          <div className="wcb-card">
+            <h4><i className="bi bi-wallet2" />Pagos y apartado de números</h4>
+            <div className="desc">
+              El bot usa los mismos datos de pago de la pantalla del cliente y calcula el monto en la moneda de cada método con la tasa del día.
+              Los datos y el monto los envía el sistema tal cual: la IA nunca los escribe.
+            </div>
+            {pagos ? (
+              <>
+                <div className="wcb-metodos">
+                  {Object.entries(pagos.metodos).map(([nombre, m]) => (
+                    <div key={nombre} className="wcb-metodo">
+                      <b>{m.icono} {nombre}</b>
+                      {m.campos.map((c) => <span key={c.label}>{c.label}: {c.valor}</span>)}
+                      {m.presencial && <em>Lo coordina una persona</em>}
+                    </div>
+                  ))}
+                </div>
+                <div className="wcb-ayuda">
+                  Tasas de hoy: 1 USD = {Number(pagos.tasas.copUsd).toLocaleString('es-CO')} pesos · 1 USD = Bs. {Number(pagos.tasas.bsdUsd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}.
+                  Se cambian en <b>Tasas</b>.
+                </div>
+              </>
+            ) : <div className="wcb-ayuda">Cargando métodos de pago…</div>}
+            <div className="wcb-fila" style={{ marginTop: 6 }}>
+              <div style={{ flex: '0 0 220px' }}>
+                <label className="wcb-label">Minutos que se aparta un número</label>
+                <input type="number" min={5} className="jd-input" value={cfg.apartado_minutos ?? 45} onChange={(e) => set('apartado_minutos', Math.max(5, Number(e.target.value) || 45))} />
+              </div>
+              <div className="wcb-ayuda" style={{ alignSelf: 'center' }}>
+                Mientras el cliente paga, sus números quedan bloqueados (nadie más puede tomarlos, ni por la página). Si no manda la captura a tiempo, se liberan solos y se le avisa.
+              </div>
+            </div>
           </div>
 
           {/* Horario */}
@@ -308,7 +343,7 @@ export default function ConfigBot() {
               <div className="wcb-sim-cab">
                 <div className="av"><i className="bi bi-shop" /></div>
                 <div style={{ flex: 1 }}><b>{cfg.nombre_negocio || 'Tu negocio'}</b><span>{simPensando ? 'escribiendo…' : 'Simulador · no envía nada por WhatsApp'}</span></div>
-                {sim.length > 0 && <button type="button" onClick={() => setSim([])} title="Reiniciar" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><i className="bi bi-arrow-counterclockwise" /></button>}
+                {sim.length > 0 && <button type="button" onClick={() => { setSim([]); setSimEstado(null); }} title="Reiniciar" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><i className="bi bi-arrow-counterclockwise" /></button>}
               </div>
               <div className="wcb-sim-msgs" ref={simRef}>
                 {sim.length === 0 && (

@@ -83,3 +83,10 @@
   .wcb { grid-template-columns: 1fr; }
   .wcb-sim { position: static; max-width: 420px; margin: 0 auto 18px; }
 }
+
+/* Métodos de pago (solo lectura, vienen de la pantalla del cliente) */
+.wcb-metodos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.wcb-metodo { border: 1px solid var(--jordyn-border); border-radius: 10px; padding: 9px 11px; background: var(--jordyn-bg); }
+.wcb-metodo b { display: block; font-size: .82rem; margin-bottom: 3px; }
+.wcb-metodo span { display: block; font-size: .72rem; color: var(--jordyn-muted); line-height: 1.45; }
+.wcb-metodo em { display: block; font-size: .68rem; color: #a36d00; font-style: normal; font-weight: 700; margin-top: 3px; }

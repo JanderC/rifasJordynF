@@ -250,6 +250,7 @@ mark.wac-mark.actual { background: #ff9f43; }
 .wac-estado { font-size: .64rem; font-weight: 800; text-transform: uppercase; border-radius: 5px; padding: 2px 7px; margin-left: auto; flex-shrink: 0; }
 .wac-estado.pendiente { background: rgba(240,165,0,.15); color: #a36d00; }
 .wac-estado.aprobado { background: rgba(6,214,160,.15); color: #047857; }
+.wac-estado.apartado { background: rgba(17,138,178,.12); color: #0b6e8e; }
 .wac-estado.rechazado { background: rgba(230,57,70,.12); color: #c62e3a; }
 .wac-accion { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 9px 4px; font-size: .84rem; cursor: pointer; font-family: inherit; color: var(--jordyn-text); border-radius: 8px; text-align: left; }
 .wac-accion:hover { background: var(--jordyn-bg); }

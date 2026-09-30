@@ -134,6 +134,35 @@ const METODOS_PAGO = {
 };
 
 /* ─────────────────────────────────────────────────────────────
+   Datos de pago desde el backend (misma fuente que usa el bot de
+   WhatsApp). Si el servidor no responde, se usan los de arriba.
+   Solo se reemplazan campos y notas; colores e íconos son de aquí.
+───────────────────────────────────────────────────────────── */
+function useMetodosPagoServidor() {
+  const [, setVersion] = useState(0);
+  useEffect(() => {
+    fetch('https://rifasjordynb-production.up.railway.app/api/publico/metodos-pago')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!data?.metodos) return;
+        for (const [nombre, m] of Object.entries(data.metodos)) {
+          METODOS_PAGO[nombre] = {
+            colorHex: TURQ_DK, bg: '#f5fffe', border: `${TURQ}55`,
+            ...METODOS_PAGO[nombre],
+            icono: m.icono || METODOS_PAGO[nombre]?.icono,
+            pais: m.pais || METODOS_PAGO[nombre]?.pais,
+            campos: m.campos,
+            nota: m.nota,
+          };
+          if (m.moneda) METODO_MONEDA[nombre] = m.moneda;
+        }
+        setVersion(v => v + 1);   // re-render con los datos del servidor
+      })
+      .catch(() => {});
+  }, []);
+}
+
+/* ─────────────────────────────────────────────────────────────
    Hook único: ambas tasas desde /api/tasas/hoy
    Fórmula Bs = precio_COP / COP_POR_USD * BSD_POR_USD
 ───────────────────────────────────────────────────────────── */
@@ -2217,6 +2246,7 @@ export default function ClientePublico() {
   const [numerosCarrito, setNumerosCarrito] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const gridRef = useRef();
+  useMetodosPagoServidor();
 
   /* ── Tasa para mostrar en la tarjeta pública de Pago Móvil ── */
 const tasasHoy = useTasasHoy();
