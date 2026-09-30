@@ -225,6 +225,7 @@ export default function ConfigBot() {
             <div className="wcb-fila">
               <div><label className="wcb-label">Nombre del negocio</label><input className="jd-input" value={cfg.nombre_negocio} onChange={(e) => set('nombre_negocio', e.target.value)} /></div>
               <div><label className="wcb-label">Nombre de quien atiende (opcional)</label><input className="jd-input" value={cfg.nombre_asistente} onChange={(e) => set('nombre_asistente', e.target.value)} placeholder="Ej. Jordyn" /></div>
+              <div style={{ flex: '0 0 150px' }}><label className="wcb-label">Moneda de los precios</label><input className="jd-input" value={cfg.moneda || ''} onChange={(e) => set('moneda', e.target.value)} placeholder="pesos" /></div>
             </div>
             <label className="wcb-label">Forma de hablar</label>
             <textarea className="jd-input" rows={6} value={cfg.personalidad} onChange={(e) => set('personalidad', e.target.value)} />
