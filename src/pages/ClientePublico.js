@@ -309,7 +309,7 @@ const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds, totalR
   const hora   = fmtHora(rifa?.fecha_sorteo);
 
   const msg =
-    `🎰 *RIFAS JORDYN* — Confirmación de reserva\n\n` +
+    `*RESUELVE TU SEMANA* — Confirmación de reserva\n\n` +
     `Hola *${nombre}* 👋 tu${todos.length > 1 ? 's números quedaron bloqueados' : ' número quedó bloqueado'}:\n\n` +
     `🎟 Número${todos.length > 1 ? 's' : ''}: ${numStr}\n` +
     `🏆 Premio: ${rifa?.premio || ''}\n` +
@@ -1063,12 +1063,12 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
   const compartirNativo = async () => {
     const texto =
-      `🎰 RIFAS JORDYN\n🎟 Número${numeros.length>1?'s':''}: ${numeros.join(' · ')}\n🏆 Premio: ${rifa?.premio}\n` +
+      `RESUELVE TU SEMANA\n🎟 Número${numeros.length>1?'s':''}: ${numeros.join(' · ')}\n🏆 Premio: ${rifa?.premio}\n` +
       `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n👤 ${form.nombre}\n` +
       `💰 Total: ${fmt(totalReal)}${ofertaInfo ? ` (ahorraste ${fmt(ofertaInfo.ahorro)})` : ''}\n` +
       `🔖 Reserva: #${reservaIds[0]?.slice(0,8).toUpperCase()}\n✅ Número${numeros.length>1?'s bloqueados':'bloqueado'} pendiente${numeros.length>1?'s':''} de confirmación.`;
     if (navigator.share) {
-      try { await navigator.share({ title:'Tu boleto — Rifas Jordyn', text: texto }); } catch {}
+      try { await navigator.share({ title:'Tu boleto — Resuelve tu Semana', text: texto }); } catch {}
     } else {
       await navigator.clipboard.writeText(texto);
       alert('Texto copiado al portapapeles 📋');
@@ -2334,8 +2334,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
       <nav style={{ background:'rgba(255,255,255,.95)', backdropFilter:'blur(12px)', borderBottom:'1px solid #e0f0f0', padding:'0 5vw', position:'sticky', top:0, zIndex:100, height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>🎰</div>
-          <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:700, fontFamily:"'Poppins',sans-serif" }}>Rifas Jordyn</span>
+          <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:800, fontFamily:"'Poppins',sans-serif" }}>Resuelve tu Semana</span>
         </div>
         <div style={{ display:'flex', gap:24, alignItems:'center' }}>
           <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link">Rifas</a>
@@ -2487,8 +2486,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:40, marginBottom:40 }}>
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-                <div style={{ width:38, height:38, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎰</div>
-                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:700 }}>Rifas Jordyn</span>
+                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:800 }}>Resuelve tu Semana</span>
               </div>
               <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.</p>
             </div>
@@ -2509,7 +2507,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 </Link>
               ))}
             </div>
-            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RESUELVE TU SEMANA · RIFAS JORDYN · TODOS LOS DERECHOS RESERVADOS</span>
+            <span style={{ fontSize:'.56rem', color:'rgba(255,255,255,.25)', letterSpacing:'0.5px' }}>© 2026 RESUELVE TU SEMANA · TODOS LOS DERECHOS RESERVADOS</span>
           </div>
         </div>
       </footer>
