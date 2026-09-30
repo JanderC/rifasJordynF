@@ -48,6 +48,15 @@ function horaLista(v) {
   if (hoy - d < 6 * 86400000) return d.toLocaleDateString('es-VE', { weekday: 'long' });
   return d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
+function haceCuanto(v) {
+  const d = aFecha(v);
+  if (!d) return '';
+  const min = Math.round((Date.now() - d) / 60000);
+  if (min < 1) return 'ahora';
+  if (min < 60) return `${min} min`;
+  const h = Math.round(min / 60);
+  return h < 24 ? `${h} h` : `${Math.round(h / 24)} d`;
+}
 function etiquetaDia(v) {
   const d = aFecha(v);
   const hoy = new Date();
@@ -183,6 +192,12 @@ export default function ChatsWhatsApp() {
   const [editNombre, setEditNombre] = useState(null);
   const [metodosPago, setMetodosPago] = useState({});   // mismos datos de la pantalla del cliente
 
+  // Cola de atención (clientes esperando a una persona)
+  const [cola, setCola] = useState([]);
+  const [colaAbierta, setColaAbierta] = useState(true);
+  const [instruccion, setInstruccion] = useState({});   // jid → texto para el bot
+  const [atendiendo, setAtendiendo] = useState(null);
+
   const msgsRef = useRef(null);
   const activoRef = useRef(null);
   const filtroRef = useRef({ filtro, q: qDebounced });
@@ -196,9 +211,28 @@ export default function ChatsWhatsApp() {
   const chatActivo = useMemo(() => chats.find((c) => c.jid === activo) || info?.chat || null, [chats, activo, info]);
 
   // ── Carga de datos ─────────────────────────────────────────
+  const cargarCola = useCallback(() => {
+    API.get('/wa-chat/cola').then((r) => setCola(r.data)).catch(() => {});
+  }, []);
   const cargarResumen = useCallback(() => {
     API.get('/wa-chat/resumen').then((r) => setResumen(r.data)).catch(() => {});
-  }, []);
+    cargarCola();
+  }, [cargarCola]);
+
+  // "Que lo atienda el bot" — con instrucción opcional de qué decirle al cliente
+  const atenderConBot = async (jid, instruccion = '') => {
+    setAtendiendo(jid);
+    try {
+      const r = await API.post(`/wa-chat/chats/${enc(jid)}/atender-bot`, { instruccion });
+      const quien = nombreChat(chats.find((c) => c.jid === jid) || cola.find((c) => c.jid === jid));
+      toast.success(r.data.enviados?.length
+        ? `🤖 Le respondió a ${quien}: "${r.data.enviados.join(' ').slice(0, 90)}${r.data.enviados.join(' ').length > 90 ? '…' : ''}"`
+        : `🤖 El bot vuelve a atender a ${quien}`);
+      setInstruccion((p) => ({ ...p, [jid]: '' }));
+      cargarResumen();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo'); }
+    finally { setAtendiendo(null); }
+  };
 
   const cargarChats = useCallback(async () => {
     try {
@@ -365,6 +399,11 @@ export default function ChatsWhatsApp() {
     } catch (e) { toast.error(e.response?.data?.error || 'No se pudo actualizar'); return null; }
   };
 
+  const responderYo = async (jid) => {
+    await abrirChat(jid);
+    setTimeout(() => textareaRef.current?.focus(), 250);
+  };
+
   const alternarBot = () => {
     const on = !chatActivo?.bot_activo;
     actualizarChat({ bot_activo: on }, on ? '🤖 El bot vuelve a atender este chat' : '👤 Tomaste el control: el bot no responderá en este chat');
@@ -523,6 +562,49 @@ export default function ChatsWhatsApp() {
         </div>
 
         <div className="wac-lista">
+          {/* ── Cola de atención ── */}
+          {filtro === 'todos' && !qDebounced && cola.length > 0 && (
+            <div className="wac-cola">
+              <button className="wac-cola-cab" onClick={() => setColaAbierta((v) => !v)}>
+                <i className="bi bi-bell-fill" />
+                <span>Esperando por ti</span>
+                <span className="wac-badge" style={{ background: '#e63946' }}>{cola.length}</span>
+                <i className={`bi bi-chevron-${colaAbierta ? 'up' : 'down'} ms-auto`} />
+              </button>
+              {colaAbierta && cola.map((c) => (
+                <div key={c.jid} className="wac-cola-item">
+                  <div className="wac-cola-fila" onClick={() => abrirChat(c.jid)}>
+                    <Avatar chat={c} chico />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="wac-item-fila">
+                        <span className="wac-item-nombre">{nombreChat(c)}</span>
+                        <span className="wac-cola-tiempo">{haceCuanto(c.esperando_desde || c.ultimo_at)}</span>
+                      </div>
+                      <div className="wac-cola-motivo">
+                        {c.necesita_humano ? (c.motivo_humano || 'Necesita a una persona') : 'Le escribió a una persona y no tiene respuesta'}
+                      </div>
+                      {c.ultimo_del_cliente && <div className="wac-cola-ultimo">“{c.ultimo_del_cliente}”</div>}
+                    </div>
+                  </div>
+                  <div className="wac-cola-acciones">
+                    <button className="principal" onClick={() => responderYo(c.jid)}><i className="bi bi-pencil-fill" />Responder</button>
+                    <button onClick={() => atenderConBot(c.jid)} disabled={atendiendo === c.jid}>
+                      {atendiendo === c.jid ? <span className="jd-spinner" style={{ width: 12, height: 12, borderWidth: 2, display: 'inline-block' }} /> : <i className="bi bi-robot" />}Que lo atienda el bot
+                    </button>
+                  </div>
+                  <div className="wac-cola-instruccion">
+                    <input value={instruccion[c.jid] || ''} placeholder="O dile al bot qué responderle…"
+                      onChange={(e) => setInstruccion((p) => ({ ...p, [c.jid]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && instruccion[c.jid]?.trim()) atenderConBot(c.jid, instruccion[c.jid]); }} />
+                    <button disabled={!instruccion[c.jid]?.trim() || atendiendo === c.jid} onClick={() => atenderConBot(c.jid, instruccion[c.jid])} title="El bot se lo dice al cliente con sus palabras">
+                      <i className="bi bi-send-fill" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {qDebounced && <div className="wac-seccion">Chats</div>}
           {cargandoChats ? (
             <div className="wac-vacio"><span className="jd-spinner" style={{ width: 28, height: 28, display: 'inline-block' }} /></div>
@@ -627,18 +709,26 @@ export default function ChatsWhatsApp() {
               </div>
             )}
 
-            {chatActivo?.necesita_humano && (
-              <div className="wac-banner atencion">
-                <i className="bi bi-exclamation-triangle-fill" />
-                <span>Este cliente necesita que lo atienda una persona.</span>
-                <button onClick={() => actualizarChat({ necesita_humano: false }, 'Marcado como atendido')}>Marcar atendido</button>
-              </div>
-            )}
-            {!chatActivo?.necesita_humano && !chatActivo?.bot_activo && (
-              <div className="wac-banner bot">
-                <i className="bi bi-person-fill" />
-                <span>Estás atendiendo tú. El bot no responde en este chat.</span>
-                <button onClick={alternarBot}>Devolver al bot</button>
+            {(chatActivo?.necesita_humano || !chatActivo?.bot_activo) && (
+              <div className={`wac-banner ${chatActivo?.necesita_humano ? 'atencion' : 'bot'}`} style={{ flexWrap: 'wrap' }}>
+                <i className={`bi ${chatActivo?.necesita_humano ? 'bi-exclamation-triangle-fill' : 'bi-person-fill'}`} />
+                <span style={{ flex: 1, minWidth: 180 }}>
+                  {chatActivo?.necesita_humano
+                    ? <>Necesita a una persona: <b>{chatActivo.motivo_humano || 'sin detalle'}</b></>
+                    : 'Estás atendiendo tú. El bot no responde en este chat.'}
+                </span>
+                <button onClick={() => atenderConBot(activo)} disabled={atendiendo === activo}>
+                  {atendiendo === activo ? '…' : '🤖 Que lo atienda el bot'}
+                </button>
+                {chatActivo?.necesita_humano && (
+                  <button style={{ background: 'transparent', color: 'inherit', border: '1px solid currentColor' }} onClick={() => actualizarChat({ necesita_humano: false }, 'Marcado como atendido')}>Marcar atendido</button>
+                )}
+                <div className="wac-cola-instruccion" style={{ flexBasis: '100%', padding: 0, marginTop: 6 }}>
+                  <input value={instruccion[activo] || ''} placeholder="Dile al bot qué responderle y él se lo escribe con sus palabras…"
+                    onChange={(e) => setInstruccion((p) => ({ ...p, [activo]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && instruccion[activo]?.trim()) atenderConBot(activo, instruccion[activo]); }} />
+                  <button disabled={!instruccion[activo]?.trim() || atendiendo === activo} onClick={() => atenderConBot(activo, instruccion[activo])}><i className="bi bi-send-fill" /></button>
+                </div>
               </div>
             )}
 

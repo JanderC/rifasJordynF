@@ -295,3 +295,24 @@ mark.wac-mark.actual { background: #ff9f43; }
   .wac-switch .txt { display: none; }
   .wac-ir-abajo { bottom: 90px; }
 }
+
+/* ── Cola de atención ("Esperando por ti") ─────────────────── */
+.wac-cola { margin: 0 10px 10px; border: 1.5px solid #f6c9cc; border-radius: 12px; background: #fff7f7; overflow: hidden; }
+.wac-cola-cab { width: 100%; display: flex; align-items: center; gap: 8px; border: none; background: linear-gradient(90deg, #fde8ea, #fff7f7); padding: 9px 12px; font-family: inherit; font-weight: 800; font-size: .8rem; color: #9f1d27; cursor: pointer; }
+.wac-cola-cab .bi-bell-fill { animation: wac-campana 2.4s ease-in-out infinite; transform-origin: top center; }
+@keyframes wac-campana { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(14deg); } 85% { transform: rotate(-12deg); } 92% { transform: rotate(6deg); } }
+.wac-cola-item { padding: 10px 12px; border-top: 1px solid #f6d3d5; background: #fff; }
+.wac-cola-fila { display: flex; gap: 10px; cursor: pointer; }
+.wac-cola-tiempo { font-size: .68rem; font-weight: 700; color: #c62e3a; flex-shrink: 0; }
+.wac-cola-motivo { font-size: .76rem; color: #7a1c24; font-weight: 600; margin-top: 2px; line-height: 1.35; }
+.wac-cola-ultimo { font-size: .74rem; color: var(--jordyn-muted); font-style: italic; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wac-cola-acciones { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.wac-cola-acciones button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--jordyn-border); background: #fff; border-radius: 16px; padding: 5px 11px; font-size: .74rem; font-weight: 700; cursor: pointer; font-family: inherit; color: var(--jordyn-text); }
+.wac-cola-acciones button:hover { background: var(--jordyn-bg); }
+.wac-cola-acciones button.principal { background: #128c7e; border-color: #128c7e; color: #fff; }
+.wac-cola-acciones button:disabled { opacity: .6; cursor: default; }
+.wac-cola-instruccion { display: flex; gap: 6px; margin-top: 7px; }
+.wac-cola-instruccion input { flex: 1; min-width: 0; border: 1px solid var(--jordyn-border); border-radius: 16px; padding: 6px 12px; font-family: inherit; font-size: .76rem; outline: none; background: #fff; }
+.wac-cola-instruccion input:focus { border-color: var(--jordyn-primary); }
+.wac-cola-instruccion button { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--jordyn-primary); color: #fff; cursor: pointer; flex-shrink: 0; }
+.wac-cola-instruccion button:disabled { opacity: .45; cursor: default; }

@@ -247,6 +247,40 @@ export default function ConfigBot() {
             <div className="wcb-ayuda">Se envía una sola vez y el chat queda marcado para que lo atiendas tú.</div>
           </div>
 
+          {/* Dueño */}
+          <div className="wcb-card">
+            <h4><i className="bi bi-person-badge" />Dueño y avisos por WhatsApp</h4>
+            <div className="desc">
+              Cuando un cliente necesite una persona, el bot te escribe a tu WhatsApp contándote quién es y qué quiere.
+              Le respondes ahí mismo: <b>1</b> lo atiendes tú, <b>2</b> sigue el bot, o le escribes qué decirle y él se lo pasa al cliente.
+              También puedes escribirle <b>cola</b> para ver quién espera.
+            </div>
+            <div className="wcb-opcion" style={{ borderTop: 'none', paddingTop: 0 }}>
+              <div><b>Avisarme cuando un cliente me necesite</b><span>Y recordarme los pendientes.</span></div>
+              <Toggle on={cfg.dueno?.notificar} onClick={() => setSub('dueno', 'notificar', !cfg.dueno?.notificar)} />
+            </div>
+            <div className="wcb-fila">
+              <div><label className="wcb-label">Nombre</label><input className="jd-input" value={cfg.dueno?.nombre || ''} onChange={(e) => setSub('dueno', 'nombre', e.target.value)} /></div>
+              <div><label className="wcb-label">WhatsApp del dueño</label><input className="jd-input" inputMode="tel" value={cfg.dueno?.telefono || ''} onChange={(e) => setSub('dueno', 'telefono', e.target.value)} placeholder="584121234567" /></div>
+            </div>
+            <div className="wcb-fila">
+              <div><label className="wcb-label">Recordar pendientes cada (min)</label><input type="number" min={0} className="jd-input" value={cfg.dueno?.resumen_cada_min ?? 60} onChange={(e) => setSub('dueno', 'resumen_cada_min', Math.max(0, Number(e.target.value) || 0))} /></div>
+              <div><label className="wcb-label">Sin avisos desde</label><input type="time" className="jd-input" value={cfg.dueno?.silencio_desde || ''} onChange={(e) => setSub('dueno', 'silencio_desde', e.target.value)} /></div>
+              <div><label className="wcb-label">hasta</label><input type="time" className="jd-input" value={cfg.dueno?.silencio_hasta || ''} onChange={(e) => setSub('dueno', 'silencio_hasta', e.target.value)} /></div>
+            </div>
+            <div className="wcb-ayuda">0 = sin recordatorios. De noche no te escribe: lo pendiente te llega en el primer resumen de la mañana.</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <button type="button" className="btn-jordyn-outline" disabled={hayCambios} title={hayCambios ? 'Guarda primero los cambios' : ''}
+                onClick={() => API.post('/wa-chat/dueno/probar').then(() => toast.success('Mensaje de prueba enviado a tu WhatsApp')).catch((e) => toast.error(e.response?.data?.error || 'No se pudo enviar'))}>
+                <i className="bi bi-send me-1" />Enviarme un mensaje de prueba
+              </button>
+              <button type="button" className="btn-jordyn-outline" disabled={hayCambios}
+                onClick={() => API.post('/wa-chat/dueno/resumen').then(() => toast.success('Resumen enviado a tu WhatsApp')).catch((e) => toast.error(e.response?.data?.error || 'No se pudo enviar'))}>
+                <i className="bi bi-list-check me-1" />Mandarme los pendientes ahora
+              </button>
+            </div>
+          </div>
+
           {/* Pagos y apartado */}
           <div className="wcb-card">
             <h4><i className="bi bi-wallet2" />Pagos y apartado de números</h4>
