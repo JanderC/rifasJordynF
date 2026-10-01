@@ -271,6 +271,13 @@ export default function ConfigBot() {
               <div><label className="wcb-label">hasta</label><input type="time" className="jd-input" value={cfg.dueno?.silencio_hasta || ''} onChange={(e) => setSub('dueno', 'silencio_hasta', e.target.value)} /></div>
             </div>
             <div className="wcb-ayuda">0 = sin recordatorios. De noche no te escribe: lo pendiente te llega en el primer resumen de la mañana.</div>
+            <label className="wcb-label">Temas que atiendes tú (el bot te avisa en vez de responder)</label>
+            <textarea className="jd-input" rows={3} value={cfg.temas_dueno || ''} onChange={(e) => set('temas_dueno', e.target.value)}
+              placeholder={'- Quiere ser vendedor o pregunta cómo puede vender números.\n- Quiere cobrar un premio.'} />
+            <div className="wcb-ayuda">
+              Uno por línea. Cuando un cliente pregunte por algo de esta lista, el bot le dice que ya te avisa y te escribe con sus datos.
+              Además, tu número tiene <b>modo dueño</b>: pregúntale por WhatsApp cómo va una rifa, quién tiene un número, busca un cliente o dile qué número cayó.
+            </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               <button type="button" className="btn-jordyn-outline" disabled={hayCambios} title={hayCambios ? 'Guarda primero los cambios' : ''}
                 onClick={() => API.post('/wa-chat/dueno/probar').then(() => toast.success('Mensaje de prueba enviado a tu WhatsApp')).catch((e) => toast.error(e.response?.data?.error || 'No se pudo enviar'))}>

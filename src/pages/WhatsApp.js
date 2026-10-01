@@ -11,6 +11,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '../components/Layout';
 import ChatsWhatsApp from '../components/whatsapp/ChatsWhatsApp';
 import ConfigBot from '../components/whatsapp/ConfigBot';
+import ResultadosSorteos from '../components/whatsapp/ResultadosSorteos';
 import { toast } from 'react-toastify';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://rifasjordynb-production.up.railway.app';
@@ -336,6 +337,7 @@ export default function WhatsApp() {
   const tabs = [
     { key: 'chats',    label: 'Chats',     icon: 'bi-chat-dots-fill' },
     { key: 'conexion', label: 'Conexión',  icon: 'bi-wifi' },
+    { key: 'resultados', label: 'Resultados', icon: 'bi-trophy' },
     { key: 'bot',      label: 'Bot e IA',  icon: 'bi-robot' },
   ];
 
@@ -366,6 +368,7 @@ export default function WhatsApp() {
       <div className="fade-in">
         {tab === 'chats'    && <ChatsWhatsApp />}
         {tab === 'conexion' && <TabConexion />}
+        {tab === 'resultados' && <ResultadosSorteos />}
         {tab === 'bot'      && <ConfigBot />}
       </div>
 
