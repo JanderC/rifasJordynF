@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../services/api';
+import GanadoresPublico from '../components/GanadoresPublico';
 
 const TURQ    = '#0abfbc';
 const TURQ2   = '#00d4d0';
@@ -2267,8 +2268,14 @@ export default function ClientePublico() {
   const [rifaSel,    setRifaSel]    = useState(null);
   const [numerosCarrito, setNumerosCarrito] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [ganadores,  setGanadores]  = useState([]);
   const gridRef = useRef();
   useMetodosPagoServidor();
+
+  /* ── Galería de ganadores (los carga el dueño en Configuración) ── */
+  useEffect(() => {
+    API.get('/ganadores').then(r => setGanadores(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+  }, []);
 
   /* ── Tasa para mostrar en la tarjeta pública de Pago Móvil ── */
 const tasasHoy = useTasasHoy();
@@ -2336,9 +2343,9 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:800, fontFamily:"'Poppins',sans-serif" }}>Resuelve tu Semana</span>
         </div>
-        <div style={{ display:'flex', gap:24, alignItems:'center' }}>
+        <div className="pub-nav-links" style={{ display:'flex', gap:24, alignItems:'center' }}>
           <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link">Rifas</a>
-          {[['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
+          {[...(ganadores.length ? [['#ganadores-sec','Ganadores']] : []),['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
             <a key={href} href={href} className="nav-link">{label}</a>
           ))}
         </div>
@@ -2419,6 +2426,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           </div>
         </section>
       )}
+
+      <GanadoresPublico ganadores={ganadores} />
 
       <section style={{ background:'#fff', padding:'70px 5vw 0' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
