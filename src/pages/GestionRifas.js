@@ -1859,6 +1859,8 @@ function ModalProgramarDesactivacion({ rifa, onClose, onSaved }) {
    Input inline dentro del card de rifa. Al escribir 3 dígitos
    busca entre los vendedores (fijos + extras) y muestra quién
    tiene ese número. Si es simultánea muestra ambas series.
+   También muestra si se vendió por la página o por WhatsApp
+   (con el cliente que lo compró) y si está en una reserva.
 ════════════════════════════════════════════════════════════ */
 function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
   const dig = digitosRifa(rifa);
@@ -1873,9 +1875,14 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
     }
     setBuscando(true);
     try {
-      // Llamada al endpoint que ya existe (boleteria-vendedores trae fijos + extras juntos)
-      const r = await API.get(`/rifas/${rifa.id}/boleteria-vendedores`);
+      // boleteria-vendedores trae fijos + extras juntos; resultados/quien trae las ventas
+      // en línea (página y WhatsApp), las anotadas en el panel y las reservas en curso
+      const [r, q] = await Promise.all([
+        API.get(`/rifas/${rifa.id}/boleteria-vendedores`),
+        API.get('/wa-chat/resultados/quien', { params: { rifa_id: rifa.id, numero } }).catch(() => null),
+      ]);
       const data = r.data;
+      const quien = q?.data || {};
       const hits = [];
       for (const v of (data.vendedores || [])) {
         for (const nf of (v.numeros_fijos || [])) {
@@ -1891,7 +1898,13 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
           }
         }
       }
-      setResultado({ numero, hits, esSim: data.es_simultanea });
+      setResultado({
+        numero, hits, esSim: data.es_simultanea,
+        enLinea:    quien.compradores_en_linea || [],
+        registradas: quien.ventas_registradas  || [],
+        reservas:   quien.reservas_en_curso    || [],
+        sinVentas:  !q,   // no se pudo consultar las ventas
+      });
     } catch (err) {
       toast.error('Error buscando número');
       setResultado(null);
@@ -1968,7 +1981,9 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
 
       {!buscando && resultado && (
         <div style={{ marginTop: 8 }}>
+          <VentasDelNumero resultado={resultado} />
           {resultado.hits.length === 0 ? (
+            (resultado.enLinea.length + resultado.registradas.length + resultado.reservas.length) > 0 ? null :
             <div style={{
               padding: '8px 12px',
               background: 'rgba(240,165,0,0.08)',
@@ -1979,7 +1994,8 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
             }}>
               <i className="bi bi-info-circle-fill"></i>
               El número <strong style={{ letterSpacing: 1.5 }}>{resultado.numero}</strong> no está asignado a ningún vendedor
-              <span style={{ fontSize: '.62rem', fontWeight: 500, color: 'var(--jordyn-muted)', marginLeft: 'auto' }}>(número público)</span>
+              {resultado.sinVentas ? ' (no se pudieron consultar las ventas en línea)' : ' y nadie lo ha comprado'}
+              <span style={{ fontSize: '.62rem', fontWeight: 500, color: 'var(--jordyn-muted)', marginLeft: 'auto' }}>(número libre)</span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2064,6 +2080,67 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* Ventas y reservas del número buscado: por la página, por WhatsApp o anotadas en el panel */
+const CANALES_VENTA = {
+  web:      { nombre: 'Página web', icono: 'bi-globe2',            color: '#0891b2' },
+  whatsapp: { nombre: 'WhatsApp',   icono: 'bi-whatsapp',          color: '#16a34a' },
+  panel:    { nombre: 'Panel',      icono: 'bi-person-badge-fill', color: '#7c3aed' },
+};
+const fechaCortaVE = (f) => {
+  const d = f ? new Date(f) : null;
+  return d && !isNaN(d.getTime())
+    ? d.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Caracas' })
+    : null;
+};
+
+function VentasDelNumero({ resultado }) {
+  const filas = [
+    ...resultado.enLinea.map(v => ({ ...v, canal: CANALES_VENTA[v.canal] || CANALES_VENTA.web, titulo: 'VENDIDO' })),
+    ...resultado.registradas.map(v => ({ ...v, canal: CANALES_VENTA.panel, titulo: 'VENDIDO', por: v.vendedor })),
+    ...resultado.reservas.map(v => ({ ...v, canal: null, titulo: v.estado === 'pendiente' ? 'PAGO POR APROBAR' : 'APARTADO' })),
+  ];
+  if (!filas.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+      {filas.map((f, i) => {
+        const color = f.canal?.color || '#d97706';
+        return (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+            background: `${color}12`, border: `1.5px solid ${color}55`, borderRadius: 10,
+          }}>
+            <span style={{
+              width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: color, color: '#fff',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.9rem',
+            }}>
+              <i className={`bi ${f.canal?.icono || 'bi-hourglass-split'}`}></i>
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: '.85rem', color: 'var(--jordyn-text)' }}>
+                {f.nombre || 'Cliente sin nombre'}
+              </div>
+              <div style={{ fontSize: '.65rem', color: 'var(--jordyn-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ background: color, color: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: '.58rem', fontWeight: 800, letterSpacing: '.5px' }}>
+                  {f.titulo}{f.canal ? ` · ${f.canal.nombre.toUpperCase()}` : ''}
+                </span>
+                {f.por && <span>por {f.por}</span>}
+                {f.telefono && <span>📱 {f.telefono}</span>}
+                {f.cedula && <span>CC {f.cedula}</span>}
+                {fechaCortaVE(f.fecha) && <span>{fechaCortaVE(f.fecha)}</span>}
+                {f.sin_venta_registrada && (
+                  <span title="La reserva está aprobada pero no tiene su venta en Historial/Caja (venta anulada o no registrada)" style={{ color: '#b45309', fontWeight: 700 }}>
+                    ⚠ pago aprobado, sin venta en Caja
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
