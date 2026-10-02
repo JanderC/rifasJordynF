@@ -3,13 +3,15 @@
 //   ✅ Ganadores — foto + datos de cada ganador; salen en la
 //      página pública del cliente como galería
 //   ✅ Las fotos se guardan en Cloudinary
+//   ✅ Si se elige el sorteo, el bot de WhatsApp manda la foto
+//      cuando un cliente pregunta qué número cayó
 // ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 
-const VACIO = { nombre: '', premio: '', numero: '', rifa: '', ciudad: '', fecha: '', visible: true };
+const VACIO = { nombre: '', premio: '', numero: '', rifa: '', rifa_id: '', ciudad: '', fecha: '', visible: true };
 const MAX_MB = 10;
 
 const fmtFecha = (f) => {
@@ -29,6 +31,7 @@ export default function Configuracion() {
   const [preview,   setPreview]   = useState(null);
   const [saving,    setSaving]    = useState(false);
   const [ocupado,   setOcupado]   = useState(null);   // id con una acción en curso
+  const [sorteos,   setSorteos]   = useState([]);     // rifas ya sorteadas (para enlazar la foto con su resultado)
   const fileRef = useRef();
   const formRef = useRef();
 
@@ -41,6 +44,25 @@ export default function Configuracion() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    API.get('/wa-chat/resultados', { params: { dias: 90 } }).then((r) => setSorteos(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+  }, []);
+
+  // Al elegir el sorteo se completan sus datos (sin pisar lo que ya se escribió)
+  const elegirSorteo = (id) => {
+    const s = sorteos.find((x) => x.id === id);
+    if (!s) { set('rifa_id', ''); return; }
+    const unico = s.resultados?.length === 1 ? s.resultados[0] : null;
+    setForm((p) => ({
+      ...p,
+      rifa_id: s.id,
+      rifa:    s.nombre || p.rifa,
+      fecha:   s.fecha_sorteo || p.fecha,
+      premio:  p.premio || s.premio || '',
+      numero:  p.numero || unico?.numero || '',
+    }));
+  };
 
   // Liberar la vista previa local al cambiarla
   useEffect(() => () => { if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview); }, [preview]);
@@ -62,7 +84,7 @@ export default function Configuracion() {
 
   const editar = (g) => {
     setEditando(g);
-    setForm({ nombre: g.nombre || '', premio: g.premio || '', numero: g.numero || '', rifa: g.rifa || '', ciudad: g.ciudad || '', fecha: g.fecha || '', visible: g.visible });
+    setForm({ nombre: g.nombre || '', premio: g.premio || '', numero: g.numero || '', rifa: g.rifa || '', rifa_id: g.rifa_id || '', ciudad: g.ciudad || '', fecha: g.fecha || '', visible: g.visible });
     setArchivo(null); setPreview(g.imagen_url);
     if (fileRef.current) fileRef.current.value = '';
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -123,6 +145,7 @@ export default function Configuracion() {
           <i className="bi bi-info-circle me-1"></i>
           Sube aquí los <strong>ganadores</strong> de tus sorteos. Aparecen en la página principal donde los clientes
           compran sus números, como una galería. El más reciente (por fecha del sorteo) sale destacado en grande.
+          Si eliges el sorteo, el bot de WhatsApp también envía la foto cuando pregunten qué número cayó.
         </p>
       </div>
 
@@ -183,6 +206,26 @@ export default function Configuracion() {
           {/* Datos */}
           <div className="col-12 col-md-8">
             <div className="row g-3">
+              <div className="col-12">
+                <label className="jd-label">SORTEO <span style={{ fontWeight:500, textTransform:'none', letterSpacing:0 }}>(para que el bot de WhatsApp mande esta foto)</span></label>
+                <select className="jd-select" value={form.rifa_id} onChange={(e) => elegirSorteo(e.target.value)}>
+                  <option value="">— Sin enlazar a un sorteo —</option>
+                  {/* Sorteo enlazado que ya no está entre los recientes */}
+                  {form.rifa_id && !sorteos.some((s) => s.id === form.rifa_id) && (
+                    <option value={form.rifa_id}>{form.rifa || 'Sorteo anterior'}</option>
+                  )}
+                  {sorteos.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre} · {fmtFecha(s.fecha_sorteo)}{s.resultados?.length ? ` · cayó ${s.resultados.map((x) => x.numero).join(', ')}` : ' · sin resultado cargado'}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:5, lineHeight:1.5 }}>
+                  <i className="bi bi-whatsapp me-1" style={{ color:'#25D366' }}></i>
+                  Con el sorteo elegido y el número ganador, cuando un cliente le pregunte al bot qué número cayó, le envía esta foto.
+                  El resultado se carga en WhatsApp Bot → Resultados (o diciéndoselo al bot).
+                </div>
+              </div>
               <div className="col-12 col-md-7">
                 <label className="jd-label">NOMBRE DEL GANADOR *</label>
                 <input className="jd-input" value={form.nombre} onChange={(e) => set('nombre', e.target.value)} placeholder="Ej: María Pérez" maxLength={200} />
@@ -267,6 +310,12 @@ export default function Configuracion() {
                     position:'absolute', top:8, right:8, padding:'3px 10px', borderRadius:20,
                     background:'var(--jordyn-gold)', color:'#3a2400', fontSize:'.78rem', fontWeight:900,
                   }}>{g.numero}</span>
+                )}
+                {g.rifa_id && g.visible && (
+                  <span title="El bot de WhatsApp envía esta foto cuando preguntan por este sorteo" style={{
+                    position:'absolute', top:8, left:8, padding:'3px 9px', borderRadius:20,
+                    background:'#25D366', color:'#fff', fontSize:'.65rem', fontWeight:700,
+                  }}><i className="bi bi-whatsapp me-1"></i>Bot</span>
                 )}
                 {!g.visible && (
                   <span style={{
