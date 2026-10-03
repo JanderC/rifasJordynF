@@ -4,6 +4,7 @@
 //   ✅ Son las mismas que el bot de WhatsApp envía al cobrar
 //   ✅ Agregar, editar, ordenar, ocultar y eliminar
 //   ✅ Moneda de cobro: el monto se convierte con las Tasas
+//   ✅ Logo opcional de la cuenta (Cloudinary); sin logo se usa el ícono
 // ============================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
@@ -18,6 +19,7 @@ const MONEDAS = {
 };
 
 const COLOR_DEFECTO = '#089a97';
+const MAX_MB = 5;
 const VACIO = { nombre: '', icono: '🏦', color: '', moneda: 'COP', pais: '', nota: '', presencial: false, activo: true, campos: [{ label: 'Banco', valor: '' }, { label: 'Número de cuenta', valor: '' }, { label: 'Titular', valor: '' }] };
 const ICONOS = ['🏦', '📱', '💳', '💜', '💙', '💚', '💛', '💵', '🪙', '🇻🇪', '🇨🇴', '🇺🇸'];
 
@@ -30,7 +32,9 @@ function VistaCliente({ c }) {
   return (
     <div style={{ background: `${color}12`, border: `2px solid ${color}55`, borderRadius: 16, padding: '16px 14px', fontFamily: "'Poppins',sans-serif" }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-        <div style={{ width:42, height:42, borderRadius:12, background:'rgba(255,255,255,.8)', border:`1px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.35rem', flexShrink:0 }}>{c.icono || '💳'}</div>
+        <div style={{ width:42, height:42, borderRadius:12, background:'rgba(255,255,255,.8)', border:`1px solid ${color}55`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.35rem', flexShrink:0, overflow:'hidden' }}>
+          {c.imagen_url ? <img src={c.imagen_url} alt="" style={{ width:'100%', height:'100%', objectFit:'contain', padding:3, background:'#fff' }} /> : (c.icono || '💳')}
+        </div>
         <div style={{ minWidth:0 }}>
           <div style={{ fontSize:'.98rem', color, fontWeight:700 }}>{c.nombre || 'Nombre de la cuenta'}</div>
           {c.pais && <div style={{ fontSize:'.66rem', color:'#1a2e2e99' }}>{c.pais}</div>}
@@ -54,7 +58,25 @@ export default function CuentasBancarias() {
   const [editId,   setEditId]   = useState(null);
   const [saving,   setSaving]   = useState(false);
   const [ocupado,  setOcupado]  = useState(null);
+  const [archivo,  setArchivo]  = useState(null);     // logo nuevo por subir
+  const [preview,  setPreview]  = useState(null);     // logo que se ve en el formulario (nuevo o guardado)
   const formRef = useRef();
+  const fileRef = useRef();
+
+  // Liberar la vista previa local al cambiarla
+  useEffect(() => () => { if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview); }, [preview]);
+
+  const elegirArchivo = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('El archivo debe ser una imagen'); return; }
+    if (file.size > MAX_MB * 1024 * 1024) { toast.error(`La imagen pesa más de ${MAX_MB}MB`); return; }
+    setArchivo(file);
+    setPreview(URL.createObjectURL(file));
+  };
+  const quitarImagen = () => {
+    setArchivo(null); setPreview(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
 
   const load = useCallback(async () => {
     try {
@@ -71,9 +93,11 @@ export default function CuentasBancarias() {
     setForm(c
       ? { nombre: c.nombre, icono: c.icono || '💳', color: c.color || '', moneda: c.moneda, pais: c.pais || '', nota: c.nota || '', presencial: !!c.presencial, activo: !!c.activo, campos: (c.campos || []).map(x => ({ ...x })) }
       : { ...VACIO, campos: VACIO.campos.map(x => ({ ...x })) });
+    setArchivo(null); setPreview(c?.imagen_url || null);
+    if (fileRef.current) fileRef.current.value = '';
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
-  const cerrar = () => { setForm(null); setEditId(null); };
+  const cerrar = () => { setForm(null); setEditId(null); setArchivo(null); setPreview(null); };
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const setCampo = (i, k, v) => setForm(p => ({ ...p, campos: p.campos.map((c, j) => (j === i ? { ...c, [k]: v } : c)) }));
@@ -88,8 +112,20 @@ export default function CuentasBancarias() {
     setSaving(true);
     try {
       const body = { ...form, campos, color: form.color || null };
-      if (editId) await API.put(`/metodos-pago/${editId}`, body);
-      else        await API.post('/metodos-pago', body);
+      const res = editId ? await API.put(`/metodos-pago/${editId}`, body) : await API.post('/metodos-pago', body);
+      // El logo va aparte: se sube si eligió uno nuevo, se quita si lo borró
+      const id = res.data.id;
+      try {
+        if (archivo) {
+          const fd = new FormData();
+          fd.append('imagen', archivo);
+          await API.post(`/metodos-pago/${id}/imagen`, fd);
+        } else if (!preview && res.data.imagen_url) {
+          await API.delete(`/metodos-pago/${id}/imagen`);
+        }
+      } catch (err) {
+        toast.error(`La cuenta se guardó, pero la imagen no: ${err.response?.data?.error || 'error al subirla'}`);
+      }
       toast.success(editId ? '✅ Cuenta actualizada: ya sale así en la página del cliente' : '✅ Cuenta agregada');
       cerrar();
       load();
@@ -194,6 +230,30 @@ export default function CuentasBancarias() {
                   <input className="jd-input" value={form.pais} onChange={e => set('pais', e.target.value)} placeholder="Ej: 🇨🇴 Colombia" maxLength={60} />
                 </div>
                 <div className="col-12 col-md-5">
+                  <label className="jd-label">IMAGEN (opcional)</label>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:10 }}>
+                    <button type="button" onClick={() => fileRef.current?.click()} aria-label={preview ? 'Cambiar imagen' : 'Subir imagen'}
+                      style={{ width:56, height:56, flexShrink:0, borderRadius:10, cursor:'pointer', overflow:'hidden', padding:0,
+                        background:'#fff', border:'2px dashed var(--jordyn-border2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      {preview
+                        ? <img src={preview} alt="Logo de la cuenta" style={{ width:'100%', height:'100%', objectFit:'contain' }} />
+                        : <i className="bi bi-cloud-arrow-up-fill" style={{ fontSize:'1.3rem', color:'var(--jordyn-primary)' }}></i>}
+                    </button>
+                    <div style={{ display:'flex', flexDirection:'column', gap:4, alignItems:'flex-start' }}>
+                      <button type="button" className="btn-jordyn-outline" style={{ fontSize:'.7rem', padding:'5px 10px' }} onClick={() => fileRef.current?.click()}>
+                        <i className="bi bi-image me-1"></i>{preview ? 'Cambiar imagen' : 'Subir imagen'}
+                      </button>
+                      {preview && (
+                        <button type="button" className="btn-jordyn-danger" style={{ fontSize:'.7rem', padding:'5px 10px' }} onClick={quitarImagen}>
+                          <i className="bi bi-x-lg me-1"></i>Quitar
+                        </button>
+                      )}
+                    </div>
+                    <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => elegirArchivo(e.target.files?.[0])} />
+                  </div>
+                  <div style={{ fontSize:'.66rem', color:'var(--jordyn-muted)', marginBottom:10 }}>
+                    El logo del banco o la app (máx {MAX_MB}MB). Si no subes imagen, se muestra el ícono de abajo.
+                  </div>
                   <label className="jd-label">ÍCONO Y COLOR</label>
                   <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                     <input className="jd-input" value={form.icono} onChange={e => set('icono', e.target.value)} maxLength={8} style={{ width:64, textAlign:'center', fontSize:'1.1rem' }} aria-label="Ícono (emoji)" />
@@ -254,7 +314,7 @@ export default function CuentasBancarias() {
             {/* Vista previa */}
             <div className="col-12 col-lg-4">
               <label className="jd-label">ASÍ LO VE EL CLIENTE</label>
-              <VistaCliente c={form} />
+              <VistaCliente c={{ ...form, imagen_url: preview }} />
             </div>
           </div>
 

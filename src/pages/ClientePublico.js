@@ -159,6 +159,7 @@ function useMetodosPagoServidor() {
             pais: m.pais || locales[nombre]?.pais || '',
             campos: Array.isArray(m.campos) ? m.campos : [],
             nota: m.nota,
+            imagen: m.imagen || null,   // logo subido en el panel (si no hay, se usa el ícono)
           };
           if (m.moneda) METODO_MONEDA[nombre] = m.moneda;
         }
@@ -886,7 +887,9 @@ function PagoInlineCard({ metodo }) {
   return (
     <div className="pago-inline-card" style={{ background: info.bg, border: `2px solid ${info.border}`, marginTop: 12 }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-        <span style={{ fontSize:'1.6rem' }}>{info.icono}</span>
+        {info.imagen
+          ? <img src={info.imagen} alt="" style={{ width:38, height:38, objectFit:'contain', borderRadius:8, background:'#fff', flexShrink:0 }} />
+          : <span style={{ fontSize:'1.6rem' }}>{info.icono}</span>}
         <div>
           <div style={{ fontSize:'.88rem', fontWeight:700, color: info.colorHex }}>{metodo}</div>
           <div style={{ fontSize:'.65rem', color:`${DARK}66` }}>{info.pais}</div>
@@ -2467,7 +2470,9 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
             {Object.entries(METODOS_PAGO).map(([nombre, d]) => (
               <div key={nombre} style={{ background: d.bg, border:`2px solid ${d.border}`, borderRadius:20, padding:'26px 22px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
-                  <div style={{ width:50, height:50, borderRadius:14, background:'rgba(255,255,255,.8)', border:`1px solid ${d.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.6rem', flexShrink:0 }}>{d.icono}</div>
+                  <div style={{ width:50, height:50, borderRadius:14, background:'rgba(255,255,255,.8)', border:`1px solid ${d.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.6rem', flexShrink:0, overflow:'hidden' }}>
+                    {d.imagen ? <img src={d.imagen} alt="" style={{ width:'100%', height:'100%', objectFit:'contain', padding:4, background:'#fff' }} /> : d.icono}
+                  </div>
                   <div>
                     <div style={{ fontSize:'1.1rem', color: d.colorHex, fontWeight:700 }}>{nombre}</div>
                     <div style={{ fontSize:'.7rem', color:`${DARK}66` }}>{d.pais}</div>
