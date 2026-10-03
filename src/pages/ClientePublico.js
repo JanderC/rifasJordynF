@@ -136,8 +136,10 @@ const METODOS_PAGO = {
 
 /* ─────────────────────────────────────────────────────────────
    Datos de pago desde el backend (misma fuente que usa el bot de
-   WhatsApp). Si el servidor no responde, se usan los de arriba.
-   Solo se reemplazan campos y notas; colores e íconos son de aquí.
+   WhatsApp): son las cuentas que el dueño edita en el panel
+   (Cuentas bancarias). Si el servidor no responde, se usan las de arriba.
+   Manda el servidor: su orden, las cuentas nuevas y las que se quitaron.
+   Los colores de aquí se conservan salvo que la cuenta traiga el suyo.
 ───────────────────────────────────────────────────────────── */
 function useMetodosPagoServidor() {
   const [, setVersion] = useState(0);
@@ -145,14 +147,17 @@ function useMetodosPagoServidor() {
     fetch('https://rifasjordynb-production.up.railway.app/api/publico/metodos-pago')
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
-        if (!data?.metodos) return;
+        if (!data?.metodos || !Object.keys(data.metodos).length) return;
+        const locales = { ...METODOS_PAGO };
+        for (const k of Object.keys(METODOS_PAGO)) delete METODOS_PAGO[k];
         for (const [nombre, m] of Object.entries(data.metodos)) {
           METODOS_PAGO[nombre] = {
             colorHex: TURQ_DK, bg: '#f5fffe', border: `${TURQ}55`,
-            ...METODOS_PAGO[nombre],
-            icono: m.icono || METODOS_PAGO[nombre]?.icono,
-            pais: m.pais || METODOS_PAGO[nombre]?.pais,
-            campos: m.campos,
+            ...locales[nombre],
+            ...(m.color ? { colorHex: m.color, bg: `${m.color}12`, border: `${m.color}55` } : {}),
+            icono: m.icono || locales[nombre]?.icono || '💳',
+            pais: m.pais || locales[nombre]?.pais || '',
+            campos: Array.isArray(m.campos) ? m.campos : [],
             nota: m.nota,
           };
           if (m.moneda) METODO_MONEDA[nombre] = m.moneda;

@@ -49,6 +49,7 @@ export default function Sidebar() {
     { to: '/diseno-ticket',   icon: 'bi-ticket-perforated-fill', label: 'Diseño boleto' },
     { to: '/caja',            icon: 'bi-cash-coin',              label: 'Caja' },
     { to: '/tasas',           icon: 'bi-currency-exchange',      label: 'Tasas' },
+    { to: '/cuentas-bancarias', icon: 'bi-bank2',                label: 'Cuentas bancarias' },
     { to: '/lista-vendedores', icon: 'bi-person-lines-fill',     label: 'Vendedores' },
     { to: '/configuracion',   icon: 'bi-gear-fill',              label: 'Configuración' },
     // ── NUEVO: WhatsApp Business ──
