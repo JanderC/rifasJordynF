@@ -316,8 +316,16 @@ export default function ConfigBot() {
             ) : <div className="wcb-ayuda">Cargando métodos de pago…</div>}
             <div className="wcb-fila" style={{ marginTop: 6 }}>
               <div style={{ flex: '0 0 220px' }}>
-                <label className="wcb-label">Minutos que se aparta un número</label>
-                <input type="number" min={5} className="jd-input" value={cfg.apartado_minutos ?? 45} onChange={(e) => set('apartado_minutos', Math.max(5, Number(e.target.value) || 45))} />
+                {/* Se escribe en horas; se guarda en minutos (apartado_minutos), que es lo que usa el bot */}
+                <label className="wcb-label">Horas que se aparta un número</label>
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  className="jd-input"
+                  value={Math.round(((cfg.apartado_minutos ?? 45) / 60) * 100) / 100}
+                  onChange={(e) => set('apartado_minutos', Math.max(5, Math.round((Number(e.target.value) || 0.75) * 60)))}
+                />
               </div>
               <div className="wcb-ayuda" style={{ alignSelf: 'center' }}>
                 Mientras el cliente paga, sus números quedan bloqueados (nadie más puede tomarlos, ni por la página). Si no manda la captura a tiempo, se liberan solos y se le avisa.
