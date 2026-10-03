@@ -2,6 +2,8 @@
 //   Configuracion.js — RESUELVE TU SEMANA
 //   ✅ Ganadores — foto + datos de cada ganador; salen en la
 //      página pública del cliente como galería
+//   ✅ Página del cliente — grupo de WhatsApp (burbuja) y top
+//      de compradores
 //   ✅ Las fotos se guardan en Cloudinary
 //   ✅ Si se elige el sorteo, el bot de WhatsApp manda la foto
 //      cuando un cliente pregunta qué número cayó
@@ -21,6 +23,106 @@ const fmtFecha = (f) => {
 };
 
 const miniatura = (url) => (url && url.includes('/upload/') ? url.replace('/upload/', '/upload/f_auto,q_auto,c_fill,g_auto,w_400,h_500/') : url);
+
+/* ═══════════════════════════════════════════════════════════
+   PÁGINA DEL CLIENTE: grupo de WhatsApp + top de compradores
+═══════════════════════════════════════════════════════════ */
+function PaginaCliente() {
+  const [cfg,      setCfg]      = useState(null);
+  const [original, setOriginal] = useState('');
+  const [top,      setTop]      = useState([]);
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => {
+    API.get('/sitio/config')
+      .then((r) => {
+        const { top_compradores, ...c } = r.data;
+        setCfg(c); setOriginal(JSON.stringify(c)); setTop(top_compradores || []);
+      })
+      .catch(() => toast.error('Error cargando los ajustes de la página'));
+  }, []);
+
+  if (!cfg) return null;
+  const set = (k, v) => setCfg((p) => ({ ...p, [k]: v }));
+  const dirty = JSON.stringify(cfg) !== original;
+
+  const guardar = async () => {
+    setSaving(true);
+    try {
+      const r = await API.put('/sitio/config', cfg);
+      setCfg(r.data); setOriginal(JSON.stringify(r.data));
+      toast.success('✅ Guardado: ya se ve así en la página del cliente');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Error al guardar');
+    } finally { setSaving(false); }
+  };
+
+  const Casilla = ({ campo, children }) => (
+    <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>
+      <input type="checkbox" checked={!!cfg[campo]} onChange={(e) => set(campo, e.target.checked)} style={{ width:18, height:18, accentColor:'var(--jordyn-primary)' }} />
+      {children}
+    </label>
+  );
+
+  return (
+    <div className="jd-card jd-card-primary fade-in" style={{ marginBottom:28 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
+        <div style={{
+          width:48, height:48, borderRadius:12, flexShrink:0,
+          background:'rgba(37,211,102,.12)', border:'2px solid rgba(37,211,102,.3)',
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem', color:'#25D366',
+        }}><i className="bi bi-whatsapp"></i></div>
+        <div>
+          <div style={{ fontWeight:800, fontSize:'1rem', color:'var(--jordyn-primary-d)' }}>Página del cliente</div>
+          <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)', marginTop:2 }}>Grupo de WhatsApp y top de compradores.</div>
+        </div>
+      </div>
+
+      <div className="row g-3">
+        <div className="col-12 col-lg-7">
+          <label className="jd-label">ENLACE DEL GRUPO DE WHATSAPP</label>
+          <input className="jd-input" value={cfg.grupo_whatsapp || ''} onChange={(e) => set('grupo_whatsapp', e.target.value)}
+            placeholder="https://chat.whatsapp.com/..." inputMode="url" />
+          <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:5, lineHeight:1.5 }}>
+            En WhatsApp: abre el grupo → Invitar mediante enlace → Copiar enlace. Si restableces el enlace del grupo, pega aquí el nuevo.
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:14 }}>
+            <Casilla campo="grupo_activo">Mostrar la burbuja del grupo en la página</Casilla>
+            <Casilla campo="top_compradores_activo">Mostrar el top de compradores</Casilla>
+          </div>
+        </div>
+
+        <div className="col-12 col-lg-5">
+          <label className="jd-label">TOP DE COMPRADORES AHORA</label>
+          <div style={{ background:'var(--jordyn-bg2)', border:'1px solid var(--jordyn-border)', borderRadius:10, padding:'10px 14px' }}>
+            {top.length === 0 ? (
+              <div style={{ fontSize:'.76rem', color:'var(--jordyn-muted)' }}>Todavía no hay compras aprobadas en las rifas activas; la sección no se muestra hasta que haya.</div>
+            ) : top.map((t) => (
+              <div key={t.puesto} style={{ display:'flex', justifyContent:'space-between', gap:10, fontSize:'.8rem', padding:'3px 0' }}>
+                <span style={{ fontWeight:700, color:'var(--jordyn-text)' }}>{t.puesto}. {t.nombre}</span>
+                <span style={{ fontWeight:800, color:'var(--jordyn-primary-d)' }}>{t.numeros} número{t.numeros === 1 ? '' : 's'}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:'.66rem', color:'var(--jordyn-muted)', marginTop:6, lineHeight:1.5 }}>
+            Los 5 que más números llevan en las rifas activas, contando compras con el pago aprobado. En la página solo sale el nombre y la inicial del apellido.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:18 }}>
+        <button className="btn-jordyn" onClick={guardar} disabled={saving || !dirty} style={{ fontSize:'.85rem' }}>
+          {saving
+            ? <><span className="jd-spinner" style={{ width:14, height:14, borderWidth:2 }}></span> Guardando...</>
+            : dirty ? <><i className="bi bi-floppy-fill me-1"></i>Guardar</> : <><i className="bi bi-check2 me-1"></i>Guardado</>}
+        </button>
+        <a href="/#top-sec" target="_blank" rel="noreferrer" className="btn-jordyn-outline" style={{ fontSize:'.78rem', textDecoration:'none' }}>
+          <i className="bi bi-box-arrow-up-right me-1"></i>Ver en la página
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export default function Configuracion() {
   const [ganadores, setGanadores] = useState([]);
@@ -138,6 +240,12 @@ export default function Configuracion() {
 
   return (
     <Layout title="CONFIGURACIÓN">
+
+      <PaginaCliente />
+
+      <h3 style={{ fontSize:'1rem', fontWeight:800, color:'var(--jordyn-text)', margin:'0 0 10px' }}>
+        <i className="bi bi-trophy-fill me-2" style={{ color:'var(--jordyn-gold)' }}></i>Ganadores
+      </h3>
 
       {/* Descripción */}
       <div style={{ marginBottom:24 }}>

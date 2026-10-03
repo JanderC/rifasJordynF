@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../services/api';
 import GanadoresPublico from '../components/GanadoresPublico';
+import { TopCompradores, BurbujaGrupo } from '../components/ComunidadPublico';
 
 const TURQ    = '#0abfbc';
 const TURQ2   = '#00d4d0';
@@ -2285,6 +2286,12 @@ export default function ClientePublico() {
     API.get('/ganadores').then(r => setGanadores(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, []);
 
+  /* ── Grupo de WhatsApp y top de compradores (se configuran en el panel) ── */
+  const [sitio, setSitio] = useState({ grupo_whatsapp: null, top_compradores: [] });
+  useEffect(() => {
+    API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [] })).catch(() => {});
+  }, [refreshKey]);
+
   /* ── Tasa para mostrar en la tarjeta pública de Pago Móvil ── */
 const tasasHoy = useTasasHoy();
 const tasaBs   = tasasHoy?.bsdUsd ?? 0;
@@ -2435,6 +2442,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         </section>
       )}
 
+      <TopCompradores top={sitio.top_compradores} grupo={sitio.grupo_whatsapp} />
+
       <GanadoresPublico ganadores={ganadores} />
 
       <section style={{ background:'#fff', padding:'70px 5vw 0' }}>
@@ -2530,6 +2539,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           </div>
         </div>
       </footer>
+
+      <BurbujaGrupo grupo={sitio.grupo_whatsapp} />
 
       {numerosCarrito && rifaSel && (
         <ModalReserva
