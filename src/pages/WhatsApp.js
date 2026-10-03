@@ -11,6 +11,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '../components/Layout';
 import ChatsWhatsApp from '../components/whatsapp/ChatsWhatsApp';
 import ConfigBot from '../components/whatsapp/ConfigBot';
+import GrupoWhatsApp from '../components/whatsapp/GrupoWhatsApp';
 import ResultadosSorteos from '../components/whatsapp/ResultadosSorteos';
 import { toast } from 'react-toastify';
 
@@ -338,6 +339,7 @@ export default function WhatsApp() {
     { key: 'chats',    label: 'Chats',     icon: 'bi-chat-dots-fill' },
     { key: 'conexion', label: 'Conexión',  icon: 'bi-wifi' },
     { key: 'resultados', label: 'Resultados', icon: 'bi-trophy' },
+    { key: 'grupo',    label: 'Grupo',     icon: 'bi-people-fill' },
     { key: 'bot',      label: 'Bot e IA',  icon: 'bi-robot' },
   ];
 
@@ -369,6 +371,7 @@ export default function WhatsApp() {
         {tab === 'chats'    && <ChatsWhatsApp />}
         {tab === 'conexion' && <TabConexion />}
         {tab === 'resultados' && <ResultadosSorteos />}
+        {tab === 'grupo'    && <GrupoWhatsApp />}
         {tab === 'bot'      && <ConfigBot />}
       </div>
 
