@@ -535,6 +535,9 @@ export default function ChatsWhatsApp() {
             {m.tipo === 'audio' && (m.media_url
               ? <audio className="wac-audio" controls preload="none" src={m.media_url} />
               : <div className="wac-texto" style={{ opacity: 0.7 }}><i className="bi bi-mic-fill me-1" />Nota de voz</div>)}
+            {m.tipo === 'audio' && m.texto && (
+              <div style={{ fontSize: '.62rem', fontWeight: 700, opacity: 0.6, marginTop: 4 }}><i className="bi bi-mic-fill me-1" />Transcripción automática</div>
+            )}
             {m.tipo === 'documento' && (
               <a className="wac-doc" href={m.media_url || undefined} target="_blank" rel="noreferrer">
                 <i className="bi bi-file-earmark-pdf-fill" />
