@@ -851,6 +851,18 @@ function ModalBoleteria({ rifa, onClose }) {
     finally { setSaving(false); }
   };
 
+  // Quitar varios números del vendedor de una vez (los seleccionados o todos)
+  const handleQuitarVarios = async (vendedorId, items) => {
+    setSaving(true);
+    try {
+      const r = await API.delete(`/rifas/${rifa.id}/boleteria-vendedores/${vendedorId}/numeros`, { data: { numeros: items } });
+      toast.success(`${r.data.quitados} número(s) liberado(s)`);
+      await load();
+      return true;
+    } catch (err) { toast.error(err.response?.data?.error || 'Error liberando números'); return false; }
+    finally { setSaving(false); }
+  };
+
   const esSimultanea = data?.es_simultanea;
 
   return (
@@ -1008,6 +1020,7 @@ function ModalBoleteria({ rifa, onClose }) {
                     onToggle={() => setVendedorAbierto(prev => prev === v.vendedor_id ? null : v.vendedor_id)}
                     onAsignar={(nums, serie) => handleAsignar(v.vendedor_id, nums, serie)}
                     onQuitar={(num, serie, origen) => handleQuitarNumero(v.vendedor_id, num, serie, origen)}
+                    onQuitarVarios={(items) => handleQuitarVarios(v.vendedor_id, items)}
                     saving={saving}
                   />
                 ))}
@@ -1237,8 +1250,11 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
 /* ── Sub-componente: panel de un vendedor en boletería ──
    Muestra fijos + extras mezclados, con badge azul "EXTRA" para
    los números que solo aplican a esta rifa (no afectan categorías). */
-function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, disponiblesB, abierto, onToggle, onAsignar, onQuitar, saving }) {
+function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, disponiblesB, abierto, onToggle, onAsignar, onQuitar, onQuitarVarios, saving }) {
   const dig = digitosRifa(rifa);
+  // Números marcados para borrar (clave: numero|serie|origen)
+  const [paraBorrar, setParaBorrar] = useState(new Set());
+  const claveDe = (n) => `${n.numero}|${n.serie}|${n.origen}`;
   const [tabSerie,      setTabSerie]      = useState('A'); // tab activa para agregar (A o B)
   const [modoAgregar,   setModoAgregar]   = useState('aleatorio'); // 'aleatorio' | 'manual'
   const [cantAleatorio, setCantAleatorio] = useState('');
@@ -1264,6 +1280,32 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
   const disponiblesActivos = tabSerie === 'A'
     ? disponiblesA.filter(n => !numsA.includes(String(n).padStart(dig, '0')))
     : disponiblesB.filter(n => !numsB.includes(String(n).padStart(dig, '0')));
+
+  // ── Selección para borrar varios ──
+  const marcados = todos.filter(n => paraBorrar.has(claveDe(n)));
+  const todosMarcados = totalFijos > 0 && marcados.length === totalFijos;
+  const toggleBorrar = (item) => setParaBorrar(prev => {
+    const next = new Set(prev);
+    const k = claveDe(item);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const marcarGrupo = (items) => setParaBorrar(prev => {
+    const next = new Set(prev);
+    const yaTodos = items.every(n => next.has(claveDe(n)));
+    items.forEach(n => { if (yaTodos) next.delete(claveDe(n)); else next.add(claveDe(n)); });
+    return next;
+  });
+  const handleBorrarMarcados = async () => {
+    if (!marcados.length) return;
+    const fijosN = marcados.filter(n => n.origen !== 'extra').length;
+    const aviso = fijosN > 0
+      ? `\n\nOjo: ${fijosN} ${fijosN === 1 ? 'es número fijo' : 'son números fijos'} del vendedor: también ${fijosN === 1 ? 'se quita' : 'se quitan'} de sus números fijos en la categoría de esta rifa.`
+      : '';
+    if (!window.confirm(`¿Quitarle ${marcados.length === totalFijos ? `TODOS los números (${marcados.length})` : `${marcados.length} número(s)`} a ${vendedor.vendedor_nombre} en esta rifa?${aviso}`)) return;
+    const ok = await onQuitarVarios(marcados.map(({ numero, serie, origen }) => ({ numero, serie, origen })));
+    if (ok) setParaBorrar(new Set());
+  };
 
   const toggleSeleccion = (n) => {
     setSeleccionados(prev => {
@@ -1307,23 +1349,31 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
   // Render de un chip de número con badge si es extra
   const renderChip = (item, cs) => {
     const esExtra = item.origen === 'extra';
-    const stylesChip = esExtra
-      ? { bg:'#ecfeff', border:'#0ea5e9', color:'#0369a1' }
-      : cs;
+    const marcado = paraBorrar.has(claveDe(item));
+    const stylesChip = marcado
+      ? { bg:'#ffe9eb', border:'#e63946', color:'#c0303a' }
+      : esExtra
+        ? { bg:'#ecfeff', border:'#0ea5e9', color:'#0369a1' }
+        : cs;
     return (
       <div key={`${item.numero}-${item.serie}-${item.origen}`}
+        role="checkbox" aria-checked={marcado} tabIndex={0}
+        onClick={() => toggleBorrar(item)}
+        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleBorrar(item); } }}
         style={{
-          display:'flex', alignItems:'center', gap:3,
+          display:'flex', alignItems:'center', gap:3, cursor:'pointer', userSelect:'none',
           background:stylesChip.bg,
           border:`1.5px solid ${stylesChip.border}`,
+          boxShadow: marcado ? '0 0 0 2px rgba(230,57,70,.18)' : 'none',
           borderRadius:8, padding:'3px 8px', position:'relative',
         }}
-        title={esExtra ? 'Número extra de esta rifa (no afecta categorías)' : 'Número fijo del vendedor'}>
+        title={`${marcado ? 'Quitar de la selección' : 'Seleccionar para borrar'} · ${esExtra ? 'número extra de esta rifa' : 'número fijo del vendedor'}`}>
+        {marcado && <i className="bi bi-check-circle-fill" style={{ fontSize:'.7rem', color:'#e63946' }}></i>}
         <span style={{ fontWeight:900, fontSize:'.82rem', color:stylesChip.color, letterSpacing:1 }}>
           {item.numero}
         </span>
         {esExtra && <span style={badgeExtra}>EXTRA</span>}
-        <button onClick={() => onQuitar(item.numero, item.serie, item.origen)} disabled={saving}
+        <button onClick={e => { e.stopPropagation(); onQuitar(item.numero, item.serie, item.origen); }} disabled={saving}
           style={{ background:'none', border:'none', color:'#e63946', cursor:'pointer', padding:'0 2px', fontSize:'.7rem', opacity:saving?0.4:0.7, lineHeight:1 }}
           title={`Quitar ${item.numero} ${item.serie}${esExtra ? ' (extra)' : ''}`}>
           ✕
@@ -1397,6 +1447,45 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
               <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginBottom:10, background:'#fff', padding:'6px 10px', borderRadius:8, border:'1px dashed #0ea5e955' }}>
                 <i className="bi bi-info-circle" style={{ color:'#0ea5e9', marginRight:4 }}></i>
                 Los <strong style={{ color:'#0369a1' }}>números EXTRA</strong> solo aplican a esta rifa y no aparecen en los números fijos del vendedor.
+              </div>
+            )}
+
+            {/* Borrar varios: seleccionar todos, por grupo o tocando cada número */}
+            {totalFijos > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:10, padding:'8px 10px', borderRadius:10,
+                background: marcados.length ? '#fff5f5' : '#fff', border:`1px solid ${marcados.length ? '#ffcccc' : 'rgba(124,58,237,.15)'}` }}>
+                <label style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:'.74rem', fontWeight:700, color:'var(--jordyn-text)', cursor:'pointer' }}>
+                  <input type="checkbox" checked={todosMarcados} onChange={() => setParaBorrar(todosMarcados ? new Set() : new Set(todos.map(claveDe)))}
+                    style={{ width:16, height:16, accentColor:'#e63946' }} />
+                  Seleccionar todos ({totalFijos})
+                </label>
+                {totalExtras > 0 && totalExtras < totalFijos && (
+                  <button type="button" onClick={() => marcarGrupo(todos.filter(n => n.origen === 'extra'))}
+                    style={{ background:'#ecfeff', border:'1px solid #0ea5e9', color:'#0369a1', borderRadius:20, padding:'2px 10px', fontSize:'.68rem', fontWeight:700, cursor:'pointer' }}>
+                    Solo extras ({totalExtras})
+                  </button>
+                )}
+                {esSimultanea && fijosA.length > 0 && fijosB.length > 0 && ['A','B'].map(sr => (
+                  <button key={sr} type="button" onClick={() => marcarGrupo(sr === 'A' ? fijosA : fijosB)}
+                    style={{ background:colorSerie(sr).bg, border:`1px solid ${colorSerie(sr).border}`, color:colorSerie(sr).color, borderRadius:20, padding:'2px 10px', fontSize:'.68rem', fontWeight:700, cursor:'pointer' }}>
+                    Serie {sr} ({(sr === 'A' ? fijosA : fijosB).length})
+                  </button>
+                ))}
+                <span style={{ fontSize:'.68rem', color:'var(--jordyn-muted)' }}>
+                  {marcados.length ? `${marcados.length} seleccionado${marcados.length === 1 ? '' : 's'}` : 'o toca los números que quieras borrar'}
+                </span>
+                {marcados.length > 0 && (
+                  <span style={{ marginLeft:'auto', display:'inline-flex', gap:6 }}>
+                    <button type="button" onClick={() => setParaBorrar(new Set())} disabled={saving}
+                      style={{ background:'transparent', border:'1px solid var(--jordyn-border)', color:'var(--jordyn-muted)', borderRadius:8, padding:'5px 10px', fontSize:'.72rem', fontWeight:700, cursor:'pointer' }}>
+                      Cancelar
+                    </button>
+                    <button type="button" onClick={handleBorrarMarcados} disabled={saving}
+                      style={{ background:'#e63946', border:'none', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:'.72rem', fontWeight:800, cursor:'pointer', opacity: saving ? .6 : 1 }}>
+                      <i className="bi bi-trash3-fill me-1"></i>Borrar {marcados.length}
+                    </button>
+                  </span>
+                )}
               </div>
             )}
 
