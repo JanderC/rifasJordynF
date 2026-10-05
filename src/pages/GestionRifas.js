@@ -35,6 +35,12 @@ const emptyForm = {
   ticket_template_id: null,
   ofertas: [],
   categoria_seleccionada_id: null,
+  // Venta en línea
+  publicada: true,                 // sale en la página del cliente y la ofrece el bot
+  premios_extra: [],               // premios adicionales [{ nombre, detalle }]
+  pago_diferido: false,            // se puede apartar sin pagar
+  diferido_limite_horas: 3,        // se paga hasta X horas antes del sorteo
+  diferido_max_numeros: 10,        // tope de números sin pagar por persona
 };
 
 const fmtCOP = v =>
@@ -2639,6 +2645,11 @@ export default function GestionRifas() {
       ticket_template_id:        r.ticket_template_id || null,
       ofertas:                   Array.isArray(r.ofertas) ? r.ofertas : [],
       categoria_seleccionada_id: catId,
+      publicada:                 r.publicada !== false,
+      premios_extra:             Array.isArray(r.premios_extra) ? r.premios_extra.map(p => ({ nombre: p.nombre || '', detalle: p.detalle || '' })) : [],
+      pago_diferido:             !!r.pago_diferido,
+      diferido_limite_horas:     r.diferido_limite_horas ?? 3,
+      diferido_max_numeros:      r.diferido_max_numeros ?? 10,
     });
     setVendedoresCat([]);
     setSelectedVendorIds([]);
@@ -2672,6 +2683,7 @@ export default function GestionRifas() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.nombre || !form.premio || !form.precio) { toast.error('Nombre, premio y precio son requeridos'); return; }
+    if (form.pago_diferido && !form.fecha_sorteo) { toast.error('Para permitir apartar sin pagar la rifa necesita fecha de sorteo'); return; }
     setSaving(true);
     try {
       // Solo los vendedores marcados con checkbox
@@ -2695,6 +2707,11 @@ export default function GestionRifas() {
         ofertas:               form.ofertas || [],
         vendedores_categorias: vendedoresSeleccionados,
         categoria_id:          form.categoria_seleccionada_id || null,
+        publicada:             form.publicada !== false,
+        premios_extra:         (form.premios_extra || []).filter(p => p.nombre.trim()),
+        pago_diferido:         !!form.pago_diferido,
+        diferido_limite_horas: Number(form.diferido_limite_horas) || 0,
+        diferido_max_numeros:  Number(form.diferido_max_numeros) || 10,
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
@@ -2708,6 +2725,14 @@ export default function GestionRifas() {
     finally { setSaving(false); }
   };
 
+  // Publicar u ocultar de la página del cliente sin tocar nada más de la rifa
+  const handlePublicar = async (r) => {
+    try {
+      await API.put(`/rifas/${r.id}`, { publicada: r.publicada === false });
+      toast.success(r.publicada === false ? 'Rifa publicada en la página del cliente' : 'Rifa oculta de la página del cliente');
+      load();
+    } catch { toast.error('No se pudo cambiar'); }
+  };
   const handleToggle   = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
   const handleArchivar = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: false, estado: 'archivada' }); toast.success('Rifa archivada'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error archivando rifa'); } };
   // Paso 1: intentar DELETE sin force. Si el backend devuelve 409 con info,
@@ -2836,6 +2861,19 @@ export default function GestionRifas() {
               <span className={r.tipo === 'simultanea' ? 'badge-simultanea' : 'badge-sencilla'}
                     style={{ fontSize: '0.62rem', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}>
                 {r.tipo === 'simultanea' ? '⚡ SIMULTÁNEA' : '🎯 SENCILLA'}
+              </span>
+            )}
+            {r.activa && !archivada && (
+              <span title={r.publicada === false ? 'No sale en la página del cliente ni la ofrece el bot' : 'Sale en la página del cliente'}
+                    style={{ fontSize:'0.6rem', fontWeight:800, borderRadius:20, padding:'2px 8px', display:'inline-flex', alignItems:'center', gap:4, whiteSpace:'nowrap', boxShadow:'0 2px 8px rgba(0,0,0,0.2)',
+                      background: r.publicada === false ? 'rgba(40,40,40,0.85)' : 'rgba(8,154,151,0.92)', color:'#fff' }}>
+                <i className={`bi ${r.publicada === false ? 'bi-eye-slash-fill' : 'bi-globe2'}`} style={{ fontSize:'0.58rem' }}></i>
+                {r.publicada === false ? 'OCULTA' : 'PUBLICADA'}
+              </span>
+            )}
+            {r.pago_diferido && !archivada && (
+              <span title="Los clientes pueden apartar sin pagar" style={{ fontSize:'0.6rem', fontWeight:800, borderRadius:20, padding:'2px 8px', whiteSpace:'nowrap', boxShadow:'0 2px 8px rgba(0,0,0,0.2)', background:'rgba(124,58,237,0.92)', color:'#fff' }}>
+                🔖 APARTA Y PAGA DESPUÉS
               </span>
             )}
             {r.desactivar_en && r.activa && (
@@ -3072,6 +3110,12 @@ export default function GestionRifas() {
               <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
               <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
               <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
+              {r.activa && (
+                <button onClick={() => handlePublicar(r)} title={r.publicada === false ? 'Mostrarla en la página del cliente' : 'Quitarla de la página del cliente (sigue activa para los vendedores)'}
+                  style={{ background: r.publicada === false ? 'rgba(8,154,151,0.08)' : 'transparent', border:'1.5px solid rgba(8,154,151,0.4)', color:'var(--jordyn-primary-d)', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontSize:'0.75rem', fontWeight:600, display:'inline-flex', alignItems:'center', gap:4 }}>
+                  <i className={`bi ${r.publicada === false ? 'bi-globe2' : 'bi-eye-slash'}`}></i>{r.publicada === false ? 'Publicar' : 'Ocultar'}
+                </button>
+              )}
               {/* Activar (si inactiva) — comportamiento directo */}
               {!r.activa && (
                 <button onClick={() => handleToggle(r)} style={{ background:'transparent',border:'1.5px solid rgba(6,214,160,0.4)',color:'var(--jordyn-green)',borderRadius:8,padding:'4px 10px',fontFamily:'var(--jordyn-font)',fontWeight:600,fontSize:'0.75rem',cursor:'pointer' }}>Activar</button>
@@ -3328,6 +3372,101 @@ export default function GestionRifas() {
               <div className="col-12">
                 <label className="jd-label">DESCRIPCIÓN ADICIONAL</label>
                 <textarea className="jd-input" rows={2} value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} placeholder="Detalles del premio, condiciones, etc." style={{ resize: 'vertical' }} />
+              </div>
+
+              {/* ══ PREMIOS ADICIONALES ══ */}
+              <div className="col-12">
+                <div style={{ borderTop: '1px solid var(--jordyn-border)', paddingTop: '1.25rem' }}>
+                  <label className="jd-label" style={{ fontSize: '.7rem' }}>
+                    <i className="bi bi-gift-fill me-1" style={{ color: 'var(--jordyn-gold)' }}></i>PREMIOS ADICIONALES
+                    <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                      (opcional — además del premio mayor; salen en la página del cliente y los menciona el bot)
+                    </span>
+                  </label>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {(form.premios_extra || []).map((p, i) => (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                        <span style={{ width:26, height:26, borderRadius:'50%', background:'rgba(240,165,0,.14)', color:'var(--jordyn-gold2)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800, flexShrink:0 }}>{i + 2}</span>
+                        <input className="jd-input" style={{ flex:'2 1 180px' }} value={p.nombre} maxLength={120} placeholder="Premio (ej: Moto Bera SBR)" aria-label={`Premio adicional ${i + 1}`}
+                          onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x) }))} />
+                        <input className="jd-input" style={{ flex:'3 1 220px' }} value={p.detalle} maxLength={200} placeholder="Detalle (ej: 2do premio · últimas 2 cifras)" aria-label={`Detalle del premio adicional ${i + 1}`}
+                          onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, detalle: e.target.value } : x) }))} />
+                        <button type="button" className="btn-jordyn-danger" style={{ padding:'8px 10px', fontSize:'.75rem' }} aria-label="Quitar premio" title="Quitar premio"
+                          onClick={() => setForm(f => ({ ...f, premios_extra: f.premios_extra.filter((_, j) => j !== i) }))}><i className="bi bi-x-lg"></i></button>
+                      </div>
+                    ))}
+                  </div>
+                  {(form.premios_extra || []).length < 12 && (
+                    <button type="button" className="btn-jordyn-outline" style={{ fontSize:'.75rem', marginTop:8 }}
+                      onClick={() => setForm(f => ({ ...f, premios_extra: [...(f.premios_extra || []), { nombre: '', detalle: '' }] }))}>
+                      <i className="bi bi-plus me-1"></i>Agregar premio
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* ══ VENTA EN LÍNEA: publicación y pago diferido ══ */}
+              <div className="col-12">
+                <div style={{ borderTop: '1px solid var(--jordyn-border)', paddingTop: '1.25rem' }}>
+                  <label className="jd-label" style={{ fontSize: '.7rem' }}>
+                    <i className="bi bi-globe2 me-1" style={{ color: 'var(--jordyn-primary)' }}></i>VENTA EN LÍNEA
+                  </label>
+
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', padding:'10px 12px', borderRadius:10, border:'1.5px solid var(--jordyn-border)', background:'var(--jordyn-bg)' }}>
+                    <input type="checkbox" checked={form.publicada !== false} onChange={e => setForm(p => ({ ...p, publicada: e.target.checked }))} style={{ width:18, height:18, marginTop:2, accentColor:'var(--jordyn-primary)' }} />
+                    <span>
+                      <span style={{ fontWeight:700, fontSize:'.86rem', color:'var(--jordyn-text)' }}>Publicar en la página del cliente</span>
+                      <span style={{ display:'block', fontSize:'.72rem', color:'var(--jordyn-muted)', marginTop:2 }}>
+                        Si la desmarcas, la rifa no sale en la página ni la ofrece el bot de WhatsApp. Los vendedores la siguen vendiendo igual.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', padding:'10px 12px', borderRadius:10, marginTop:8, border:`1.5px solid ${form.pago_diferido ? 'rgba(124,58,237,.45)' : 'var(--jordyn-border)'}`, background: form.pago_diferido ? 'rgba(124,58,237,.05)' : 'var(--jordyn-bg)' }}>
+                    <input type="checkbox" checked={!!form.pago_diferido} onChange={e => setForm(p => ({ ...p, pago_diferido: e.target.checked }))} style={{ width:18, height:18, marginTop:2, accentColor:'#7c3aed' }} />
+                    <span>
+                      <span style={{ fontWeight:700, fontSize:'.86rem', color:'var(--jordyn-text)' }}>Permitir apartar sin pagar</span>
+                      <span style={{ display:'block', fontSize:'.72rem', color:'var(--jordyn-muted)', marginTop:2 }}>
+                        El cliente aparta el número y paga después. El bot le recuerda por WhatsApp la víspera, el día del sorteo y antes de que venza el plazo.
+                        Si no paga a tiempo, el número se libera solo. Los que quieran pueden seguir pagando de una vez.
+                      </span>
+                    </span>
+                  </label>
+
+                  {form.pago_diferido && (
+                    <div className="row g-3" style={{ marginTop: 2 }}>
+                      <div className="col-12 col-md-6">
+                        <label className="jd-label">SE PUEDE PAGAR HASTA</label>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem' }}>
+                          <input className="jd-input" type="number" min={0} max={72} style={{ width:90 }} value={form.diferido_limite_horas}
+                            onChange={e => setForm(p => ({ ...p, diferido_limite_horas: e.target.value }))} aria-label="Horas antes del sorteo" />
+                          hora{Number(form.diferido_limite_horas) === 1 ? '' : 's'} antes del sorteo
+                        </div>
+                        <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:4 }}>
+                          {form.fecha_sorteo
+                            ? (() => {
+                                const d = new Date(`${form.fecha_sorteo}T${form.hora_sorteo || '20:00'}:00-04:00`);
+                                if (isNaN(d.getTime())) return null;
+                                const lim = new Date(d.getTime() - (Number(form.diferido_limite_horas) || 0) * 3600000);
+                                return <>Límite de pago: <b>{lim.toLocaleString('es-CO', { weekday:'long', day:'numeric', month:'long', hour:'numeric', minute:'2-digit', hour12:true, timeZone:'America/Caracas' })}</b>{!form.hora_sorteo && ' (sin hora de sorteo se toma 8:00 p. m.)'}. Lo que no esté pagado a esa hora se libera.</>;
+                              })()
+                            : 'Pon la fecha del sorteo para calcular el límite de pago.'}
+                        </div>
+                      </div>
+                      <div className="col-12 col-md-6">
+                        <label className="jd-label">MÁXIMO SIN PAGAR POR PERSONA</label>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem' }}>
+                          <input className="jd-input" type="number" min={1} max={50} style={{ width:90 }} value={form.diferido_max_numeros}
+                            onChange={e => setForm(p => ({ ...p, diferido_max_numeros: e.target.value }))} aria-label="Máximo de números sin pagar por persona" />
+                          números
+                        </div>
+                        <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:4 }}>
+                          Evita que una sola persona bloquee muchos números sin pagar. Para llevar más tiene que pagar.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* ══ CATEGORÍA DE VENDEDORES ══ */}

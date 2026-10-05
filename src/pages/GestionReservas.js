@@ -22,7 +22,13 @@ const EST = {
   pendiente: { bg:'rgba(240,165,0,.10)',  color:'#b37700', border:'rgba(240,165,0,.30)',  label:'⏳ Pendiente', dot:'#f0a500' },
   aprobado:  { bg:'rgba(6,214,160,.10)',  color:'#059669', border:'rgba(6,214,160,.30)',  label:'✅ Aprobado',  dot:'#06d6a0' },
   rechazado: { bg:'rgba(230,57,70,.10)',  color:'#e63946', border:'rgba(230,57,70,.25)',  label:'❌ Rechazado', dot:'#e63946' },
+  // Apartado sin pagar (rifas con pago diferido, o el bot esperando el comprobante)
+  apartado:  { bg:'rgba(124,58,237,.09)', color:'#7c3aed', border:'rgba(124,58,237,.30)', label:'🔖 Sin pagar', dot:'#7c3aed' },
 };
+
+const fmtLimitePago = f => f ? new Date(f).toLocaleString('es-CO', {
+  weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'America/Caracas',
+}) : null;
 
 /* ─── WhatsApp icon ─── */
 const WaIcon = ({ size=18 }) => (
@@ -883,6 +889,7 @@ export default function GestionReservas() {
   const [selR,     setSelR]     = useState(null);
   const [selHerm,  setSelHerm]  = useState([]);
   const [tasas,    setTasas]    = useState({});
+  const [nApartados, setNApartados] = useState(0);
 
   useEffect(() => { API.get('/tasas').then(r => setTasas(r.data)).catch(() => {}); }, []);
 
@@ -898,7 +905,31 @@ export default function GestionReservas() {
 
   const loadTodas = useCallback(async () => {
     try { const r = await API.get('/publico/admin/reservas'); setTodas(r.data); } catch {}
+    // Los apartados sin pagar van aparte (no entran en "Todos")
+    try { const r = await API.get('/publico/admin/reservas?estado=apartado'); setNApartados(r.data.length); } catch {}
   }, []);
+
+  /* Apartados: el cliente pagó por fuera (efectivo, en persona) o se libera el número */
+  const marcarPagado = async (ids, nombre) => {
+    if (!window.confirm(`¿${nombre} ya pagó? ${ids.length === 1 ? 'El número pasa' : `Los ${ids.length} números pasan`} a Pendientes para que lo apruebes y salga el ticket.`)) return;
+    setSaving(true);
+    try {
+      await API.put('/publico/admin/apartados/pagado', { ids });
+      toast.success('Pago registrado: apruébalo en Pendientes para enviar el ticket');
+      setFiltro('pendiente'); loadTodas();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar el pago'); }
+    finally { setSaving(false); }
+  };
+  const liberarApartado = async (ids, nombre) => {
+    if (!window.confirm(`¿Liberar ${ids.length === 1 ? 'el número' : `los ${ids.length} números`} de ${nombre}? Vuelven a estar disponibles para cualquiera.`)) return;
+    setSaving(true);
+    try {
+      await API.delete('/publico/admin/apartados', { data: { ids } });
+      toast.success('Números liberados');
+      load(); loadTodas();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo liberar'); }
+    finally { setSaving(false); }
+  };
 
   useEffect(() => { load(); loadTodas(); }, [load, loadTodas]);
 
@@ -934,6 +965,7 @@ export default function GestionReservas() {
 
   const TABS = [
     { key:'pendiente', label:'Pendientes', icon:'bi-hourglass-split',   color:'#b37700',             count:conteos.pendiente||0 },
+    { key:'apartado',  label:'Apartados sin pagar', icon:'bi-bookmark-star-fill', color:'#7c3aed',    count:nApartados },
     { key:'aprobado',  label:'Aprobados',  icon:'bi-check-circle-fill', color:'#059669',             count:conteos.aprobado||0  },
     { key:'rechazado', label:'Rechazados', icon:'bi-x-circle-fill',     color:'#e63946',             count:conteos.rechazado||0 },
     { key:'todos',     label:'Todos',      icon:'bi-list-ul',            color:'var(--jordyn-muted)', count:conteos.todos||0     },
@@ -983,7 +1015,11 @@ export default function GestionReservas() {
         <div style={{ textAlign:'center', padding:'4rem 2rem' }}>
           <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>📭</div>
           <div style={{ fontWeight:800, fontSize:'1.1rem', color:'var(--jordyn-text)', marginBottom:4 }}>Sin reservas</div>
-          <div style={{ fontSize:'.82rem', color:'var(--jordyn-muted)' }}>No hay reservas con el filtro seleccionado</div>
+          <div style={{ fontSize:'.82rem', color:'var(--jordyn-muted)' }}>
+            {filtro === 'apartado'
+              ? 'Nadie tiene números apartados sin pagar. Aparecen aquí cuando un cliente aparta en una rifa con pago diferido.'
+              : 'No hay reservas con el filtro seleccionado'}
+          </div>
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -993,8 +1029,8 @@ export default function GestionReservas() {
             const esGrupo = numeros.length > 1;
             const totalVal= r.precio * numeros.length;
             return (
-              <div key={r.id} onClick={() => abrirModal(r)} className="jd-card"
-                style={{ cursor:'pointer', padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${est.dot}`, transition:'box-shadow .15s, transform .12s' }}
+              <div key={r.id} onClick={() => r.estado !== 'apartado' && abrirModal(r)} className="jd-card"
+                style={{ cursor: r.estado === 'apartado' ? 'default' : 'pointer', padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${est.dot}`, transition:'box-shadow .15s, transform .12s' }}
                 onMouseEnter={e => { e.currentTarget.style.boxShadow='0 4px 16px rgba(10,191,188,.12)'; e.currentTarget.style.transform='translateY(-1px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.boxShadow=''; e.currentTarget.style.transform=''; }}>
                 <div style={{ minWidth:52, flexShrink:0, background:est.bg, border:`1.5px solid ${est.border}`, borderRadius:10, padding:'6px 10px', display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
@@ -1014,6 +1050,17 @@ export default function GestionReservas() {
                     {r.telefono    && <span style={{ marginLeft:10 }}><i className="bi bi-telephone-fill me-1"></i>{r.telefono}</span>}
                     {r.metodo_pago && <span style={{ marginLeft:10 }}><i className="bi bi-credit-card me-1"></i>{r.metodo_pago}</span>}
                   </div>
+                  {r.estado === 'apartado' && (
+                    <div style={{ fontSize:'.72rem', color:'#7c3aed', fontWeight:700, marginTop:3 }}>
+                      <i className="bi bi-alarm me-1"></i>
+                      {r.pago_diferido ? 'Puede pagar hasta' : 'El bot espera su comprobante hasta'}: {fmtLimitePago(r.apartado_hasta) || '—'}
+                      {(r.recordatorios || []).length > 0 && (
+                        <span style={{ marginLeft:10, fontWeight:600, color:'var(--jordyn-muted)' }}>
+                          <i className="bi bi-bell-fill me-1"></i>{r.recordatorios.length} recordatorio{r.recordatorios.length === 1 ? '' : 's'} enviado{r.recordatorios.length === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {esGrupo && (
                     <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:5 }}>
                       {numeros.map((n,i) => <span key={`${n}-${i}`} style={{ background:est.bg, color:est.color, border:`1px solid ${est.border}`, borderRadius:6, padding:'2px 8px', fontSize:'.72rem', fontWeight:800, letterSpacing:1 }}>{n}</span>)}
@@ -1033,7 +1080,21 @@ export default function GestionReservas() {
                     <WaIcon size={14}/> <span style={{ fontSize:'.72rem', fontWeight:700 }}>WA</span>
                   </button>
                 )}
-                <i className="bi bi-chevron-right" style={{ color:'var(--jordyn-muted)', flexShrink:0 }}></i>
+                {r.estado === 'apartado' ? (
+                  <div style={{ display:'flex', gap:6, flexShrink:0, flexWrap:'wrap' }}>
+                    <button onClick={e => { e.stopPropagation(); marcarPagado([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
+                      title="El cliente ya pagó (efectivo o en persona)"
+                      style={{ background:'linear-gradient(135deg,#059669,#06d6a0)', border:'none', color:'#fff', borderRadius:8, padding:'6px 11px', cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
+                      <i className="bi bi-cash-coin me-1"></i>Ya pagó
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); liberarApartado([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
+                      className="btn-jordyn-danger" style={{ fontSize:'.72rem', padding:'6px 11px' }} title="Liberar los números">
+                      <i className="bi bi-unlock-fill me-1"></i>Liberar
+                    </button>
+                  </div>
+                ) : (
+                  <i className="bi bi-chevron-right" style={{ color:'var(--jordyn-muted)', flexShrink:0 }}></i>
+                )}
               </div>
             );
           })}
