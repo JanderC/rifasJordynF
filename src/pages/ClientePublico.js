@@ -572,6 +572,106 @@ const injectStyles = () => {
     }
     .hero-feat-content { position:relative; z-index:2; width:100%; padding:28px 32px 32px; }
 
+    /* ══ Diseño general de la página ══ */
+    .pub-pagina { position:relative; z-index:0; min-height:100vh;
+      background:linear-gradient(180deg,#e9fafa 0%,#f5fdfd 28%,#eef9f9 100%); }
+    .pub-fondo { position:absolute; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
+    .pub-fondo i { position:absolute; border-radius:50%; filter:blur(70px); opacity:.55; }
+    .pub-fondo i:nth-child(1) { width:520px; height:520px; top:-160px; left:-140px; background:${TURQ}55; }
+    .pub-fondo i:nth-child(2) { width:420px; height:420px; top:120px; right:-160px; background:#ffd16655; }
+    .pub-fondo i:nth-child(3) { width:460px; height:460px; top:1100px; left:-200px; background:${TURQ2}33; }
+    .pub-fondo i:nth-child(4) { width:380px; height:380px; top:1900px; right:-150px; background:${NARANJA}22; }
+
+    .pub-nav { background:rgba(255,255,255,.82); backdrop-filter:blur(16px) saturate(1.4); border-bottom:1px solid rgba(10,150,150,.12);
+      padding:0 5vw; position:sticky; top:0; z-index:100; height:64px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+      box-shadow:0 4px 24px rgba(10,100,100,.06); }
+    .pub-marca { display:flex; align-items:center; gap:10px; text-decoration:none; min-width:0; }
+    .pub-marca-logo { width:38px; height:38px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem;
+      background:linear-gradient(135deg,${TURQ},${TURQ_DK}); box-shadow:0 6px 16px ${TURQ}55; }
+    .pub-marca-txt { font-size:1.05rem; color:${DARK}; font-weight:800; line-height:1.1; white-space:nowrap; }
+    .pub-marca-txt small { display:block; font-size:.55rem; font-weight:600; letter-spacing:1.5px; color:${TURQ_DK}; text-transform:uppercase; }
+    .pub-nav-btn { border:none; cursor:pointer; font-family:'Poppins',sans-serif; font-size:.78rem; font-weight:700; color:#fff; border-radius:40px; padding:8px 16px;
+      background:linear-gradient(135deg,#7c3aed,#a855f7); box-shadow:0 6px 16px rgba(124,58,237,.3); white-space:nowrap; transition:transform .2s; }
+    .pub-nav-btn:hover { transform:translateY(-2px); }
+
+    .pub-intro { text-align:center; padding:44px 5vw 4px; max-width:860px; margin:0 auto; animation:fadeUp .5s ease both; }
+    .pub-intro-chip { display:inline-flex; align-items:center; gap:8px; background:#fff; border:1px solid ${TURQ}44; color:${TURQ_DK}; border-radius:40px;
+      padding:6px 16px; font-size:.7rem; font-weight:700; letter-spacing:.5px; box-shadow:0 4px 16px rgba(10,150,150,.1); }
+    .pub-intro-chip b { width:8px; height:8px; border-radius:50%; background:${VERDE}; animation:pulse-ring 2s infinite; }
+    .pub-intro h1 { font-size:clamp(1.9rem,5.2vw,3.3rem); font-weight:900; color:${DARK}; line-height:1.08; letter-spacing:-1px; margin:16px 0 12px; }
+    .pub-intro h1 span { background:linear-gradient(100deg,${TURQ_DK},${TURQ2} 45%,#f5a623); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .pub-intro p { font-size:clamp(.92rem,1.6vw,1.05rem); color:${DARK}99; line-height:1.6; max-width:600px; margin:0 auto; }
+    .pub-sellos { display:flex; justify-content:center; gap:8px 10px; flex-wrap:wrap; margin-top:18px; }
+    .pub-sello { display:inline-flex; align-items:center; gap:6px; font-size:.74rem; font-weight:600; color:${DARK}cc; background:rgba(255,255,255,.75);
+      border:1px solid rgba(10,150,150,.16); border-radius:40px; padding:6px 13px; }
+    .pub-sello i { font-style:normal; color:${VERDE}; font-weight:900; }
+
+    .pub-cifras { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+    .pub-cifra { background:#fff; border-radius:20px; padding:18px 16px; display:flex; align-items:center; gap:12px; border:1px solid rgba(10,150,150,.1);
+      box-shadow:0 6px 24px rgba(10,100,100,.07); transition:transform .2s, box-shadow .2s; }
+    .pub-cifra:hover { transform:translateY(-4px); box-shadow:0 14px 36px rgba(10,150,150,.14); }
+    .pub-cifra-ico { width:46px; height:46px; border-radius:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+      background:linear-gradient(135deg,${TURQ}1c,${TURQ2}30); }
+    .pub-cifra strong { display:block; font-size:1.15rem; font-weight:900; color:${DARK}; line-height:1.15; }
+    .pub-cifra span { font-size:.68rem; color:${DARK}88; font-weight:600; }
+
+    .pub-titulo { text-align:center; margin-bottom:40px; }
+    .pub-titulo .kicker { display:inline-block; font-size:.64rem; color:${TURQ_DK}; letter-spacing:2px; font-weight:800; text-transform:uppercase;
+      background:${TURQ}14; border-radius:40px; padding:5px 14px; margin-bottom:12px; }
+    .pub-titulo h2 { font-size:clamp(1.8rem,4vw,2.7rem); color:${DARK}; font-weight:900; letter-spacing:-.5px; line-height:1.15; }
+    .pub-titulo h2::after { content:''; display:block; width:64px; height:5px; border-radius:5px; margin:14px auto 0;
+      background:linear-gradient(90deg,${TURQ},#f5a623); }
+    .pub-titulo .sub { font-size:.86rem; color:${DARK}88; margin-top:12px; }
+
+    .pub-pasos { display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:18px; counter-reset:paso; }
+    .pub-paso { position:relative; background:linear-gradient(180deg,#fff,#f7fdfd); border:1px solid rgba(10,150,150,.13); border-radius:22px; padding:30px 20px 22px;
+      text-align:center; box-shadow:0 6px 24px rgba(10,100,100,.06); transition:transform .25s, box-shadow .25s, border-color .25s; }
+    .pub-paso:hover { transform:translateY(-6px); box-shadow:0 18px 44px rgba(10,150,150,.16); border-color:${TURQ}66; }
+    .pub-paso::before { counter-increment:paso; content:counter(paso); position:absolute; top:-15px; left:50%; transform:translateX(-50%);
+      width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,${TURQ},${TURQ_DK}); color:#fff; font-weight:900; font-size:.9rem;
+      display:flex; align-items:center; justify-content:center; box-shadow:0 6px 14px ${TURQ}66; border:3px solid #fff; }
+    .pub-paso-ico { width:66px; height:66px; border-radius:20px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:1.9rem;
+      background:linear-gradient(135deg,${TURQ}18,${TURQ2}2e); }
+    .pub-paso h3 { font-size:1.02rem; color:${DARK}; font-weight:800; margin-bottom:7px; }
+    .pub-paso p { font-size:.86rem; color:${DARK}88; line-height:1.6; }
+
+    .pago-card { transition:transform .22s, box-shadow .22s; }
+    .pago-card:hover { transform:translateY(-5px); box-shadow:0 16px 40px rgba(10,100,100,.13); }
+
+    /* Premios de la rifa (mayor + adicionales) */
+    .premios-lista { display:flex; flex-direction:column; gap:6px; }
+    .premio-fila { display:flex; align-items:center; gap:10px; border-radius:12px; padding:8px 12px; }
+    .premio-fila .pos { width:28px; height:28px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.95rem; }
+    .premio-fila b { display:block; font-size:.86rem; font-weight:800; line-height:1.25; }
+    .premio-fila small { display:block; font-size:.68rem; font-weight:500; opacity:.75; }
+
+    /* Aviso de apartados */
+    .apartado-banner { display:flex; align-items:center; gap:14px; flex-wrap:wrap; border-radius:20px; padding:16px 20px;
+      background:linear-gradient(135deg,#f5efff,#fbf7ff); border:1.5px solid rgba(124,58,237,.25); box-shadow:0 6px 24px rgba(124,58,237,.08); }
+    .modo-pago { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px; }
+    .modo-pago button { border:2px solid #e0f0f0; background:#fff; border-radius:14px; padding:12px 10px; cursor:pointer; text-align:left; font-family:'Poppins',sans-serif;
+      transition:border-color .15s, background .15s, box-shadow .15s; }
+    .modo-pago button b { display:block; font-size:.88rem; color:${DARK}; }
+    .modo-pago button span { display:block; font-size:.68rem; color:${DARK}88; margin-top:2px; line-height:1.35; }
+    .modo-pago button.on { border-color:${TURQ}; background:${TURQ}0d; box-shadow:0 0 0 4px ${TURQ}18; }
+    .modo-pago button.on.morado { border-color:#7c3aed; background:rgba(124,58,237,.06); box-shadow:0 0 0 4px rgba(124,58,237,.12); }
+
+    @media (max-width: 640px) {
+      .nav-solo-escritorio { display:none !important; }
+      .pub-marca-txt { font-size:.92rem; }
+      .pub-marca-txt small { display:none; }
+      .pub-intro { padding-top:30px; }
+      .pub-cifras { grid-template-columns:1fr 1fr; gap:10px; }
+      .pub-cifra { padding:13px 11px; gap:9px; border-radius:16px; }
+      .pub-cifra-ico { width:38px; height:38px; font-size:1.15rem; border-radius:11px; }
+      .pub-cifra strong { font-size:.98rem; }
+      .modo-pago { grid-template-columns:1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pub-intro, .pub-intro-chip b { animation:none; }
+      .pub-cifra, .pub-paso, .pago-card { transition:none; }
+    }
+
     /* ── Barra flotante de selección ── */
     .carrito-bar {
       position:sticky; bottom:14px; z-index:50;
@@ -722,6 +822,45 @@ function BannerOfertas({ ofertas, precioUnitario }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   PREMIOS DE LA RIFA: el premio mayor y los adicionales
+   (los adicionales se cargan en el panel, al crear/editar la rifa)
+═══════════════════════════════════════════════════════════ */
+const MEDALLAS_PREMIO = ['🥇', '🥈', '🥉'];
+function PremiosRifa({ rifa, oscuro = false }) {
+  const extras = Array.isArray(rifa.premios_extra) ? rifa.premios_extra.filter(p => p?.nombre) : [];
+  if (!extras.length) return null;
+  const lista = [{ nombre: rifa.premio, detalle: 'Premio mayor' }, ...extras];
+  return (
+    <div>
+      <div style={{ fontSize:'.58rem', letterSpacing:'2px', textTransform:'uppercase', fontWeight:800, marginBottom:8, color: oscuro ? 'rgba(255,255,255,.55)' : TURQ_DK }}>
+        🎁 {lista.length} premios en esta rifa
+      </div>
+      <div className="premios-lista">
+        {lista.map((p, i) => (
+          <div key={i} className="premio-fila" style={oscuro
+            ? { background: i === 0 ? 'rgba(255,201,60,.14)' : 'rgba(255,255,255,.07)', border:`1px solid ${i === 0 ? 'rgba(255,201,60,.4)' : 'rgba(255,255,255,.12)'}`, color:'#fff' }
+            : { background: i === 0 ? '#fff8e1' : '#f8fdfd', border:`1px solid ${i === 0 ? '#ffe082' : '#e0f0f0'}`, color: DARK }}>
+            <span className="pos" style={{ background: oscuro ? 'rgba(255,255,255,.1)' : '#fff' }}>{MEDALLAS_PREMIO[i] || '🎁'}</span>
+            <span style={{ minWidth:0 }}>
+              <b>{p.nombre}</b>
+              {p.detalle && <small>{p.detalle}</small>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* Etiqueta: en esta rifa se puede apartar el número y pagar después */
+const EtiquetaApartado = ({ rifa, estilo }) => (rifa.pago_diferido ? (
+  <span title={rifa.pago_hasta_texto ? `Puedes pagar hasta el ${rifa.pago_hasta_texto}` : undefined}
+    style={{ background:'linear-gradient(135deg,#7c3aed,#a855f7)', color:'#fff', borderRadius:50, padding:'5px 13px', fontSize:'.58rem', fontWeight:800, letterSpacing:'1px', textTransform:'uppercase', boxShadow:'0 4px 16px rgba(124,58,237,.4)', ...estilo }}>
+    🔖 Aparta y paga después
+  </span>
+) : null);
+
+/* ═══════════════════════════════════════════════════════════
    HERO DE LA RIFA PRINCIPAL
    FIX PUNTO 1B: condición !cd.invalid agregada al render del countdown
 ═══════════════════════════════════════════════════════════ */
@@ -782,10 +921,14 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
           {rifa.loteria_ref && (
             <span style={{ background:'rgba(255,255,255,.1)', border:'1px solid rgba(255,255,255,.18)', color:'rgba(255,255,255,.85)', borderRadius:50, padding:'5px 12px', fontSize:'.58rem', fontWeight:600, backdropFilter:'blur(8px)' }}>🎲 {rifa.loteria_ref}</span>
           )}
+          <EtiquetaApartado rifa={rifa} />
         </div>
 
         <h2 style={{ fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900, lineHeight:1.15, marginBottom:6, textShadow:'0 2px 16px rgba(0,0,0,.5)', position:'relative' }}>{rifa.nombre}</h2>
-        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
+        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:(rifa.premios_extra || []).length ? 14 : 24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
+        {(rifa.premios_extra || []).length > 0 && (
+          <div style={{ marginBottom:20, position:'relative' }}><PremiosRifa rifa={rifa} oscuro /></div>
+        )}
 
         {/* Resumen de packs si hay ofertas */}
         {tieneOfertas && (
@@ -900,7 +1043,7 @@ function PagoInlineCard({ metodo }) {
         <div key={label} className="pago-campo-row">
           <div>
             <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>{label}</div>
-            <div style={{ fontSize:'.9rem', fontWeight:700, color: DARK }}>{valor}</div>
+            <div style={{ fontSize:'.9rem', fontWeight:700, color: DARK, overflowWrap:'anywhere' }}>{valor}</div>
           </div>
           <button className="copy-pill" onClick={() => copiar(valor, label)} title="Copiar">{copiado === label ? '✅' : '📋'}</button>
         </div>
@@ -1007,6 +1150,11 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
   const [conflictos, setConflictos] = useState([]);
   const [acepta,     setAcepta]   = useState(false);
   const fileRef = useRef();
+  // Rifas con pago diferido: el cliente elige pagar ya o apartar y pagar después
+  const puedeApartar = !!rifa.pago_diferido;
+  const [modo,     setModo]     = useState('pagar');   // 'pagar' | 'apartar'
+  const [apartado, setApartado] = useState(null);      // respuesta del servidor si apartó
+  const apartar = puedeApartar && modo === 'apartar';
 
   /* ── Tasas desde /api/tasas/hoy ── */
 const tasasHoy = useTasasHoy();
@@ -1037,7 +1185,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   const handleEnviar = async () => {
     if (!form.nombre.trim()) { setError('Ingresa tu nombre completo'); return; }
     if (!form.cedula.trim()) { setError('La cédula es obligatoria'); return; }
-    if (!imgB64)             { setError('El comprobante de pago es obligatorio'); return; }
+    if (apartar && form.telefono.replace(/\D/g,'').length < 7) { setError('Escribe tu WhatsApp: por ahí te recordamos el pago y te llega tu ticket'); return; }
+    if (!apartar && !imgB64) { setError('El comprobante de pago es obligatorio'); return; }
     // Validar correo solo si fue ingresado
     if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
       setError('El correo electrónico no tiene un formato válido'); return;
@@ -1052,11 +1201,12 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         cedula:             form.cedula.trim(),
         correo:             form.correo.trim() || undefined,
         telefono:           telefonoFull,
-        metodo_pago:        form.metodo_pago,
-        comprobante_base64: imgB64,
-        comprobante_nombre: imgNombre,
+        ...(apartar
+          ? { apartar: true }
+          : { metodo_pago: form.metodo_pago, comprobante_base64: imgB64, comprobante_nombre: imgNombre }),
       });
       const ids = (r.data.reservas || [r.data.reserva]).map(rv => rv?.id).filter(Boolean);
+      setApartado(r.data.apartado ? r.data : null);
       setReservaIds(ids);
       setConflictos(r.data.conflictos || []);
       setStep(2);
@@ -1098,7 +1248,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         <div style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'24px 24px 0 0', padding:'22px 26px 18px', position:'relative' }}>
           <button onClick={onClose} style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
           <div style={{ fontSize:'.58rem', color:'rgba(255,255,255,.75)', letterSpacing:'0.5px', marginBottom:4 }}>
-            {numeros.length > 1 ? `COMPRAR ${numeros.length} NÚMEROS` : 'COMPRAR NÚMERO'}
+            {`${apartar ? 'APARTAR' : 'COMPRAR'} ${numeros.length > 1 ? `${numeros.length} NÚMEROS` : 'NÚMERO'}`}
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
             {numerosObjs.map((n, i) => (
@@ -1156,6 +1306,20 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 )}
               </div>
 
+              {/* Pagar ahora o apartar (solo en rifas con pago diferido) */}
+              {puedeApartar && (
+                <div className="modo-pago" role="radiogroup" aria-label="¿Cómo quieres hacerlo?">
+                  <button type="button" role="radio" aria-checked={!apartar} className={!apartar ? 'on' : ''} onClick={() => { setModo('pagar'); setError(''); }}>
+                    <b>💳 Pagar ahora</b>
+                    <span>Subes el comprobante y recibes tu ticket al verificarlo.</span>
+                  </button>
+                  <button type="button" role="radio" aria-checked={apartar} className={apartar ? 'on morado' : ''} onClick={() => { setModo('apartar'); setError(''); }}>
+                    <b>🔖 Apartar y pagar después</b>
+                    <span>{rifa.pago_hasta_texto ? `Pagas hasta el ${rifa.pago_hasta_texto}` : 'Pagas antes del sorteo'}</span>
+                  </button>
+                </div>
+              )}
+
               {/* ① Datos */}
               <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>① Tus datos</div>
               <div style={{ marginBottom:14 }}>
@@ -1193,7 +1357,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 </div>
               </div>
               <div style={{ marginBottom:20 }}>
-                <label className="pub-label">WhatsApp / Teléfono</label>
+                <label className="pub-label">WhatsApp / Teléfono{apartar && ' *'}</label>
                 <div className="phone-row">
                   <select className="phone-select" value={form.codPais} onChange={e => upd('codPais', e.target.value)}>
                     {PAISES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
@@ -1207,6 +1371,16 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 )}
               </div>
 
+              {apartar && (
+                <div style={{ background:'rgba(124,58,237,.06)', border:'1.5px solid rgba(124,58,237,.25)', borderRadius:14, padding:'14px 16px', marginBottom:4, fontSize:'.84rem', color:DARK, lineHeight:1.6 }}>
+                  <div style={{ fontWeight:800, color:'#6d28d9', marginBottom:4 }}>🔖 Así funciona el apartado</div>
+                  Tu{numeros.length > 1 ? 's números quedan guardados' : ' número queda guardado'} a tu nombre sin pagar todavía.
+                  Tienes hasta el <strong>{rifa.pago_hasta_texto || 'día del sorteo'}</strong> para pagar <strong>{fmt(totalReal)}</strong>.
+                  Te lo recordamos por WhatsApp. Si no pagas a tiempo, {numeros.length > 1 ? 'se liberan' : 'se libera'}.
+                </div>
+              )}
+
+              {!apartar && (<>
               {/* ② Método de pago */}
               <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>② Método de pago</div>
               <div>
@@ -1298,6 +1472,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 )}
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFile} style={{ display:'none' }} />
               </div>
+              </>)}
 
               <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:16, cursor:'pointer', fontSize:'.78rem', color:`${DARK}aa`, lineHeight:1.5 }}>
                 <input type="checkbox" checked={acepta} onChange={e => setAcepta(e.target.checked)}
@@ -1319,6 +1494,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                   style={{ width:'100%', justifyContent:'center', fontSize:'1rem', padding:'16px', borderRadius:14 }}>
                   {sending
                     ? <><span style={{ display:'inline-block', animation:'spin .8s linear infinite' }}>⏳</span> Enviando...</>
+                    : apartar
+                      ? `🔖 Apartar ${numeros.length > 1 ? `${numeros.length} números` : 'mi número'} · pagar después`
                     : numeros.length > 1
                       ? `🎟 Confirmar ${numeros.length} números · ${fmt(totalReal)}`
                       : '🎟 Confirmar reserva y bloquear número'}
@@ -1339,7 +1516,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
               {/* Título */}
               <div style={{ fontSize:'1.5rem', color:DARK, marginBottom:18, fontWeight:900, lineHeight:1.3 }}>
-                ¡Compra realizada con éxito!
+                {apartado ? (numeros.length > 1 ? '¡Números apartados!' : '¡Número apartado!') : '¡Compra realizada con éxito!'}
               </div>
 
               {/* ── MENSAJE EXACTO SOLICITADO ── */}
@@ -1356,10 +1533,17 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                     fontWeight:500, margin:0,
                     fontFamily:"'Poppins',sans-serif",
                   }}>
+                    {apartado ? (<>
+                      Quedó guardado a tu nombre.{' '}
+                      <strong style={{ color:TURQ_DK }}>Tienes hasta el {apartado.pago_hasta_texto} para pagar {fmt(totalReal)}.</strong>{' '}
+                      Te lo recordaremos por WhatsApp; si no pagas a tiempo se libera.{' '}
+                      Cuando pagues, tu ticket te llega por WhatsApp.
+                    </>) : (<>
                     Su compra fue realizada con éxito.{' '}
                     <strong style={{ color:TURQ_DK }}>Atento a la aprobación de su número ganador.</strong>{' '}
                     Su ticket le llegará vía WhatsApp durante las próximas horas.{' '}
                     <strong style={{ color:TURQ_DK }}>¡Muchas gracias!</strong>
+                    </>)}
                   </p>
                 </div>
               </div>
@@ -1406,12 +1590,14 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                     )}`}
                     target="_blank" rel="noreferrer"
                     style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, width:'100%', borderRadius:14, padding:'14px', background:'linear-gradient(135deg,#128c7e,#25d366)', color:'#fff', fontWeight:800, fontSize:'1rem', textDecoration:'none', boxShadow:'0 6px 20px rgba(37,211,102,.35)' }}>
-                    <span style={{ fontSize:'1.3rem' }}>📲</span> Recibir mi ticket por WhatsApp
+                    <span style={{ fontSize:'1.3rem' }}>📲</span> {apartado ? 'Pagar ahora por WhatsApp' : 'Recibir mi ticket por WhatsApp'}
                   </a>
                 )}
                 {waNegocio && (
                   <div style={{ fontSize:'.74rem', color:'#6b9090', marginTop:-4, lineHeight:1.5 }}>
-                    Escríbenos con ese mensaje y tu ticket te llega por ahí apenas verifiquemos el pago.
+                    {apartado
+                      ? 'Escríbenos con ese mensaje y te pasamos los datos de pago. También puedes pagar luego aquí mismo, en "Mis apartados".'
+                      : 'Escríbenos con ese mensaje y tu ticket te llega por ahí apenas verifiquemos el pago.'}
                   </div>
                 )}
                 <button className="pub-btn-outline" onClick={onClose} style={{ width:'100%', justifyContent:'center', borderRadius:14, padding:'14px' }}>
@@ -1420,6 +1606,209 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MIS APARTADOS — pagar los números que se apartaron sin pagar
+   1) El cliente se identifica con su WhatsApp y cédula
+   2) Ve sus números apartados y hasta cuándo puede pagar
+   3) Elige el método, paga y sube el comprobante
+═══════════════════════════════════════════════════════════ */
+function ModalMisApartados({ onClose, onPagado }) {
+  const [paso,     setPaso]     = useState('buscar');   // buscar | lista | pagar | listo
+  const [form,     setForm]     = useState({ codPais:'+58', telefono:'', cedula:'' });
+  const [grupos,   setGrupos]   = useState([]);
+  const [sel,      setSel]      = useState(null);
+  const [metodo,   setMetodo]   = useState('');
+  const [imagen,   setImagen]   = useState(null);
+  const [imgB64,   setImgB64]   = useState('');
+  const [error,    setError]    = useState('');
+  const [cargando, setCargando] = useState(false);
+  const fileRef = useRef();
+  const tasasHoy = useTasasHoy();
+  const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
+  const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const buscar = async () => {
+    if (form.telefono.replace(/\D/g,'').length < 7 || form.cedula.length < 5) { setError('Escribe el WhatsApp y la cédula con los que apartaste'); return; }
+    setError(''); setCargando(true);
+    try {
+      const r = await API.get('/publico/apartados', { params: { telefono: telefonoFull, cedula: form.cedula } });
+      setGrupos(r.data || []);
+      setPaso('lista');
+    } catch (e) { setError(e.response?.data?.error || 'No se pudo consultar, intenta de nuevo'); }
+    finally { setCargando(false); }
+  };
+
+  const handleFile = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setError('La imagen debe ser menor a 8 MB'); return; }
+    setError('');
+    setImagen(URL.createObjectURL(f));
+    const reader = new FileReader();
+    reader.onload = ev => setImgB64(ev.target.result);
+    reader.readAsDataURL(f);
+  };
+
+  const pagar = async () => {
+    if (!metodo) { setError('Elige con qué método pagaste'); return; }
+    if (!imgB64) { setError('Sube la captura del comprobante'); return; }
+    setError(''); setCargando(true);
+    try {
+      await API.post('/publico/apartados/pagar', { rifa_id: sel.rifa_id, telefono: telefonoFull, cedula: form.cedula, metodo_pago: metodo, comprobante_base64: imgB64 });
+      setPaso('listo');
+      onPagado?.();
+    } catch (e) { setError(e.response?.data?.error || 'No se pudo registrar el pago, intenta de nuevo'); }
+    finally { setCargando(false); }
+  };
+
+  const conv = sel && metodo ? calcularPrecioMetodo(sel.total, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200) : null;
+  const MORADO = '#7c3aed';
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed', inset:0, background:'rgba(10,30,30,.65)', backdropFilter:'blur(8px)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div role="dialog" aria-modal="true" aria-label="Mis números apartados"
+        style={{ background:'#fff', borderRadius:24, width:'100%', maxWidth:500, maxHeight:'93vh', overflowY:'auto', boxShadow:'0 32px 80px rgba(60,0,90,.3)', animation:'fadeUp .3s ease' }}>
+        <div style={{ background:`linear-gradient(135deg,${MORADO},#a855f7)`, borderRadius:'24px 24px 0 0', padding:'22px 26px 20px', position:'relative' }}>
+          <button onClick={onClose} aria-label="Cerrar" style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem' }}>✕</button>
+          <div style={{ fontSize:'.6rem', color:'rgba(255,255,255,.8)', letterSpacing:'1.5px', fontWeight:700, marginBottom:4 }}>🔖 MIS APARTADOS</div>
+          <div style={{ fontSize:'1.25rem', color:'#fff', fontWeight:800 }}>
+            {paso === 'pagar' ? `Pagar ${sel.numeros.length > 1 ? 'mis números' : 'mi número'}` : paso === 'listo' ? '¡Comprobante recibido!' : 'Paga tus números apartados'}
+          </div>
+        </div>
+
+        <div style={{ padding:'22px 26px 26px' }}>
+          {paso === 'buscar' && (
+            <div style={{ animation:'fadeUp .25s ease' }}>
+              <p style={{ fontSize:'.86rem', color:`${DARK}99`, lineHeight:1.6, marginBottom:18 }}>
+                Escribe el WhatsApp y la cédula con los que apartaste y te mostramos tus números.
+              </p>
+              <div style={{ marginBottom:14 }}>
+                <label className="pub-label">WhatsApp</label>
+                <div className="phone-row">
+                  <select className="phone-select" value={form.codPais} onChange={e => upd('codPais', e.target.value)} aria-label="Código de país">
+                    {PAISES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
+                  </select>
+                  <input className="pub-input" value={form.telefono} onChange={e => upd('telefono', e.target.value.replace(/\D/g,'').slice(0,12))} placeholder="Número sin código" type="tel" autoFocus />
+                </div>
+              </div>
+              <div style={{ marginBottom:18 }}>
+                <label className="pub-label">Cédula</label>
+                <input className="pub-input" value={form.cedula} onChange={e => upd('cedula', e.target.value.replace(/\D/g,'').slice(0,15))} placeholder="Ej: 12345678" type="tel" inputMode="numeric"
+                  onKeyDown={e => e.key === 'Enter' && buscar()} />
+              </div>
+            </div>
+          )}
+
+          {paso === 'lista' && (
+            <div style={{ animation:'fadeUp .25s ease' }}>
+              {grupos.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
+                  <div style={{ fontSize:'2.4rem', marginBottom:8 }}>🔍</div>
+                  <div style={{ fontSize:'1rem', fontWeight:800, color:DARK, marginBottom:6 }}>No tienes números apartados</div>
+                  <p style={{ fontSize:'.84rem', color:`${DARK}88`, lineHeight:1.6 }}>
+                    Con esos datos no hay apartados sin pagar. Puede que ya estén pagados o que se haya vencido el plazo.
+                  </p>
+                </div>
+              ) : grupos.map(g => (
+                <div key={g.rifa_id} style={{ border:'1.5px solid rgba(124,58,237,.25)', background:'rgba(124,58,237,.04)', borderRadius:16, padding:'14px 16px', marginBottom:12 }}>
+                  <div style={{ fontSize:'1rem', fontWeight:800, color:DARK }}>{g.rifa}</div>
+                  <div style={{ fontSize:'.78rem', color:`${DARK}88`, marginBottom:10 }}>🏆 {g.premio}</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
+                    {g.numeros.map(n => <span key={n} style={{ background:`linear-gradient(135deg,${MORADO},#a855f7)`, color:'#fff', borderRadius:10, padding:'4px 12px', fontWeight:900, fontSize:'1rem', letterSpacing:2 }}>{n}</span>)}
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                    <div>
+                      <div style={{ fontSize:'1.25rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{fmt(g.total)}</div>
+                      <div style={{ fontSize:'.7rem', color:`${DARK}88`, marginTop:2 }}>⏰ Hasta el {g.pago_hasta_texto}</div>
+                    </div>
+                    <button className="pub-btn" onClick={() => { setSel(g); setMetodo(''); setImagen(null); setImgB64(''); setError(''); setPaso('pagar'); }}
+                      style={{ padding:'11px 22px', background:`linear-gradient(135deg,${MORADO},#a855f7)`, boxShadow:'0 8px 20px rgba(124,58,237,.3)' }}>
+                      Pagar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {paso === 'pagar' && sel && (
+            <div style={{ animation:'fadeUp .25s ease' }}>
+              <div style={{ fontSize:'.84rem', color:`${DARK}99`, marginBottom:14, lineHeight:1.5 }}>
+                <strong style={{ color:DARK }}>{sel.rifa}</strong> · número{sel.numeros.length > 1 ? 's' : ''} <strong style={{ color:MORADO }}>{sel.numeros.join(', ')}</strong>
+              </div>
+              <label className="pub-label">¿Cómo vas a pagar?</label>
+              <select className="pub-input" value={metodo} onChange={e => setMetodo(e.target.value)} style={{ cursor:'pointer' }}>
+                <option value="">Selecciona un método...</option>
+                {Object.keys(METODOS_PAGO).map(m => <option key={m}>{m}</option>)}
+              </select>
+              {metodo && (
+                <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:'rgba(124,58,237,.06)', border:'2px solid rgba(124,58,237,.22)' }}>
+                  <div style={{ fontSize:'.6rem', fontWeight:700, color:MORADO, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>Debes pagar exactamente</div>
+                  <div style={{ fontSize:'1.7rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{conv ? conv.texto : fmt(sel.total)}</div>
+                  {conv && <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:3 }}>≈ {fmt(sel.total)}</div>}
+                </div>
+              )}
+              {metodo && <PagoInlineCard metodo={metodo} />}
+
+              <div style={{ fontSize:'.78rem', color:MORADO, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', margin:'20px 0 10px' }}>Comprobante de pago</div>
+              <div onClick={() => fileRef.current?.click()}
+                style={{ border:`2px dashed ${imgB64 ? MORADO : '#d5c8ee'}`, borderRadius:16, padding:'18px 14px', textAlign:'center', cursor:'pointer', background: imgB64 ? 'rgba(124,58,237,.05)' : '#fbf9ff' }}>
+                {imagen ? (
+                  <>
+                    <img src={imagen} alt="Comprobante" style={{ maxWidth:'100%', maxHeight:170, objectFit:'contain', borderRadius:10, display:'block', margin:'0 auto 8px' }} />
+                    <div style={{ fontSize:'.68rem', color:`${DARK}66` }}>Toca para cambiar</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:'2rem', marginBottom:6, opacity:.6 }}>📸</div>
+                    <div style={{ fontSize:'.88rem', color:`${DARK}77`, fontWeight:600 }}>Toca aquí para subir el comprobante</div>
+                    <div style={{ fontSize:'.7rem', color:'#aaa', marginTop:4 }}>JPG · PNG · WEBP · máx 8 MB</div>
+                  </>
+                )}
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFile} style={{ display:'none' }} />
+              </div>
+            </div>
+          )}
+
+          {paso === 'listo' && (
+            <div style={{ textAlign:'center', animation:'fadeUp .25s ease' }}>
+              <div style={{ width:80, height:80, borderRadius:'50%', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, margin:'0 auto 18px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.3rem' }}>✅</div>
+              <p style={{ fontSize:'.98rem', color:DARK, lineHeight:1.7, marginBottom:6 }}>
+                Recibimos el comprobante de {sel?.numeros.length > 1 ? 'tus números' : 'tu número'} <strong style={{ color:TURQ_DK }}>{sel?.numeros.join(', ')}</strong>.
+                Apenas verifiquemos el pago, <strong style={{ color:TURQ_DK }}>tu ticket te llega por WhatsApp</strong>. ¡Mucha suerte! 🍀
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ background:'#fff0f0', border:'1px solid #ffcccc', borderRadius:8, padding:'8px 12px', marginTop:12, fontSize:'.78rem', color:'#c0392b', fontWeight:500 }}>⚠️ {error}</div>
+          )}
+
+          <div style={{ display:'flex', gap:10, marginTop:18 }}>
+            {(paso === 'lista' || paso === 'pagar') && (
+              <button className="pub-btn-outline" onClick={() => { setError(''); setPaso(paso === 'pagar' ? 'lista' : 'buscar'); }} style={{ flex:'0 0 auto', borderRadius:14, padding:'13px 20px' }}>← Volver</button>
+            )}
+            {paso === 'buscar' && (
+              <button className="pub-btn" onClick={buscar} disabled={cargando} style={{ flex:1, justifyContent:'center', borderRadius:14, padding:'15px', background:`linear-gradient(135deg,${MORADO},#a855f7)`, boxShadow:'0 8px 20px rgba(124,58,237,.3)' }}>
+                {cargando ? 'Buscando...' : '🔎 Ver mis números'}
+              </button>
+            )}
+            {paso === 'pagar' && (
+              <button className="pub-btn" onClick={pagar} disabled={cargando} style={{ flex:1, justifyContent:'center', borderRadius:14, padding:'15px' }}>
+                {cargando ? 'Enviando...' : '✅ Enviar comprobante'}
+              </button>
+            )}
+            {(paso === 'listo' || (paso === 'lista' && grupos.length === 0)) && (
+              <button className="pub-btn-outline" onClick={onClose} style={{ flex:1, justifyContent:'center', borderRadius:14, padding:'13px' }}>Cerrar</button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -2144,7 +2533,7 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
     : 0;
 
   return (
-    <div style={{ background:'#fff', borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(10,100,100,.08)', transition:'transform .2s, box-shadow .2s', position:'relative' }}
+    <div style={{ background:'#fff', borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(10,100,100,.08)', transition:'transform .2s, box-shadow .2s', position:'relative', display:'flex', flexDirection:'column', height:'100%' }}
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
@@ -2195,10 +2584,16 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
         </div>
       </div>
 
-      <div style={{ padding:'18px 22px 22px' }}>
+      <div style={{ padding:'18px 22px 22px', flex:1, display:'flex', flexDirection:'column' }}>
         <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>{rifa.loteria_ref || 'SORTEO'} · {fmtF(rifa.fecha_sorteo)}</div>
         <div style={{ fontSize:'1.3rem', color:DARK, lineHeight:1.2, marginBottom:7, fontWeight:700 }}>{rifa.nombre}</div>
         <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom: tieneOfertas ? 10 : 14, display:'flex', alignItems:'center', gap:5 }}>🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span></div>
+        {(rifa.premios_extra || []).length > 0 && (
+          <div style={{ fontSize:'.76rem', color:'#b8860b', fontWeight:700, background:'#fff8e1', border:'1px solid #ffe082', borderRadius:10, padding:'6px 10px', marginTop:-4, marginBottom:12 }}>
+            🎁 + {rifa.premios_extra.map(p => p.nombre).join(' · ')}
+          </div>
+        )}
+        {rifa.pago_diferido && <div style={{ marginBottom:12 }}><EtiquetaApartado rifa={rifa} estilo={{ display:'inline-block' }} /></div>}
 
         {/* Resumen de packs */}
         {tieneOfertas && (
@@ -2263,7 +2658,7 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
             <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:8, transition:'width 1s ease', boxShadow:`0 0 10px ${TURQ}66` }}></div>
           </div>
         </div>
-        <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14 }}>
+        <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14, marginTop:'auto' }}>
           Ver números disponibles
         </button>
       </div>
@@ -2287,6 +2682,7 @@ export default function ClientePublico() {
   }, []);
 
   /* ── Grupo de WhatsApp y top de compradores (se configuran en el panel) ── */
+  const [verApartados, setVerApartados] = useState(false);
   const [sitio, setSitio] = useState({ grupo_whatsapp: null, top_compradores: [] });
   useEffect(() => {
     API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [] })).catch(() => {});
@@ -2339,6 +2735,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
     })
     .map(x => x.rifa);
 
+  // Alguna rifa trabaja con apartados: se muestra dónde pagarlos
+  const hayApartados     = rifas.some(r => r.rifa_con_apartado);
   const rifaHero         = rifasActivasOrdenadas[0] || null;
   const rifasSecundarias = rifasActivasOrdenadas.slice(1);
 
@@ -2352,36 +2750,89 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   };
 
   return (
-    <div style={{ minHeight:'100vh', background:'#f0fafa' }}>
+    <div className="pub-pagina">
+      {/* Manchas de color de fondo (decorativas) */}
+      <div className="pub-fondo" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-      <nav style={{ background:'rgba(255,255,255,.95)', backdropFilter:'blur(12px)', borderBottom:'1px solid #e0f0f0', padding:'0 5vw', position:'sticky', top:0, zIndex:100, height:64, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:'1.15rem', color:DARK, fontWeight:800, fontFamily:"'Poppins',sans-serif" }}>Resuelve tu Semana</span>
-        </div>
-        <div className="pub-nav-links" style={{ display:'flex', gap:24, alignItems:'center' }}>
+      <nav className="pub-nav">
+        <a href="#hero-sec" onClick={scrollToRifas} className="pub-marca">
+          <span className="pub-marca-logo" aria-hidden="true">🎟️</span>
+          <span className="pub-marca-txt">Resuelve tu Semana<small>Rifas y sorteos</small></span>
+        </a>
+        <div className="pub-nav-links" style={{ display:'flex', gap:22, alignItems:'center' }}>
           <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link">Rifas</a>
-          {[...(ganadores.length ? [['#ganadores-sec','Ganadores']] : []),['#pagos-sec','Pagos'],['#contacto-sec','Contacto']].map(([href, label]) => (
-            <a key={href} href={href} className="nav-link">{label}</a>
-          ))}
+          {ganadores.length > 0 && <a href="#ganadores-sec" className="nav-link">Ganadores</a>}
+          <a href="#pagos-sec" className="nav-link nav-solo-escritorio">Pagos</a>
+          <a href="#contacto-sec" className="nav-link nav-solo-escritorio">Contacto</a>
+          {hayApartados && <button className="pub-nav-btn" onClick={() => setVerApartados(true)}>🔖 Mis apartados</button>}
         </div>
       </nav>
+
+      {/* Presentación */}
+      <header className="pub-intro">
+        <span className="pub-intro-chip"><b></b> {rifasActivasOrdenadas.length > 1 ? `${rifasActivasOrdenadas.length} rifas activas ahora` : 'Sorteos todas las semanas'}</span>
+        <h1>Tu número de la suerte <span>te está esperando</span></h1>
+        <p>Elige tu número, paga fácil desde tu teléfono y recibe tu ticket por WhatsApp. Así de simple.</p>
+        <div className="pub-sellos">
+          <span className="pub-sello"><i>✓</i> Sorteos con lotería oficial</span>
+          <span className="pub-sello"><i>✓</i> Ticket por WhatsApp</span>
+          <span className="pub-sello"><i>✓</i> Pagos verificados</span>
+          {hayApartados && <span className="pub-sello"><i>✓</i> Aparta y paga después</span>}
+        </div>
+      </header>
 
       {loading ? (
         <div style={{ padding:'5vw', maxWidth:1100, margin:'0 auto' }}>
           <div className="shimmer" style={{ height:520, borderRadius:28 }}></div>
         </div>
       ) : rifaHero ? (
-        <section id="hero-sec" style={{ padding:'40px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+        <section id="hero-sec" style={{ padding:'32px 5vw 0', maxWidth:1100, margin:'0 auto', scrollMarginTop:64 }}>
           <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} refreshKey={refreshKey} />
         </section>
-      ) : null}
+      ) : (
+        <section style={{ padding:'40px 5vw 0', maxWidth:700, margin:'0 auto', textAlign:'center' }}>
+          <div style={{ background:'#fff', borderRadius:24, padding:'40px 24px', boxShadow:'0 6px 28px rgba(10,100,100,.08)' }}>
+            <div style={{ fontSize:'3rem', marginBottom:10 }}>🎰</div>
+            <div style={{ fontSize:'1.2rem', fontWeight:800, color:DARK, marginBottom:6 }}>Muy pronto, nuevas rifas</div>
+            <div style={{ fontSize:'.9rem', color:`${DARK}88` }}>Ahora mismo no hay rifas abiertas. Vuelve pronto o únete al grupo para enterarte primero.</div>
+          </div>
+        </section>
+      )}
+
+      {/* Cifras rápidas */}
+      {!loading && rifaHero && (
+        <section style={{ padding:'22px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <div className="pub-cifras">
+            <div className="pub-cifra"><span className="pub-cifra-ico">🎟️</span><div><strong>{rifasActivasOrdenadas.length}</strong><span>{rifasActivasOrdenadas.length === 1 ? 'Rifa activa' : 'Rifas activas'}</span></div></div>
+            <div className="pub-cifra"><span className="pub-cifra-ico">💰</span><div><strong>{fmt(Math.min(...rifasActivasOrdenadas.map(r => Number(r.precio) || Infinity)))}</strong><span>Números desde</span></div></div>
+            {ganadores.length > 0 && (
+              <div className="pub-cifra"><span className="pub-cifra-ico">🏆</span><div><strong>{ganadores.length}</strong><span>{ganadores.length === 1 ? 'Ganador feliz' : 'Ganadores felices'}</span></div></div>
+            )}
+            <div className="pub-cifra"><span className="pub-cifra-ico">📲</span><div><strong>WhatsApp</strong><span>Ahí te llega tu ticket</span></div></div>
+          </div>
+        </section>
+      )}
+
+      {/* Apartados: pagar lo que se apartó sin pagar */}
+      {hayApartados && (
+        <section style={{ padding:'22px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+          <div className="apartado-banner">
+            <span style={{ fontSize:'1.9rem' }}>🔖</span>
+            <div style={{ flex:'1 1 240px', minWidth:0 }}>
+              <div style={{ fontSize:'1rem', fontWeight:800, color:'#5b21b6' }}>Aparta tu número hoy y paga después</div>
+              <div style={{ fontSize:'.82rem', color:`${DARK}99`, lineHeight:1.5 }}>En las rifas marcadas puedes guardar tu número sin pagar todavía. ¿Ya apartaste? Paga aquí antes del sorteo.</div>
+            </div>
+            <button className="pub-nav-btn" style={{ padding:'11px 20px', fontSize:'.84rem' }} onClick={() => setVerApartados(true)}>Pagar mis apartados</button>
+          </div>
+        </section>
+      )}
 
       {rifasSecundarias.length > 0 && (
         <section id="rifas-sec" style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
-          <div style={{ textAlign:'center', marginBottom:36 }}>
-            <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:8, fontWeight:600 }}>MÁS RIFAS</div>
-            <h2 style={{ fontSize:'clamp(1.8rem,3.5vw,2.4rem)', color:DARK, fontWeight:800 }}>Otras rifas activas</h2>
-            <div style={{ fontSize:'.72rem', color:`${DARK}66`, marginTop:6 }}>Ordenadas por proximidad al sorteo</div>
+          <div className="pub-titulo">
+            <span className="kicker">Más rifas</span>
+            <h2>Otras rifas activas</h2>
+            <div className="sub">Ordenadas por proximidad al sorteo</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:24 }}>
             {rifasSecundarias.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} refreshKey={refreshKey} />)}
@@ -2401,6 +2852,14 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                   <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>💰 {fmt(rifaSel.precio)} / número</span>
                   <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>📅 {fmtF(rifaSel.fecha_sorteo)}</span>
                 </div>
+                {rifaSel.pago_diferido && (
+                  <div style={{ marginTop:10, fontSize:'.8rem', color:'#5b21b6', fontWeight:600 }}>
+                    🔖 Puedes apartar sin pagar: tienes hasta el {rifaSel.pago_hasta_texto}.
+                  </div>
+                )}
+                {(rifaSel.premios_extra || []).length > 0 && (
+                  <div style={{ marginTop:14, maxWidth:420 }}><PremiosRifa rifa={rifaSel} /></div>
+                )}
               </div>
               <button onClick={() => setRifaSel(null)} className="pub-btn-outline" style={{ padding:'10px 20px', flexShrink:0 }}>
                 Cambiar rifa
@@ -2448,21 +2907,23 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
       <section style={{ background:'#fff', padding:'70px 5vw 0' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
-          <div style={{ textAlign:'center', marginBottom:48 }}>
-            <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:12, fontWeight:600 }}>SIN COMPLICACIONES</div>
-            <h2 style={{ fontSize:'clamp(2rem,4vw,2.8rem)', color:DARK, fontWeight:800, marginBottom:14 }}>Cómo participar</h2>
+          <div className="pub-titulo">
+            <span className="kicker">Sin complicaciones</span>
+            <h2>Cómo participar</h2>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:24 }}>
+          <div className="pub-pasos">
             {[
-              { icon:'🔢', titulo:'1. Elige tus números',   desc:'Toca uno o varios números en el grid. ¡Con packs activas ofertas automáticamente!' },
-              { icon:'💳', titulo:'2. Realiza el pago',     desc:'Los datos del banco aparecen al seleccionar el método. Paga el total con oferta.' },
-              { icon:'📸', titulo:'3. Sube el comprobante', desc:'Adjunta la captura del pago junto con tus datos. Un comprobante para todos.' },
-              { icon:'✅', titulo:'4. Confirmación',         desc:'El admin verifica y te envía tu ticket por WhatsApp.' },
+              { icon:'🔢', titulo:'Elige tus números',   desc:'Toca uno o varios números. Con los packs activas ofertas automáticamente.' },
+              hayApartados
+                ? { icon:'💳', titulo:'Paga o aparta',        desc:'Paga de una vez, o aparta tu número y paga antes del sorteo.' }
+                : { icon:'💳', titulo:'Realiza el pago',      desc:'Los datos del banco aparecen al elegir el método de pago.' },
+              { icon:'📸', titulo:'Sube el comprobante', desc:'Adjunta la captura del pago. Un solo comprobante para todos tus números.' },
+              { icon:'✅', titulo:'Recibe tu ticket',     desc:'Verificamos el pago y te llega tu ticket por WhatsApp.' },
             ].map(({ icon, titulo, desc }) => (
-              <div key={titulo} style={{ textAlign:'center', padding:'22px 18px' }}>
-                <div style={{ width:62, height:62, background:`linear-gradient(135deg,${TURQ}18,${TURQ2}28)`, borderRadius:18, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px', fontSize:'1.7rem' }}>{icon}</div>
-                <div style={{ fontSize:'1.05rem', color:DARK, fontWeight:700, marginBottom:7 }}>{titulo}</div>
-                <div style={{ fontSize:'.88rem', color:`${DARK}77`, lineHeight:1.6 }}>{desc}</div>
+              <div key={titulo} className="pub-paso">
+                <div className="pub-paso-ico">{icon}</div>
+                <h3>{titulo}</h3>
+                <p>{desc}</p>
               </div>
             ))}
           </div>
@@ -2471,13 +2932,14 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
       <section id="pagos-sec" style={{ background:'#fff', padding:'70px 5vw 80px' }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
-          <div style={{ textAlign:'center', marginBottom:48 }}>
-            <div style={{ fontSize:'.62rem', color:TURQ, letterSpacing:'1px', marginBottom:12, fontWeight:600 }}>MÉTODOS DE PAGO</div>
-            <h2 style={{ fontSize:'clamp(2rem,4vw,2.8rem)', color:DARK, fontWeight:800, marginBottom:14 }}>Cuentas bancarias</h2>
+          <div className="pub-titulo">
+            <span className="kicker">Métodos de pago</span>
+            <h2>Cuentas bancarias</h2>
+            <div className="sub">Paga con el que te quede más fácil</div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))', gap:20 }}>
             {Object.entries(METODOS_PAGO).map(([nombre, d]) => (
-              <div key={nombre} style={{ background: d.bg, border:`2px solid ${d.border}`, borderRadius:20, padding:'26px 22px' }}>
+              <div key={nombre} className="pago-card" style={{ background: d.bg, border:`2px solid ${d.border}`, borderRadius:20, padding:'26px 22px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
                   <div style={{ width:50, height:50, borderRadius:14, background:'rgba(255,255,255,.8)', border:`1px solid ${d.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.6rem', flexShrink:0, overflow:'hidden' }}>
                     {d.imagen ? <img src={d.imagen} alt="" style={{ width:'100%', height:'100%', objectFit:'contain', padding:4, background:'#fff' }} /> : d.icono}
@@ -2490,7 +2952,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                 {d.campos.map(({ label, valor }) => (
                   <div key={label} style={{ background:'rgba(255,255,255,.7)', borderRadius:10, padding:'9px 13px', marginBottom:8 }}>
                     <div style={{ fontSize:'.6rem', color:`${d.colorHex}88`, fontWeight:600, marginBottom:2, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
-                    <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700 }}>{valor}</div>
+                    <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700, overflowWrap:'anywhere' }}>{valor}</div>
                   </div>
                 ))}
                 {nombre === 'Pago Móvil' && tasaBs > 0 && (
@@ -2509,7 +2971,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         </div>
       </section>
 
-      <footer id="contacto-sec" style={{ background:DARK, padding:'60px 5vw 40px' }}>
+      <footer id="contacto-sec" style={{ background:`linear-gradient(180deg,${DARK},#0f1f1f)`, padding:'60px 5vw 40px', borderTop:`4px solid ${TURQ}` }}>
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:40, marginBottom:40 }}>
             <div>
@@ -2541,6 +3003,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
       </footer>
 
       <BurbujaGrupo grupo={sitio.grupo_whatsapp} />
+
+      {verApartados && <ModalMisApartados onClose={() => setVerApartados(false)} onPagado={() => setRefreshKey(k => k + 1)} />}
 
       {numerosCarrito && rifaSel && (
         <ModalReserva

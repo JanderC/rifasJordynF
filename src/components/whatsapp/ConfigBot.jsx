@@ -243,6 +243,7 @@ export default function ConfigBot() {
               <div className="wcb-opcion"><div><b>Pedir cédula</b><span>Obligatoria para apartar, igual que en la página.</span></div><Toggle on={cfg.pedir_cedula} onClick={() => set('pedir_cedula', !cfg.pedir_cedula)} /></div>
               <div className="wcb-opcion"><div><b>Leer los comprobantes con IA</b><span>Extrae monto, banco y referencia de la captura para que los revises más rápido.</span></div><Toggle on={cfg.leer_comprobantes} onClick={() => set('leer_comprobantes', !cfg.leer_comprobantes)} /></div>
               <div className="wcb-opcion"><div><b>Avisar si rechazas un pago</b><span>Le escribe al cliente con amabilidad cuando rechazas su reserva en Reservas.</span></div><Toggle on={cfg.avisar_rechazo} onClick={() => set('avisar_rechazo', !cfg.avisar_rechazo)} /></div>
+              <div className="wcb-opcion"><div><b>Recordar el pago de números apartados</b><span>En rifas donde se puede apartar sin pagar: le escribe al cliente la víspera, el día del sorteo y antes de que venza el plazo.</span></div><Toggle on={cfg.recordatorios_apartado?.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', cfg.recordatorios_apartado?.activo === false)} /></div>
             </div>
             <label className="wcb-label">Mensaje si la IA falla</label>
             <input className="jd-input" value={cfg.mensaje_sin_ia} onChange={(e) => set('mensaje_sin_ia', e.target.value)} />
