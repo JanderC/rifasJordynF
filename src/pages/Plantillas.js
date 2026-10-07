@@ -10,12 +10,13 @@
 //   - Eliminar plantilla (excepto la default)
 //   - Marcar como "default" (la que se usa si una rifa no elige otra)
 // ════════════════════════════════════════════════════════════════
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
-import { TicketPreview, DEFAULT_DESIGN } from '../components/Ticket';
+import { DEFAULT_DESIGN } from '../components/Ticket';
+import TicketEditable from '../components/TicketEditable';
 
 const DEMO_RIFA = {
   premio:            '500 Dólares',
@@ -25,6 +26,37 @@ const DEMO_RIFA = {
   hora_sorteo:       '22:10:00',
   loteria_ref:       'Triple Táchira "A"',
 };
+
+/* Miniatura del boleto: se dibuja con el MISMO componente del editor (en modo de solo
+   lectura) y se encoge para que quepa. Antes usaba el dibujo del boleto antiguo, que
+   pintaba su propio diseño encima del de la plantilla ("diseño sobre diseño"). */
+function MiniaturaPlantilla({ design }) {
+  const caja = useRef(null);
+  const [ancho, setAncho] = useState(0);
+  const D = { ...DEFAULT_DESIGN, ...(design || {}) };
+  const W = Number(D.ticketWidth) || 780;
+  const H = Number(D.ticketHeight) || 340;
+  useEffect(() => {
+    if (!caja.current) return undefined;
+    const medir = () => setAncho(caja.current?.clientWidth || 0);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(caja.current);
+    return () => ro.disconnect();
+  }, []);
+  const ALTO_MAX = 170;
+  const escala = ancho ? Math.min(ancho / W, ALTO_MAX / H) : 0;
+  return (
+    <div ref={caja} style={{ background:'#cfd4d0', borderRadius:8, overflow:'hidden', height: escala ? H * escala + 20 : ALTO_MAX, position:'relative' }}>
+      {escala > 0 && (
+        <div style={{ position:'absolute', top:10, left:'50%', width:W, height:H, marginLeft:-(W / 2),
+          transform:`scale(${escala * 0.96})`, transformOrigin:'top center', pointerEvents:'none' }}>
+          <TicketEditable r={DEMO_RIFA} numero="023" design={D} printMode={true} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Plantillas() {
   const nav = useNavigate();
@@ -154,19 +186,7 @@ export default function Plantillas() {
               </div>
 
               {/* Miniatura del ticket */}
-              <div style={{
-                background:'#cfd4d0', borderRadius:8, padding:10,
-                overflow:'hidden', maxHeight:160,
-              }}>
-                <div style={{ transform:'scale(0.42)', transformOrigin:'top left', width:'238%' }}>
-                  <TicketPreview
-                    r={DEMO_RIFA}
-                    numero="023"
-                    comprador={{}}
-                    design={{ ...DEFAULT_DESIGN, ...(p.design || {}) }}
-                  />
-                </div>
-              </div>
+              <MiniaturaPlantilla design={p.design} />
 
               {/* Acciones */}
               <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>

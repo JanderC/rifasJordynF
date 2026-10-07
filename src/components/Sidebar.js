@@ -51,6 +51,7 @@ export default function Sidebar() {
     { to: '/tasas',           icon: 'bi-currency-exchange',      label: 'Tasas' },
     { to: '/cuentas-bancarias', icon: 'bi-bank2',                label: 'Cuentas bancarias' },
     { to: '/lista-vendedores', icon: 'bi-person-lines-fill',     label: 'Vendedores' },
+    { to: '/resultados',      icon: 'bi-megaphone-fill',         label: 'Resultados' },
     { to: '/configuracion',   icon: 'bi-gear-fill',              label: 'Configuración' },
     // ── NUEVO: WhatsApp Business ──
     { to: '/whatsapp',        icon: 'bi-whatsapp',               label: 'WhatsApp Bot', waColor: true },

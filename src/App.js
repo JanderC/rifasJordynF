@@ -25,6 +25,7 @@ import WhatsApp          from './pages/WhatsApp';   // ← NUEVO
 import Configuracion     from './pages/Configuracion';
 import ListaVendedores   from './pages/ListaVendedores';
 import CuentasBancarias  from './pages/CuentasBancarias';
+import Resultados        from './pages/Resultados';
 import { LOGIN_PATH, rutaInicio } from './config/rutas';
 
 // Sin sesión se manda a la página pública (nunca al login, para no revelar su ruta)
@@ -61,6 +62,7 @@ function AppRoutes() {
       <Route path="/caja"          element={<PrivateRoute rol="dueno"><Caja /></PrivateRoute>} />
       <Route path="/reservas"      element={<PrivateRoute rol="dueno"><GestionReservas /></PrivateRoute>} />
       <Route path="/tasas"         element={<PrivateRoute rol="dueno"><Tasas /></PrivateRoute>} />
+      <Route path="/resultados" element={<PrivateRoute rol="dueno"><Resultados /></PrivateRoute>} />
       <Route path="/cuentas-bancarias" element={<PrivateRoute rol="dueno"><CuentasBancarias /></PrivateRoute>} />
       <Route path="/lista-vendedores" element={<PrivateRoute rol="dueno"><ListaVendedores /></PrivateRoute>} />
       <Route path="/configuracion" element={<PrivateRoute rol="dueno"><Configuracion /></PrivateRoute>} />

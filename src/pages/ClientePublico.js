@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import API from '../services/api';
 import GanadoresPublico from '../components/GanadoresPublico';
 import { TopCompradores, BurbujaGrupo } from '../components/ComunidadPublico';
+import ResultadosPublico from '../components/ResultadosPublico';
 
 const TURQ    = '#0abfbc';
 const TURQ2   = '#00d4d0';
@@ -586,6 +587,7 @@ const injectStyles = () => {
       padding:0 5vw; position:sticky; top:0; z-index:100; height:64px; display:flex; align-items:center; justify-content:space-between; gap:12px;
       box-shadow:0 4px 24px rgba(10,100,100,.06); }
     .pub-marca { display:flex; align-items:center; gap:10px; text-decoration:none; min-width:0; }
+    .pub-marca-img { height:50px; width:auto; display:block; }
     .pub-marca-logo { width:38px; height:38px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.15rem;
       background:linear-gradient(135deg,${TURQ},${TURQ_DK}); box-shadow:0 6px 16px ${TURQ}55; }
     .pub-marca-txt { font-size:1.05rem; color:${DARK}; font-weight:800; line-height:1.1; white-space:nowrap; }
@@ -658,6 +660,12 @@ const injectStyles = () => {
 
     @media (max-width: 640px) {
       .nav-solo-escritorio { display:none !important; }
+      .pub-marca-img { height:40px; }
+      .count-unit { min-width:0; padding:12px 4px 9px; border-radius:14px; }
+      .count-sep { font-size:1.4rem; margin-top:12px; }
+      .pub-nav-links { gap:14px !important; }
+      .pub-nav-links .nav-link { font-size:.8rem; }
+      .pub-nav-btn { padding:7px 12px; font-size:.72rem; }
       .pub-marca-txt { font-size:.92rem; }
       .pub-marca-txt small { display:none; }
       .pub-intro { padding-top:30px; }
@@ -826,14 +834,27 @@ function BannerOfertas({ ofertas, precioUnitario }) {
    (los adicionales se cargan en el panel, al crear/editar la rifa)
 ═══════════════════════════════════════════════════════════ */
 const MEDALLAS_PREMIO = ['🥇', '🥈', '🥉'];
+const hoyCaracas = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ_NEGOCIO });
+// Premios especiales que siguen vigentes (sin fecha tope o con la fecha por llegar)
+const especialesDe = (rifa) => (Array.isArray(rifa?.premios_extra) ? rifa.premios_extra : [])
+  .filter(p => p?.nombre && (!p.fecha_tope || p.fecha_tope >= hoyCaracas()));
+// ¿La rifa tiene 2.º/3.er premio o premios especiales que mostrar?
+const tienePremiosExtra = (rifa) => !!(rifa?.premio_segundo || rifa?.premio_tercero || especialesDe(rifa).length);
+
 function PremiosRifa({ rifa, oscuro = false }) {
-  const extras = Array.isArray(rifa.premios_extra) ? rifa.premios_extra.filter(p => p?.nombre) : [];
-  if (!extras.length) return null;
-  const lista = [{ nombre: rifa.premio, detalle: 'Premio mayor' }, ...extras];
+  const especiales = especialesDe(rifa);
+  const lista = [
+    { nombre: rifa.premio, detalle: 'Premio mayor' },
+    rifa.premio_segundo ? { nombre: rifa.premio_segundo, detalle: '2.º premio' } : null,
+    rifa.premio_tercero ? { nombre: rifa.premio_tercero, detalle: '3.er premio' } : null,
+  ].filter(Boolean);
+  if (lista.length < 2 && !especiales.length) return null;
+  const titulo = { fontSize:'.58rem', letterSpacing:'2px', textTransform:'uppercase', fontWeight:800, marginBottom:8, color: oscuro ? 'rgba(255,255,255,.55)' : TURQ_DK };
   return (
     <div>
-      <div style={{ fontSize:'.58rem', letterSpacing:'2px', textTransform:'uppercase', fontWeight:800, marginBottom:8, color: oscuro ? 'rgba(255,255,255,.55)' : TURQ_DK }}>
-        🎁 {lista.length} premios en esta rifa
+      {lista.length > 1 && <>
+      <div style={titulo}>
+        🏆 {lista.length} premios en esta rifa
       </div>
       <div className="premios-lista">
         {lista.map((p, i) => (
@@ -848,6 +869,31 @@ function PremiosRifa({ rifa, oscuro = false }) {
           </div>
         ))}
       </div>
+      </>}
+
+      {/* Premios especiales: aparte, con su requisito y su fecha tope */}
+      {especiales.length > 0 && (
+        <div style={{ marginTop: lista.length > 1 ? 14 : 0 }}>
+          <div style={{ ...titulo, color: oscuro ? '#ffd166' : '#b8860b' }}>
+            🎁 {especiales.length === 1 ? 'Premio especial' : `${especiales.length} premios especiales`}
+          </div>
+          <div className="premios-lista">
+            {especiales.map((p, i) => (
+              <div key={i} className="premio-fila" style={{ alignItems:'flex-start', ...(oscuro
+                ? { background:'rgba(255,209,102,.1)', border:'1px dashed rgba(255,209,102,.5)', color:'#fff' }
+                : { background:'#fffaf0', border:'1px dashed #f0c35a', color: DARK }) }}>
+                <span className="pos" style={{ background: oscuro ? 'rgba(255,255,255,.1)' : '#fff' }}>🎁</span>
+                <span style={{ minWidth:0 }}>
+                  <b>{p.nombre}</b>
+                  {p.detalle && <small>{p.detalle}</small>}
+                  {p.requisito && <small style={{ opacity:1, fontWeight:700, color: oscuro ? '#ffd166' : '#b8860b' }}>✔ {p.requisito}</small>}
+                  {p.fecha_tope && <small>⏰ Hasta el {fmtF(p.fecha_tope)}</small>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -925,8 +971,8 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
         </div>
 
         <h2 style={{ fontSize:'clamp(1.4rem,3vw,2.2rem)', color:'#fff', fontWeight:900, lineHeight:1.15, marginBottom:6, textShadow:'0 2px 16px rgba(0,0,0,.5)', position:'relative' }}>{rifa.nombre}</h2>
-        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom:(rifa.premios_extra || []).length ? 14 : 24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
-        {(rifa.premios_extra || []).length > 0 && (
+        <p style={{ fontSize:'.9rem', color:'rgba(255,255,255,.65)', marginBottom: tienePremiosExtra(rifa) ? 14 : 24, fontWeight:500, position:'relative' }}>🏆 {rifa.premio}</p>
+        {tienePremiosExtra(rifa) && (
           <div style={{ marginBottom:20, position:'relative' }}><PremiosRifa rifa={rifa} oscuro /></div>
         )}
 
@@ -2588,9 +2634,11 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
         <div style={{ fontSize:'.55rem', color:`${TURQ}99`, letterSpacing:'0.5px', marginBottom:5 }}>{rifa.loteria_ref || 'SORTEO'} · {fmtF(rifa.fecha_sorteo)}</div>
         <div style={{ fontSize:'1.3rem', color:DARK, lineHeight:1.2, marginBottom:7, fontWeight:700 }}>{rifa.nombre}</div>
         <div style={{ fontSize:'.88rem', color:`${DARK}77`, marginBottom: tieneOfertas ? 10 : 14, display:'flex', alignItems:'center', gap:5 }}>🏆 <span style={{ fontWeight:600, color:DARK }}>{rifa.premio}</span></div>
-        {(rifa.premios_extra || []).length > 0 && (
-          <div style={{ fontSize:'.76rem', color:'#b8860b', fontWeight:700, background:'#fff8e1', border:'1px solid #ffe082', borderRadius:10, padding:'6px 10px', marginTop:-4, marginBottom:12 }}>
-            🎁 + {rifa.premios_extra.map(p => p.nombre).join(' · ')}
+        {tienePremiosExtra(rifa) && (
+          <div style={{ fontSize:'.76rem', color:'#b8860b', fontWeight:700, background:'#fff8e1', border:'1px solid #ffe082', borderRadius:10, padding:'6px 10px', marginTop:-4, marginBottom:12, lineHeight:1.5 }}>
+            {rifa.premio_segundo && <div>🥈 {rifa.premio_segundo}</div>}
+            {rifa.premio_tercero && <div>🥉 {rifa.premio_tercero}</div>}
+            {especialesDe(rifa).length > 0 && <div>🎁 {especialesDe(rifa).map(p => p.nombre).join(' · ')}</div>}
           </div>
         )}
         {rifa.pago_diferido && <div style={{ marginBottom:12 }}><EtiquetaApartado rifa={rifa} estilo={{ display:'inline-block' }} /></div>}
@@ -2683,6 +2731,11 @@ export default function ClientePublico() {
 
   /* ── Grupo de WhatsApp y top de compradores (se configuran en el panel) ── */
   const [verApartados, setVerApartados] = useState(false);
+  /* ── Resultados publicados (imágenes que sube el dueño en el panel) ── */
+  const [resultados, setResultados] = useState([]);
+  useEffect(() => {
+    API.get('/resultados').then(r => setResultados(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+  }, []);
   const [sitio, setSitio] = useState({ grupo_whatsapp: null, top_compradores: [] });
   useEffect(() => {
     API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [] })).catch(() => {});
@@ -2756,15 +2809,15 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
 
       <nav className="pub-nav">
         <a href="#hero-sec" onClick={scrollToRifas} className="pub-marca">
-          <span className="pub-marca-logo" aria-hidden="true">🎟️</span>
-          <span className="pub-marca-txt">Resuelve tu Semana<small>Rifas y sorteos</small></span>
+          <img className="pub-marca-img" src={`${process.env.PUBLIC_URL}/logo-resuelve.png`} alt="Resuelve tu Semana" width="640" height="266" />
         </a>
         <div className="pub-nav-links" style={{ display:'flex', gap:22, alignItems:'center' }}>
-          <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link">Rifas</a>
+          <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link nav-solo-escritorio">Rifas</a>
+          {resultados.length > 0 && <a href="#resultados-sec" className="nav-link">Resultados</a>}
           {ganadores.length > 0 && <a href="#ganadores-sec" className="nav-link">Ganadores</a>}
           <a href="#pagos-sec" className="nav-link nav-solo-escritorio">Pagos</a>
           <a href="#contacto-sec" className="nav-link nav-solo-escritorio">Contacto</a>
-          {hayApartados && <button className="pub-nav-btn" onClick={() => setVerApartados(true)}>🔖 Mis apartados</button>}
+          {hayApartados && <button className="pub-nav-btn" onClick={() => setVerApartados(true)}>🔖 <span className="nav-solo-escritorio">Mis </span>Apartados</button>}
         </div>
       </nav>
 
@@ -2857,7 +2910,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                     🔖 Puedes apartar sin pagar: tienes hasta el {rifaSel.pago_hasta_texto}.
                   </div>
                 )}
-                {(rifaSel.premios_extra || []).length > 0 && (
+                {tienePremiosExtra(rifaSel) && (
                   <div style={{ marginTop:14, maxWidth:420 }}><PremiosRifa rifa={rifaSel} /></div>
                 )}
               </div>
@@ -2900,6 +2953,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
           </div>
         </section>
       )}
+
+      <ResultadosPublico resultados={resultados} />
 
       <TopCompradores top={sitio.top_compradores} grupo={sitio.grupo_whatsapp} />
 
@@ -2975,8 +3030,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         <div style={{ maxWidth:1100, margin:'0 auto' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:40, marginBottom:40 }}>
             <div>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-                <span style={{ fontSize:'1.2rem', color:'#fff', fontWeight:800 }}>Resuelve tu Semana</span>
+              <div style={{ display:'inline-block', background:'#fff', borderRadius:16, padding:'10px 16px', marginBottom:14 }}>
+                <img src={`${process.env.PUBLIC_URL}/logo-resuelve.png`} alt="Resuelve tu Semana" width="640" height="266" style={{ height:54, width:'auto', display:'block' }} />
               </div>
               <p style={{ fontSize:'.88rem', color:'rgba(255,255,255,.5)', lineHeight:1.7 }}>Sorteos semanales con premios increíbles.<br/>Táchira, Venezuela.</p>
             </div>

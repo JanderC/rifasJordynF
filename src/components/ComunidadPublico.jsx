@@ -53,7 +53,8 @@ const ESTILOS = `
 @media (max-width: 520px) {
   .wa-burbuja { right:12px; bottom:12px; }
   .wa-burbuja-btn { width:52px; height:52px; }
-  .wa-burbuja-txt { max-width:170px; }
+  /* En el teléfono solo el botón: el aviso tapaba el botón de comprar */
+  .wa-burbuja-aviso { display:none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .top-fila, .top-barra > div, .wa-burbuja-txt { animation:none; }
@@ -119,7 +120,7 @@ export function BurbujaGrupo({ grupo }) {
     <div className="wa-burbuja">
       <style>{ESTILOS}</style>
       {textoVisible && (
-        <div style={{ position:'relative' }}>
+        <div className="wa-burbuja-aviso" style={{ position:'relative' }}>
           <a className="wa-burbuja-txt" href={grupo} target="_blank" rel="noopener noreferrer" style={{ display:'block' }}>
             <b>Únete a nuestro grupo</b>
             <span>Resultados y rifas nuevas</span>

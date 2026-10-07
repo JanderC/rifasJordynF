@@ -37,7 +37,9 @@ const emptyForm = {
   categoria_seleccionada_id: null,
   // Venta en línea
   publicada: true,                 // sale en la página del cliente y la ofrece el bot
-  premios_extra: [],               // premios adicionales [{ nombre, detalle }]
+  premio_segundo: '',              // 2.º premio (opcional)
+  premio_tercero: '',              // 3.er premio (opcional)
+  premios_extra: [],               // premios especiales [{ nombre, detalle, requisito, fecha_tope }]
   pago_diferido: false,            // se puede apartar sin pagar
   diferido_limite_horas: 3,        // se paga hasta X horas antes del sorteo
   diferido_max_numeros: 10,        // tope de números sin pagar por persona
@@ -2735,7 +2737,9 @@ export default function GestionRifas() {
       ofertas:                   Array.isArray(r.ofertas) ? r.ofertas : [],
       categoria_seleccionada_id: catId,
       publicada:                 r.publicada !== false,
-      premios_extra:             Array.isArray(r.premios_extra) ? r.premios_extra.map(p => ({ nombre: p.nombre || '', detalle: p.detalle || '' })) : [],
+      premio_segundo:            r.premio_segundo || '',
+      premio_tercero:            r.premio_tercero || '',
+      premios_extra:             Array.isArray(r.premios_extra) ? r.premios_extra.map(p => ({ nombre: p.nombre || '', detalle: p.detalle || '', requisito: p.requisito || '', fecha_tope: p.fecha_tope || '' })) : [],
       pago_diferido:             !!r.pago_diferido,
       diferido_limite_horas:     r.diferido_limite_horas ?? 3,
       diferido_max_numeros:      r.diferido_max_numeros ?? 10,
@@ -2797,6 +2801,8 @@ export default function GestionRifas() {
         vendedores_categorias: vendedoresSeleccionados,
         categoria_id:          form.categoria_seleccionada_id || null,
         publicada:             form.publicada !== false,
+        premio_segundo:        form.premio_segundo || '',
+        premio_tercero:        form.premio_tercero || '',
         premios_extra:         (form.premios_extra || []).filter(p => p.nombre.trim()),
         pago_diferido:         !!form.pago_diferido,
         diferido_limite_horas: Number(form.diferido_limite_horas) || 0,
@@ -3294,12 +3300,34 @@ export default function GestionRifas() {
                 </div>
               </div>
 
-              {/* Sub-premio en pesos (opcional) */}
+              {/* 2.º premio (opcional) */}
               <div className="col-12 col-md-6">
                 <label className="jd-label">
-                  SUB-PREMIO EN PESOS
+                  🥈 2DO PREMIO
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>(opcional)</span>
+                </label>
+                <input className="jd-input" value={form.premio_segundo} maxLength={160}
+                  onChange={e => setForm(p => ({ ...p, premio_segundo: e.target.value }))}
+                  placeholder="Ej: 150 Dólares · Moto · 1.000.000 de pesos" />
+              </div>
+
+              {/* 3.er premio (opcional) */}
+              <div className="col-12 col-md-6">
+                <label className="jd-label">
+                  🥉 3ER PREMIO
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>(opcional)</span>
+                </label>
+                <input className="jd-input" value={form.premio_tercero} maxLength={160}
+                  onChange={e => setForm(p => ({ ...p, premio_tercero: e.target.value }))}
+                  placeholder="Ej: 100 Dólares" />
+              </div>
+
+              {/* Equivalente en pesos del premio mayor: es lo que imprime el ticket ("ó 2.000.000 Pesos") */}
+              <div className="col-12 col-md-6">
+                <label className="jd-label">
+                  PREMIO MAYOR EN PESOS
                   <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
-                    (opcional, para el ticket)
+                    (opcional, solo para el ticket)
                   </span>
                 </label>
                 <input className="jd-input" value={form.premio_secundario_display}
@@ -3467,29 +3495,50 @@ export default function GestionRifas() {
               <div className="col-12">
                 <div style={{ borderTop: '1px solid var(--jordyn-border)', paddingTop: '1.25rem' }}>
                   <label className="jd-label" style={{ fontSize: '.7rem' }}>
-                    <i className="bi bi-gift-fill me-1" style={{ color: 'var(--jordyn-gold)' }}></i>PREMIOS ADICIONALES
+                    <i className="bi bi-gift-fill me-1" style={{ color: 'var(--jordyn-gold)' }}></i>PREMIOS ESPECIALES
                     <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
-                      (opcional — además del premio mayor; salen en la página del cliente y los menciona el bot)
+                      (opcional — premios aparte con su requisito y su fecha tope; salen en la página del cliente y los explica el bot)
                     </span>
                   </label>
                   <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     {(form.premios_extra || []).map((p, i) => (
-                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                        <span style={{ width:26, height:26, borderRadius:'50%', background:'rgba(240,165,0,.14)', color:'var(--jordyn-gold2)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800, flexShrink:0 }}>{i + 2}</span>
-                        <input className="jd-input" style={{ flex:'2 1 180px' }} value={p.nombre} maxLength={120} placeholder="Premio (ej: Moto Bera SBR)" aria-label={`Premio adicional ${i + 1}`}
-                          onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x) }))} />
-                        <input className="jd-input" style={{ flex:'3 1 220px' }} value={p.detalle} maxLength={200} placeholder="Detalle (ej: 2do premio · últimas 2 cifras)" aria-label={`Detalle del premio adicional ${i + 1}`}
-                          onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, detalle: e.target.value } : x) }))} />
-                        <button type="button" className="btn-jordyn-danger" style={{ padding:'8px 10px', fontSize:'.75rem' }} aria-label="Quitar premio" title="Quitar premio"
-                          onClick={() => setForm(f => ({ ...f, premios_extra: f.premios_extra.filter((_, j) => j !== i) }))}><i className="bi bi-x-lg"></i></button>
+                      <div key={i} style={{ border:'1.5px solid rgba(240,165,0,.3)', background:'rgba(240,165,0,.04)', borderRadius:10, padding:'10px 12px' }}>
+                        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                          <span style={{ fontSize:'1rem', flexShrink:0 }}>🎁</span>
+                          <input className="jd-input" style={{ flex:'2 1 200px', fontWeight:700 }} value={p.nombre} maxLength={120} placeholder="Premio especial (ej: 100 Dólares extra)" aria-label={`Premio especial ${i + 1}`}
+                            onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x) }))} />
+                          <button type="button" className="btn-jordyn-danger" style={{ padding:'8px 10px', fontSize:'.75rem' }} aria-label="Quitar premio especial" title="Quitar premio especial"
+                            onClick={() => setForm(f => ({ ...f, premios_extra: f.premios_extra.filter((_, j) => j !== i) }))}><i className="bi bi-x-lg"></i></button>
+                        </div>
+                        <div className="row g-2" style={{ marginTop:2 }}>
+                          <div className="col-12 col-md-7">
+                            <label className="jd-label" style={{ fontSize:'.58rem' }}>REQUISITO PARA PARTICIPAR</label>
+                            <input className="jd-input" value={p.requisito} maxLength={200} placeholder="Ej: Participa con abonos de 10$" aria-label={`Requisito del premio especial ${i + 1}`}
+                              onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, requisito: e.target.value } : x) }))} />
+                          </div>
+                          <div className="col-12 col-md-5">
+                            <label className="jd-label" style={{ fontSize:'.58rem' }}>FECHA TOPE</label>
+                            <input className="jd-input" type="date" value={p.fecha_tope || ''} aria-label={`Fecha tope del premio especial ${i + 1}`}
+                              onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, fecha_tope: e.target.value } : x) }))} />
+                          </div>
+                          <div className="col-12">
+                            <input className="jd-input" value={p.detalle} maxLength={200} placeholder="Detalle adicional (opcional)" aria-label={`Detalle del premio especial ${i + 1}`}
+                              onChange={e => setForm(f => ({ ...f, premios_extra: f.premios_extra.map((x, j) => j === i ? { ...x, detalle: e.target.value } : x) }))} />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                   {(form.premios_extra || []).length < 12 && (
                     <button type="button" className="btn-jordyn-outline" style={{ fontSize:'.75rem', marginTop:8 }}
-                      onClick={() => setForm(f => ({ ...f, premios_extra: [...(f.premios_extra || []), { nombre: '', detalle: '' }] }))}>
-                      <i className="bi bi-plus me-1"></i>Agregar premio
+                      onClick={() => setForm(f => ({ ...f, premios_extra: [...(f.premios_extra || []), { nombre: '', detalle: '', requisito: '', fecha_tope: '' }] }))}>
+                      <i className="bi bi-plus me-1"></i>Agregar premio especial
                     </button>
+                  )}
+                  {(form.premios_extra || []).length > 0 && (
+                    <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:6 }}>
+                      Pasada la fecha tope, el premio especial deja de mostrarse en la página y el bot deja de ofrecerlo.
+                    </div>
                   )}
                 </div>
               </div>
