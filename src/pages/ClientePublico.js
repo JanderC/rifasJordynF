@@ -659,6 +659,13 @@ const injectStyles = () => {
     .modo-pago button.on.morado { border-color:#7c3aed; background:rgba(124,58,237,.06); box-shadow:0 0 0 4px rgba(124,58,237,.12); }
 
     @media (max-width: 640px) {
+      /* En el teléfono la foto de la rifa ocupa todo el ancho y toma su alto natural
+         (antes quedaba encogida dentro de una caja baja, con franjas a los lados) */
+      .hero-img-caja.con-imagen { min-height:0 !important; height:auto !important; }
+      .hero-img-caja.con-imagen .hero-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:85vh; }
+      .hero-img-degradado { display:none; }
+      .rifa-card-img-caja.con-imagen { height:auto !important; }
+      .rifa-card-img-caja.con-imagen .rifa-card-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:75vh; }
       .nav-solo-escritorio { display:none !important; }
       .pub-marca-img { height:40px; }
       .count-unit { min-width:0; padding:12px 4px 9px; border-radius:14px; }
@@ -927,7 +934,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
 
   return (
     <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
-      <div style={{ position:'relative', overflow:'hidden', height:'100%', minHeight:520, background:'#0d1e1e' }}>
+      <div className={`hero-img-caja${tieneImagen ? ' con-imagen' : ''}`} style={{ position:'relative', overflow:'hidden', height:'100%', minHeight:520, background:'#0d1e1e' }}>
         {tieneImagen ? (
           <>
             {/* Fondo borroso por si quedan franjas (efecto cinema) */}
@@ -938,7 +945,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
               transform:'scale(1.25)',
             }}></div>
             {/* Imagen principal: contain para que se vea COMPLETA sin recortes */}
-            <img src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
+            <img className="hero-img" src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
               style={{
                 position:'absolute', inset:0,
                 width:'100%', height:'100%',
@@ -952,7 +959,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
             <div style={{ fontSize:'8rem', opacity:.2, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
           </div>
         )}
-        <div style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`, pointerEvents:'none' }}></div>
+        <div className="hero-img-degradado" style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`, pointerEvents:'none' }}></div>
       </div>
 
       <div style={{ background:`linear-gradient(160deg,#0d2424 0%,${DARK} 100%)`, padding:'36px 32px 32px', display:'flex', flexDirection:'column', justifyContent:'center', position:'relative', overflow:'hidden' }}>
@@ -2583,7 +2590,7 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
-      <div style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
+      <div className={`rifa-card-img-caja${tieneImagen ? ' con-imagen' : ''}`} style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
         {tieneImagen ? (
           <>
             {/* Fondo borroso para rellenar (efecto cinema) */}
@@ -2595,6 +2602,7 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
             }}></div>
             {/* Imagen completa encima del fondo borroso */}
             <img
+              className="rifa-card-img"
               src={rifa.imagen_url}
               alt={rifa.nombre}
               onError={() => setImgError(true)}
