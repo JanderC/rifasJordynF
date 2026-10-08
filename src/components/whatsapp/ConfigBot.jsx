@@ -43,6 +43,18 @@ function Toggle({ on, onClick, title }) {
   return <button type="button" className={`wcb-toggle${on ? ' on' : ''}`} onClick={onClick} title={title} aria-pressed={on} />;
 }
 
+// Variables del mensaje de recordatorio de pago (las mismas que reemplaza el servidor)
+const VARIABLES_RECORDATORIO = [
+  ['nombre', 'nombre del cliente'], ['numeros', 'números apartados'], ['rifa', 'nombre de la rifa'], ['premio', 'premio de la rifa'],
+  ['falta', 'lo que le falta pagar'], ['abonado', 'lo que ya abonó'], ['total', 'precio total'],
+  ['limite', 'hasta cuándo puede pagar'], ['tiempo', 'tiempo que le queda'], ['metodos', 'formas de pago'],
+];
+const ejemploRecordatorio = (mensaje, moneda = 'pesos') => {
+  const v = { nombre: 'María', numeros: '045, 046', rifa: 'Gran Rifa', premio: 'Moto 0 km', falta: `70.000 ${moneda}`, abonado: `50.000 ${moneda}`,
+    total: `120.000 ${moneda}`, limite: 'sábado, 10 de octubre a las 7:10 pm', tiempo: '5 horas', metodos: 'Zelle, Pago Móvil' };
+  return String(mensaje || '').replace(/\{(\w+)\}/g, (todo, k) => v[k.toLowerCase()] ?? todo).trim();
+};
+
 export default function ConfigBot() {
   const [cfg, setCfg] = useState(null);
   const [original, setOriginal] = useState('');
@@ -62,6 +74,7 @@ export default function ConfigBot() {
   const [simEstado, setSimEstado] = useState(null);  // compra en curso de la simulación
   const [pagos, setPagos] = useState(null);           // { metodos, tasas } — mismos datos de la pantalla del cliente
   const simRef = useRef(null);
+  const recRef = useRef(null);
 
   useEffect(() => {
     Promise.all([API.get('/wa-chat/bot/config'), API.get('/wa-chat/bot/proveedores')])
@@ -75,6 +88,17 @@ export default function ConfigBot() {
 
   const set = (k, v) => setCfg((c) => ({ ...c, [k]: v }));
   const setSub = (grupo, k, v) => setCfg((c) => ({ ...c, [grupo]: { ...c[grupo], [k]: v } }));
+  // Recordatorios de pago
+  const rec = cfg.recordatorios_apartado || {};
+  const recCada = rec.frecuencia === 'cada';
+  const recHoras = Math.min(72, Math.max(1, Number(rec.cada_horas) || 12));
+  const recFinal = Math.min(12, Math.max(1, Number(rec.final_horas) || 2));
+  const insertarVariable = (k) => {
+    const el = recRef.current, actual = rec.mensaje || '';
+    const desde = el?.selectionStart ?? actual.length, hasta = el?.selectionEnd ?? actual.length;
+    setSub('recordatorios_apartado', 'mensaje', `${actual.slice(0, desde)}{${k}}${actual.slice(hasta)}`);
+    setTimeout(() => { el?.focus(); el?.setSelectionRange(desde + k.length + 2, desde + k.length + 2); }, 0);
+  };
   const prov = proveedores.find((p) => p.id === cfg.proveedor);
   const claveGuardada = cfg.api_keys?.[cfg.proveedor];
   const hayCambios = JSON.stringify(cfg) !== original || !!claveNueva;
@@ -244,11 +268,63 @@ export default function ConfigBot() {
               <div className="wcb-opcion"><div><b>Leer los comprobantes con IA</b><span>Extrae monto, banco y referencia de la captura para que los revises más rápido.</span></div><Toggle on={cfg.leer_comprobantes} onClick={() => set('leer_comprobantes', !cfg.leer_comprobantes)} /></div>
               <div className="wcb-opcion"><div><b>Avisar si rechazas un pago</b><span>Le escribe al cliente con amabilidad cuando rechazas su reserva en Reservas.</span></div><Toggle on={cfg.avisar_rechazo} onClick={() => set('avisar_rechazo', !cfg.avisar_rechazo)} /></div>
               <div className="wcb-opcion"><div><b>Escuchar notas de voz</b><span>Transcribe los audios de los clientes y el bot los responde; la transcripción también sale en Chats. Usa la API key de Groq (gratis) o la de OpenAI, la que esté guardada, aunque el bot converse con otro proveedor{cfg.api_keys?.groq || cfg.api_keys?.openai ? '.' : ': ahora no hay ninguna de las dos guardada, así que el bot le pide al cliente que escriba.'}</span></div><Toggle on={cfg.transcribir_audios !== false} onClick={() => set('transcribir_audios', cfg.transcribir_audios === false)} /></div>
-              <div className="wcb-opcion"><div><b>Recordar el pago de números apartados</b><span>En rifas donde se puede apartar sin pagar: le escribe al cliente la víspera, el día del sorteo y antes de que venza el plazo.</span></div><Toggle on={cfg.recordatorios_apartado?.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', cfg.recordatorios_apartado?.activo === false)} /></div>
             </div>
             <label className="wcb-label">Mensaje si la IA falla</label>
             <input className="jd-input" value={cfg.mensaje_sin_ia} onChange={(e) => set('mensaje_sin_ia', e.target.value)} />
             <div className="wcb-ayuda">Se envía una sola vez y el chat queda marcado para que lo atiendas tú.</div>
+          </div>
+
+          {/* Recordatorios de pago */}
+          <div className="wcb-card">
+            <h4><i className="bi bi-bell" />Recordatorios de pago</h4>
+            <div className="desc">Para las rifas donde se puede apartar sin pagar: el bot le recuerda al cliente lo que debe. Es el mismo mensaje del botón <b>Recordar</b> de Reservas.</div>
+            <div className="wcb-opcion"><div><b>Enviar recordatorios automáticos</b><span>Si lo apagas, solo sale cuando presionas Recordar en Reservas.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
+
+            <label className="wcb-label">¿Cada cuánto se envía?</label>
+            <div className="wcb-fila">
+              <select className="jd-input" value={recCada ? 'cada' : 'momentos'} onChange={(e) => setSub('recordatorios_apartado', 'frecuencia', e.target.value)}>
+                <option value="momentos">En los momentos clave (víspera y día del sorteo)</option>
+                <option value="cada">Cada cierto número de horas</option>
+              </select>
+              {recCada && (
+                <div style={{ flex: '0 0 150px' }}>
+                  <input className="jd-input" type="number" min={1} max={72} value={rec.cada_horas ?? 12}
+                    onChange={(e) => setSub('recordatorios_apartado', 'cada_horas', e.target.value === '' ? '' : Number(e.target.value))} aria-label="Horas entre recordatorios" />
+                </div>
+              )}
+            </div>
+            <label className="wcb-label">Aviso final: horas antes de que venza el plazo</label>
+            <input className="jd-input" type="number" min={1} max={12} style={{ maxWidth: 150 }} value={rec.final_horas ?? 2}
+              onChange={(e) => setSub('recordatorios_apartado', 'final_horas', e.target.value === '' ? '' : Number(e.target.value))} />
+            <div className="wcb-resultado ok" style={{ marginTop: 10 }}>
+              <i className="bi bi-clock-history me-1" />
+              {rec.activo === false ? 'Los recordatorios automáticos están apagados.'
+                : recCada
+                  ? `Se envía cada ${recHoras} ${recHoras === 1 ? 'hora' : 'horas'} desde que el cliente aparta, y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`
+                  : `Se envía 3 veces: la víspera del sorteo (10:00 am), el día del sorteo (9:00 am) y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`}
+              {rec.activo !== false && ' Solo de día (8:00 am a 9:30 pm) y se detiene cuando el cliente paga.'}
+            </div>
+
+            <label className="wcb-label">Mensaje</label>
+            <textarea className="jd-input" rows={6} ref={recRef} value={rec.mensaje || ''} onChange={(e) => setSub('recordatorios_apartado', 'mensaje', e.target.value)}
+              placeholder={'Déjalo vacío para usar el mensaje automático, o escribe el tuyo. Ejemplo:\n\nHola {nombre} 👋 Recuerda que tienes apartados los números {numeros} en {rifa}.\nTe falta pagar {falta}. Tienes hasta el {limite}.'} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {VARIABLES_RECORDATORIO.map(([k, que]) => (
+                <button key={k} type="button" title={`Insertar: ${que}`} onClick={() => insertarVariable(k)}
+                  style={{ border: '1px solid var(--jordyn-border)', background: 'var(--jordyn-bg2)', color: 'var(--jordyn-text)', borderRadius: 20, padding: '3px 10px', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer' }}>
+                  {`{${k}}`}
+                </button>
+              ))}
+            </div>
+            <div className="wcb-ayuda">Toca una variable para insertarla: el bot la cambia por el dato de cada cliente. Con asteriscos sale en *negrita*.</div>
+            {(rec.mensaje || '').trim() && (
+              <>
+                <label className="wcb-label">Así lo va a recibir el cliente (ejemplo)</label>
+                <div style={{ background: '#e7fbd9', border: '1px solid #cdeeb6', borderRadius: 10, padding: '10px 12px', fontSize: '.84rem', whiteSpace: 'pre-wrap', color: '#1f2d1a' }}>{ejemploRecordatorio(rec.mensaje, cfg.moneda)}</div>
+                {rec.con_imagen && (rec.mensaje || '').length > 900 && <div className="wcb-ayuda" style={{ color: '#c2410c' }}>El mensaje es muy largo para ir como pie de foto: saldrá sin la foto. Acórtalo a menos de 900 letras.</div>}
+              </>
+            )}
+            <div className="wcb-opcion" style={{ marginTop: 10 }}><div><b>Enviar con la foto de la rifa</b><span>El mensaje sale como pie de la foto principal de la rifa. Si la rifa no tiene foto, sale solo el texto.</span></div><Toggle on={!!rec.con_imagen} onClick={() => setSub('recordatorios_apartado', 'con_imagen', !rec.con_imagen)} /></div>
           </div>
 
           {/* Dueño */}
