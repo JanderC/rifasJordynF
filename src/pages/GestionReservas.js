@@ -949,6 +949,17 @@ export default function GestionReservas() {
     } catch (e) { toast.error(e.response?.data?.error || 'No se pudo procesar el abono'); }
     finally { setSaving(false); }
   };
+  // Recordatorio de pago a mano (el bot ya los manda solo; esto es para insistir cuando quieras)
+  const recordarPago = async (ids, nombre) => {
+    if (!window.confirm(`¿Enviarle ahora a ${nombre} un recordatorio de pago por WhatsApp?\n\nEl bot le dice qué números tiene apartados, cuánto le falta y hasta cuándo puede pagar.`)) return;
+    setSaving(true);
+    try {
+      await API.post('/publico/admin/apartados/recordar', { ids });
+      toast.success(`🔔 Recordatorio enviado a ${nombre}`);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo enviar el recordatorio'); }
+    finally { setSaving(false); }
+  };
   // El dueño recibió un abono en efectivo / en persona
   const registrarAbono = async (ids, nombre, falta) => {
     const monto = pedirMonto(`¿Cuánto abonó ${nombre}? (en pesos)${falta > 0 ? `\nLe faltan ${COP(falta)}.` : ''}`);
@@ -1292,6 +1303,11 @@ export default function GestionReservas() {
                 )}
                 {r.estado === 'apartado' ? (
                   <div style={{ display:'flex', gap:6, flexShrink:0, flexWrap:'wrap' }}>
+                    <button onClick={e => { e.stopPropagation(); recordarPago([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
+                      title="El bot le envía ahora un recordatorio de pago por WhatsApp"
+                      style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'6px 11px', cursor:'pointer', fontSize:'.72rem', fontWeight:700, display:'inline-flex', alignItems:'center', gap:5 }}>
+                      <WaIcon size={12}/> Recordar
+                    </button>
                     <button onClick={e => { e.stopPropagation(); marcarPagado([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
                       title="El cliente ya pagó (efectivo o en persona)"
                       style={{ background:'linear-gradient(135deg,#059669,#06d6a0)', border:'none', color:'#fff', borderRadius:8, padding:'6px 11px', cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
