@@ -2325,7 +2325,6 @@ function GridNumeros({ rifa, onComprar }) {
             <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
               <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de {totalNums}
             </span>
-            <span style={{ fontSize:'.72rem', color: pct > 80 ? '#e63946' : pct > 50 ? '#f0a500' : TURQ, fontWeight:700 }}>{pct}% ocupado</span>
           </div>
           <div style={{ background:'#e0f5f5', borderRadius:6, height:7, overflow:'hidden' }}>
             <div style={{ width:`${pct}%`, height:'100%', borderRadius:6, transition:'width 1s ease', background: pct > 80 ? 'linear-gradient(90deg,#e63946,#ff6b6b)' : pct > 50 ? 'linear-gradient(90deg,#f0a500,#ffd166)' : `linear-gradient(90deg,${TURQ},${TURQ2})` }}></div>
