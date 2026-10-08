@@ -2237,11 +2237,6 @@ function GridNumeros({ rifa, onComprar }) {
   }, [rifa.id]);
 
   const disponibles = todos.filter(n => n.estado === 'disponible');
-  // Contadores: usar números únicos para no doblar el total en simultánea
-  const numerosUnicos      = [...new Set(todos.map(n => n.numero))];
-  const numerosDisponibles = [...new Set(disponibles.map(n => n.numero))];
-  const tomados            = numerosUnicos.length - numerosDisponibles.length;
-  const pct                = numerosUnicos.length > 0 ? Math.round((tomados / numerosUnicos.length) * 100) : 0;
 
   // En búsqueda mostramos todos los estados del número para informar al cliente
   const visible = busqueda
@@ -2318,17 +2313,12 @@ function GridNumeros({ rifa, onComprar }) {
         <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />
       )}
 
-      {/* Barra de ocupación */}
+      {/* Números disponibles */}
       <div style={{ background:`${TURQ}0d`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
         <div style={{ flex:1, minWidth:180 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-            <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
-              <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de {totalNums}
-            </span>
-          </div>
-          <div style={{ background:'#e0f5f5', borderRadius:6, height:7, overflow:'hidden' }}>
-            <div style={{ width:`${pct}%`, height:'100%', borderRadius:6, transition:'width 1s ease', background: pct > 80 ? 'linear-gradient(90deg,#e63946,#ff6b6b)' : pct > 50 ? 'linear-gradient(90deg,#f0a500,#ffd166)' : `linear-gradient(90deg,${TURQ},${TURQ2})` }}></div>
-          </div>
+          <span style={{ fontSize:'.72rem', color:`${DARK}77`, fontWeight:600 }}>
+            <span style={{ color:TURQ, fontWeight:800, fontSize:'.88rem' }}>{disponibles.length}</span> disponibles de {totalNums}
+          </span>
         </div>
         {disponibles.length === 0 && <span style={{ fontSize:'.72rem', color:'#e63946', fontWeight:700 }}>🔴 Rifa agotada</span>}
       </div>
