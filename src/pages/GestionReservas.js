@@ -890,12 +890,21 @@ export default function GestionReservas() {
   const [selHerm,  setSelHerm]  = useState([]);
   const [tasas,    setTasas]    = useState({});
   const [nApartados, setNApartados] = useState(0);
+  // Abonos (pagos parciales de números apartados)
+  const [abonos,     setAbonos]     = useState([]);
+  const [nAbonos,    setNAbonos]    = useState(0);      // por confirmar
+  const [montosAbono, setMontosAbono] = useState({});   // id → monto corregido antes de confirmar
 
   useEffect(() => { API.get('/tasas').then(r => setTasas(r.data)).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (filtro === 'abonos') {
+        const a = await API.get('/publico/admin/abonos');
+        setAbonos(a.data); setReservas([]);
+        return;
+      }
       const url = filtro==='todos' ? '/publico/admin/reservas' : `/publico/admin/reservas?estado=${filtro}`;
       const r   = await API.get(url);
       setReservas(r.data);
@@ -907,7 +916,60 @@ export default function GestionReservas() {
     try { const r = await API.get('/publico/admin/reservas'); setTodas(r.data); } catch {}
     // Los apartados sin pagar van aparte (no entran en "Todos")
     try { const r = await API.get('/publico/admin/reservas?estado=apartado'); setNApartados(r.data.length); } catch {}
+    try { const r = await API.get('/publico/admin/abonos?estado=pendiente'); setNAbonos(r.data.length); } catch {}
   }, []);
+
+  /* ── Abonos ── */
+  const pedirMonto = (texto, sugerido = '') => {
+    const v = window.prompt(texto, sugerido);
+    if (v === null) return null;
+    const n = Math.round(Number(String(v).replace(/[^\d]/g, '')));
+    if (!(n > 0)) { toast.error('Escribe un monto válido'); return null; }
+    return n;
+  };
+  const resolverAbono = async (a, accion) => {
+    const monto = Number(montosAbono[a.id] ?? a.monto);
+    if (accion === 'aprobar' && !(monto > 0)) { toast.error('Escribe el monto que llegó'); return; }
+    let nota = null;
+    if (accion === 'rechazar') {
+      nota = window.prompt(`¿Por qué rechazas el abono de ${a.nombre_cliente}? (se le dice al cliente; puedes dejarlo vacío)`, '');
+      if (nota === null) return;
+    } else if (!window.confirm(`¿Confirmas que llegó el abono de ${COP(monto)} de ${a.nombre_cliente}?${a.total != null && monto >= (a.saldo ?? Infinity) ? '\n\nCon este abono completa el pago: los números pasan a Pendientes para aprobarlos y enviar el ticket.' : ''}`)) return;
+    setSaving(true);
+    try {
+      const r = await API.put(`/publico/admin/abonos/${a.id}`, { accion, monto, nota });
+      if (accion === 'rechazar') toast.success('Abono rechazado');
+      else if (r.data.completo) { toast.success('✅ Pago completo: apruébalo en Pendientes para enviar el ticket'); setFiltro('pendiente'); }
+      else toast.success(`✅ Abono confirmado. Le faltan ${COP(r.data.saldo)}`);
+      load(); loadTodas();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo procesar el abono'); }
+    finally { setSaving(false); }
+  };
+  // El dueño recibió un abono en efectivo / en persona
+  const registrarAbono = async (ids, nombre, falta) => {
+    const monto = pedirMonto(`¿Cuánto abonó ${nombre}? (en pesos)${falta > 0 ? `\nLe faltan ${COP(falta)}.` : ''}`);
+    if (!monto) return;
+    setSaving(true);
+    try {
+      const r = await API.post('/publico/admin/abonos', { ids, monto });
+      if (r.data.completo) { toast.success('✅ Con ese abono completó el pago: apruébalo en Pendientes'); setFiltro('pendiente'); }
+      else toast.success(`Abono de ${COP(monto)} registrado. Le faltan ${COP(r.data.saldo)}`);
+      load(); loadTodas();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar el abono'); }
+    finally { setSaving(false); }
+  };
+  // Un comprobante entró como pago completo pero era solo una parte
+  const pasarAAbono = async (ids, nombre) => {
+    const monto = pedirMonto(`El comprobante de ${nombre} no cubre el total.\n¿Cuánto pagó en realidad? (en pesos)\n\nLos números vuelven a "Apartados sin pagar" y este pago queda como abono confirmado.`);
+    if (!monto) return;
+    setSaving(true);
+    try {
+      const r = await API.put('/publico/admin/reservas-a-abono', { ids, monto });
+      toast.success(`Registrado como abono de ${COP(monto)}. Le faltan ${COP(r.data.saldo)}`);
+      load(); loadTodas();
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar como abono'); }
+    finally { setSaving(false); }
+  };
 
   /* Apartados: el cliente pagó por fuera (efectivo, en persona) o se libera el número */
   const marcarPagado = async (ids, nombre) => {
@@ -920,8 +982,8 @@ export default function GestionReservas() {
     } catch (e) { toast.error(e.response?.data?.error || 'No se pudo registrar el pago'); }
     finally { setSaving(false); }
   };
-  const liberarApartado = async (ids, nombre) => {
-    if (!window.confirm(`¿Liberar ${ids.length === 1 ? 'el número' : `los ${ids.length} números`} de ${nombre}? Vuelven a estar disponibles para cualquiera.`)) return;
+  const liberarApartado = async (ids, nombre, abonado = 0) => {
+    if (!window.confirm(`¿Liberar ${ids.length === 1 ? 'el número' : `los ${ids.length} números`} de ${nombre}? Vuelven a estar disponibles para cualquiera.${abonado > 0 ? `\n\n⚠ OJO: este cliente ya abonó ${COP(abonado)}. Al liberar, ese dinero sigue registrado como recibido en Caja: si se lo vas a devolver, tenlo en cuenta.` : ''}`)) return;
     setSaving(true);
     try {
       await API.delete('/publico/admin/apartados', { data: { ids } });
@@ -966,6 +1028,7 @@ export default function GestionReservas() {
   const TABS = [
     { key:'pendiente', label:'Pendientes', icon:'bi-hourglass-split',   color:'#b37700',             count:conteos.pendiente||0 },
     { key:'apartado',  label:'Apartados sin pagar', icon:'bi-bookmark-star-fill', color:'#7c3aed',    count:nApartados },
+    { key:'abonos',    label:'Abonos',     icon:'bi-piggy-bank-fill',   color:'#0891b2',             count:nAbonos },
     { key:'aprobado',  label:'Aprobados',  icon:'bi-check-circle-fill', color:'#059669',             count:conteos.aprobado||0  },
     { key:'rechazado', label:'Rechazados', icon:'bi-x-circle-fill',     color:'#e63946',             count:conteos.rechazado||0 },
     { key:'todos',     label:'Todos',      icon:'bi-list-ul',            color:'var(--jordyn-muted)', count:conteos.todos||0     },
@@ -1011,6 +1074,80 @@ export default function GestionReservas() {
         <div style={{ display:'flex', justifyContent:'center', padding:'4rem' }}>
           <div className="jd-spinner" style={{ width:44, height:44 }}></div>
         </div>
+      ) : filtro === 'abonos' ? (
+        abonos.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'4rem 2rem' }}>
+            <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>🐷</div>
+            <div style={{ fontWeight:800, fontSize:'1.1rem', color:'var(--jordyn-text)', marginBottom:4 }}>Sin abonos</div>
+            <div style={{ fontSize:'.82rem', color:'var(--jordyn-muted)' }}>Aquí llegan los pagos parciales de quienes apartaron un número para pagar después.</div>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {abonos.map(a => {
+              const pend = a.estado === 'pendiente';
+              const color = pend ? '#b37700' : a.estado === 'aprobado' ? '#059669' : '#e63946';
+              const montoEdit = montosAbono[a.id] ?? String(a.monto);
+              return (
+                <div key={a.id} className="jd-card" style={{ padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${color}`, opacity: pend ? 1 : .75 }}>
+                  {a.comprobante_url ? (
+                    <a href={a.comprobante_url} target="_blank" rel="noreferrer" title="Ver el comprobante" style={{ flexShrink:0 }}>
+                      <img src={a.comprobante_url} alt="Comprobante" style={{ width:58, height:58, objectFit:'cover', borderRadius:10, border:'1.5px solid var(--jordyn-border2)', display:'block' }} />
+                    </a>
+                  ) : (
+                    <div style={{ width:58, height:58, borderRadius:10, background:'var(--jordyn-bg2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.4rem', flexShrink:0 }} title="Sin comprobante (registrado a mano)">💵</div>
+                  )}
+                  <div style={{ flex:'1 1 220px', minWidth:0 }}>
+                    <div style={{ fontWeight:700, fontSize:'.92rem', color:'var(--jordyn-text)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      {a.nombre_cliente}
+                      {a.origen === 'whatsapp' && <span style={{ fontSize:'.65rem', fontWeight:700, background:'rgba(37,211,102,.12)', color:'#128c7e', border:'1px solid rgba(37,211,102,.3)', borderRadius:20, padding:'1px 8px', display:'inline-flex', alignItems:'center', gap:3 }}><WaIcon size={10}/> WhatsApp</span>}
+                      {a.origen === 'panel' && <span style={{ fontSize:'.65rem', fontWeight:700, background:'var(--jordyn-bg2)', color:'var(--jordyn-muted)', borderRadius:20, padding:'1px 8px' }}>Registrado a mano</span>}
+                    </div>
+                    <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)' }}>
+                      {a.rifa_nombre}
+                      {a.numeros.length > 0 && <span style={{ marginLeft:8 }}>🎟 {a.numeros.join(', ')}</span>}
+                      {a.telefono && <span style={{ marginLeft:8 }}><i className="bi bi-telephone-fill me-1"></i>{a.telefono}</span>}
+                      {a.metodo_pago && <span style={{ marginLeft:8 }}><i className="bi bi-credit-card me-1"></i>{a.metodo_pago}</span>}
+                    </div>
+                    <div style={{ fontSize:'.72rem', marginTop:3, fontWeight:600, color: a.apartado_vigente ? '#0e7490' : 'var(--jordyn-muted)' }}>
+                      {a.apartado_vigente
+                        ? <>Total {COP(a.total)} · ya abonado {COP(a.abonado)} · le falta {COP(a.saldo)}{pend && Number(montoEdit) >= a.saldo ? ' → con este abono completa el pago' : ''}</>
+                        : a.aplicado ? 'Ya quedó dentro del pago completo' : pend ? '⚠ Esos números ya no están apartados' : 'Los números ya no están apartados'}
+                    </div>
+                    {a.nota_admin && !pend && <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:2 }}>{a.nota_admin}</div>}
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    {pend ? (
+                      <div>
+                        <label style={{ display:'block', fontSize:'.56rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'.5px' }}>Monto que llegó</label>
+                        <input className="jd-input" value={montoEdit} inputMode="numeric" aria-label={`Monto del abono de ${a.nombre_cliente}`}
+                          onChange={e => setMontosAbono(m => ({ ...m, [a.id]: e.target.value.replace(/\D/g, '').slice(0, 9) }))}
+                          style={{ width:120, fontWeight:800, textAlign:'right', padding:'6px 10px' }} />
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight:800, fontSize:'.95rem', color }}>{COP(a.monto)}</div>
+                    )}
+                    <div style={{ fontSize:'.65rem', color:'var(--jordyn-muted)', marginTop:2 }}>{fmtTimestamp(a.created_at)}</div>
+                  </div>
+                  {pend ? (
+                    <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                      <button onClick={() => resolverAbono(a, 'aprobar')} disabled={saving}
+                        style={{ background:'linear-gradient(135deg,#059669,#06d6a0)', border:'none', color:'#fff', borderRadius:8, padding:'7px 12px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
+                        <i className="bi bi-check-lg me-1"></i>Confirmar
+                      </button>
+                      <button onClick={() => resolverAbono(a, 'rechazar')} disabled={saving} className="btn-jordyn-danger" style={{ fontSize:'.74rem', padding:'7px 12px' }}>
+                        Rechazar
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ color, border:`1.5px solid ${color}55`, borderRadius:20, padding:'3px 12px', fontSize:'.7rem', fontWeight:700, flexShrink:0 }}>
+                      {a.estado === 'aprobado' ? '✅ Confirmado' : '❌ Rechazado'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : reservasAgrupadas.length===0 ? (
         <div style={{ textAlign:'center', padding:'4rem 2rem' }}>
           <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>📭</div>
@@ -1054,6 +1191,11 @@ export default function GestionReservas() {
                     <div style={{ fontSize:'.72rem', color:'#7c3aed', fontWeight:700, marginTop:3 }}>
                       <i className="bi bi-alarm me-1"></i>
                       {r.pago_diferido ? 'Puede pagar hasta' : 'El bot espera su comprobante hasta'}: {fmtLimitePago(r.apartado_hasta) || '—'}
+                      {Number(r.abonado) > 0 && (
+                        <span style={{ marginLeft:10, color:'#059669' }}>
+                          <i className="bi bi-piggy-bank-fill me-1"></i>Abonado {COP(r.abonado)} · falta {COP(Math.max(r.precio * numeros.length - Number(r.abonado), 0))}
+                        </span>
+                      )}
                       {(r.recordatorios || []).length > 0 && (
                         <span style={{ marginLeft:10, fontWeight:600, color:'var(--jordyn-muted)' }}>
                           <i className="bi bi-bell-fill me-1"></i>{r.recordatorios.length} recordatorio{r.recordatorios.length === 1 ? '' : 's'} enviado{r.recordatorios.length === 1 ? '' : 's'}
@@ -1085,15 +1227,29 @@ export default function GestionReservas() {
                     <button onClick={e => { e.stopPropagation(); marcarPagado([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
                       title="El cliente ya pagó (efectivo o en persona)"
                       style={{ background:'linear-gradient(135deg,#059669,#06d6a0)', border:'none', color:'#fff', borderRadius:8, padding:'6px 11px', cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
-                      <i className="bi bi-cash-coin me-1"></i>Ya pagó
+                      <i className="bi bi-cash-coin me-1"></i>Ya pagó todo
                     </button>
-                    <button onClick={e => { e.stopPropagation(); liberarApartado([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
+                    <button onClick={e => { e.stopPropagation(); registrarAbono([r.id, ...extras.map(x => x.id)], r.nombre_cliente, Math.max(r.precio * numeros.length - Number(r.abonado || 0), 0)); }} disabled={saving}
+                      title="El cliente dio una parte (efectivo o en persona)"
+                      style={{ background:'rgba(8,145,178,.1)', border:'1.5px solid rgba(8,145,178,.45)', color:'#0e7490', borderRadius:8, padding:'6px 11px', cursor:'pointer', fontSize:'.72rem', fontWeight:700 }}>
+                      <i className="bi bi-piggy-bank-fill me-1"></i>Abonó
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); liberarApartado([r.id, ...extras.map(x => x.id)], r.nombre_cliente, Number(r.abonado || 0)); }} disabled={saving}
                       className="btn-jordyn-danger" style={{ fontSize:'.72rem', padding:'6px 11px' }} title="Liberar los números">
                       <i className="bi bi-unlock-fill me-1"></i>Liberar
                     </button>
                   </div>
                 ) : (
-                  <i className="bi bi-chevron-right" style={{ color:'var(--jordyn-muted)', flexShrink:0 }}></i>
+                  <>
+                    {r.estado === 'pendiente' && r.pago_diferido && (
+                      <button onClick={e => { e.stopPropagation(); pasarAAbono([r.id, ...extras.map(x => x.id)], r.nombre_cliente); }} disabled={saving}
+                        title="El comprobante no cubre el total: registrarlo como abono y dejar los números apartados"
+                        style={{ background:'rgba(8,145,178,.1)', border:'1.5px solid rgba(8,145,178,.45)', color:'#0e7490', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontSize:'.7rem', fontWeight:700, flexShrink:0 }}>
+                        <i className="bi bi-piggy-bank-fill me-1"></i>Fue un abono
+                      </button>
+                    )}
+                    <i className="bi bi-chevron-right" style={{ color:'var(--jordyn-muted)', flexShrink:0 }}></i>
+                  </>
                 )}
               </div>
             );

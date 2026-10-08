@@ -1677,6 +1677,9 @@ function ModalMisApartados({ onClose, onPagado }) {
   const [grupos,   setGrupos]   = useState([]);
   const [sel,      setSel]      = useState(null);
   const [metodo,   setMetodo]   = useState('');
+  const [modoPago, setModoPago] = useState('todo');     // 'todo' = lo que falta | 'abono' = una parte
+  const [montoAbono, setMontoAbono] = useState('');
+  const [mensajeOk, setMensajeOk] = useState('');
   const [imagen,   setImagen]   = useState(null);
   const [imgB64,   setImgB64]   = useState('');
   const [error,    setError]    = useState('');
@@ -1708,19 +1711,28 @@ function ModalMisApartados({ onClose, onPagado }) {
     reader.readAsDataURL(f);
   };
 
+  // Lo que le falta por pagar (sin contar lo que ya envió y está por confirmarse)
+  const faltaDe = (g) => Math.max((g?.saldo ?? g?.total ?? 0) - (g?.por_confirmar || 0), 0);
+  const falta = faltaDe(sel);
+  const abonoNum = Math.round(Number(String(montoAbono).replace(/\D/g, '')) || 0);
+  const montoPago = modoPago === 'abono' ? Math.min(abonoNum, falta) : falta;
+
   const pagar = async () => {
+    if (modoPago === 'abono' && !(abonoNum > 0)) { setError('Escribe cuánto vas a abonar'); return; }
+    if (modoPago === 'abono' && abonoNum > falta) { setError(`Solo te faltan ${fmt(falta)}`); return; }
     if (!metodo) { setError('Elige con qué método pagaste'); return; }
     if (!imgB64) { setError('Sube la captura del comprobante'); return; }
     setError(''); setCargando(true);
     try {
-      await API.post('/publico/apartados/pagar', { rifa_id: sel.rifa_id, telefono: telefonoFull, cedula: form.cedula, metodo_pago: metodo, comprobante_base64: imgB64 });
+      const r = await API.post('/publico/apartados/pagar', { rifa_id: sel.rifa_id, telefono: telefonoFull, cedula: form.cedula, metodo_pago: metodo, comprobante_base64: imgB64, monto: montoPago });
+      setMensajeOk(r.data?.mensaje || '');
       setPaso('listo');
       onPagado?.();
     } catch (e) { setError(e.response?.data?.error || 'No se pudo registrar el pago, intenta de nuevo'); }
     finally { setCargando(false); }
   };
 
-  const conv = sel && metodo ? calcularPrecioMetodo(sel.total, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200) : null;
+  const conv = sel && metodo && montoPago > 0 ? calcularPrecioMetodo(montoPago, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200) : null;
   const MORADO = '#7c3aed';
 
   return (
@@ -1732,7 +1744,7 @@ function ModalMisApartados({ onClose, onPagado }) {
           <button onClick={onClose} aria-label="Cerrar" style={{ position:'absolute', top:14, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer', fontSize:'1rem' }}>✕</button>
           <div style={{ fontSize:'.6rem', color:'rgba(255,255,255,.8)', letterSpacing:'1.5px', fontWeight:700, marginBottom:4 }}>🔖 MIS APARTADOS</div>
           <div style={{ fontSize:'1.25rem', color:'#fff', fontWeight:800 }}>
-            {paso === 'pagar' ? `Pagar ${sel.numeros.length > 1 ? 'mis números' : 'mi número'}` : paso === 'listo' ? '¡Comprobante recibido!' : 'Paga tus números apartados'}
+            {paso === 'pagar' ? `Pagar ${sel.numeros.length > 1 ? 'mis números' : 'mi número'}` : paso === 'listo' ? '¡Comprobante recibido!' : 'Paga o abona tus números apartados'}
           </div>
         </div>
 
@@ -1776,15 +1788,27 @@ function ModalMisApartados({ onClose, onPagado }) {
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
                     {g.numeros.map(n => <span key={n} style={{ background:`linear-gradient(135deg,${MORADO},#a855f7)`, color:'#fff', borderRadius:10, padding:'4px 12px', fontWeight:900, fontSize:'1rem', letterSpacing:2 }}>{n}</span>)}
                   </div>
+                  {(g.abonado > 0 || g.por_confirmar > 0) && (
+                    <div style={{ background:'#fff', border:'1px solid rgba(124,58,237,.18)', borderRadius:10, padding:'8px 12px', marginBottom:10, fontSize:'.78rem', color:`${DARK}cc`, lineHeight:1.7 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between' }}><span>Total</span><strong>{fmt(g.total)}</strong></div>
+                      {g.abonado > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#059669' }}><span>✅ Abonado</span><strong>− {fmt(g.abonado)}</strong></div>}
+                      {g.por_confirmar > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#b37700' }}><span>⏳ Abono por confirmar</span><strong>{fmt(g.por_confirmar)}</strong></div>}
+                    </div>
+                  )}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                     <div>
-                      <div style={{ fontSize:'1.25rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{fmt(g.total)}</div>
+                      <div style={{ fontSize:'.62rem', fontWeight:700, color:`${DARK}77`, textTransform:'uppercase', letterSpacing:'.06em' }}>{g.abonado > 0 ? 'Te falta' : 'Total'}</div>
+                      <div style={{ fontSize:'1.25rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{fmt(g.saldo ?? g.total)}</div>
                       <div style={{ fontSize:'.7rem', color:`${DARK}88`, marginTop:2 }}>⏰ Hasta el {g.pago_hasta_texto}</div>
                     </div>
-                    <button className="pub-btn" onClick={() => { setSel(g); setMetodo(''); setImagen(null); setImgB64(''); setError(''); setPaso('pagar'); }}
-                      style={{ padding:'11px 22px', background:`linear-gradient(135deg,${MORADO},#a855f7)`, boxShadow:'0 8px 20px rgba(124,58,237,.3)' }}>
-                      Pagar
-                    </button>
+                    {faltaDe(g) > 0 ? (
+                      <button className="pub-btn" onClick={() => { setSel(g); setMetodo(''); setModoPago('todo'); setMontoAbono(''); setImagen(null); setImgB64(''); setError(''); setPaso('pagar'); }}
+                        style={{ padding:'11px 22px', background:`linear-gradient(135deg,${MORADO},#a855f7)`, boxShadow:'0 8px 20px rgba(124,58,237,.3)' }}>
+                        Pagar o abonar
+                      </button>
+                    ) : (
+                      <span style={{ fontSize:'.74rem', fontWeight:700, color:'#b37700', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:20, padding:'6px 12px' }}>⏳ Pago en verificación</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1796,16 +1820,37 @@ function ModalMisApartados({ onClose, onPagado }) {
               <div style={{ fontSize:'.84rem', color:`${DARK}99`, marginBottom:14, lineHeight:1.5 }}>
                 <strong style={{ color:DARK }}>{sel.rifa}</strong> · número{sel.numeros.length > 1 ? 's' : ''} <strong style={{ color:MORADO }}>{sel.numeros.join(', ')}</strong>
               </div>
+              {/* Pagar todo lo que falta o abonar una parte */}
+              <div className="modo-pago" role="radiogroup" aria-label="¿Cuánto vas a pagar?">
+                <button type="button" role="radio" aria-checked={modoPago === 'todo'} className={modoPago === 'todo' ? 'on morado' : ''} onClick={() => { setModoPago('todo'); setError(''); }}>
+                  <b>💳 Pagar todo</b>
+                  <span>{sel.abonado > 0 ? `Lo que te falta: ${fmt(falta)}` : fmt(falta)}</span>
+                </button>
+                <button type="button" role="radio" aria-checked={modoPago === 'abono'} className={modoPago === 'abono' ? 'on morado' : ''} onClick={() => { setModoPago('abono'); setError(''); }}>
+                  <b>💵 Abonar una parte</b>
+                  <span>Pagas algo ahora y el resto antes del sorteo.</span>
+                </button>
+              </div>
+              {modoPago === 'abono' && (
+                <div style={{ marginBottom:14 }}>
+                  <label className="pub-label">¿Cuánto vas a abonar? (en pesos)</label>
+                  <input className="pub-input" value={montoAbono} inputMode="numeric" type="tel" placeholder={`Ej: ${Math.round(falta / 3 / 1000) * 1000 || 10000}`}
+                    onChange={e => setMontoAbono(e.target.value.replace(/\D/g, '').slice(0, 9))} />
+                  {abonoNum > 0 && abonoNum < falta && (
+                    <div style={{ fontSize:'.74rem', color:MORADO, fontWeight:600, marginTop:5 }}>Después de este abono te quedarían {fmt(falta - abonoNum)}.</div>
+                  )}
+                </div>
+              )}
               <label className="pub-label">¿Cómo vas a pagar?</label>
               <select className="pub-input" value={metodo} onChange={e => setMetodo(e.target.value)} style={{ cursor:'pointer' }}>
                 <option value="">Selecciona un método...</option>
                 {Object.keys(METODOS_PAGO).map(m => <option key={m}>{m}</option>)}
               </select>
-              {metodo && (
+              {metodo && montoPago > 0 && (
                 <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:'rgba(124,58,237,.06)', border:'2px solid rgba(124,58,237,.22)' }}>
-                  <div style={{ fontSize:'.6rem', fontWeight:700, color:MORADO, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>Debes pagar exactamente</div>
-                  <div style={{ fontSize:'1.7rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{conv ? conv.texto : fmt(sel.total)}</div>
-                  {conv && <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:3 }}>≈ {fmt(sel.total)}</div>}
+                  <div style={{ fontSize:'.6rem', fontWeight:700, color:MORADO, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>{modoPago === 'abono' ? 'Tu abono: paga exactamente' : 'Debes pagar exactamente'}</div>
+                  <div style={{ fontSize:'1.7rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{conv ? conv.texto : fmt(montoPago)}</div>
+                  {conv && <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:3 }}>≈ {fmt(montoPago)}</div>}
                 </div>
               )}
               {metodo && <PagoInlineCard metodo={metodo} />}
@@ -1834,8 +1879,8 @@ function ModalMisApartados({ onClose, onPagado }) {
             <div style={{ textAlign:'center', animation:'fadeUp .25s ease' }}>
               <div style={{ width:80, height:80, borderRadius:'50%', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, margin:'0 auto 18px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'2.3rem' }}>✅</div>
               <p style={{ fontSize:'.98rem', color:DARK, lineHeight:1.7, marginBottom:6 }}>
-                Recibimos el comprobante de {sel?.numeros.length > 1 ? 'tus números' : 'tu número'} <strong style={{ color:TURQ_DK }}>{sel?.numeros.join(', ')}</strong>.
-                Apenas verifiquemos el pago, <strong style={{ color:TURQ_DK }}>tu ticket te llega por WhatsApp</strong>. ¡Mucha suerte! 🍀
+                {mensajeOk || <>Recibimos el comprobante de {sel?.numeros.length > 1 ? 'tus números' : 'tu número'} <strong style={{ color:TURQ_DK }}>{sel?.numeros.join(', ')}</strong>.
+                Apenas verifiquemos el pago, <strong style={{ color:TURQ_DK }}>tu ticket te llega por WhatsApp</strong>. ¡Mucha suerte! 🍀</>}
               </p>
             </div>
           )}

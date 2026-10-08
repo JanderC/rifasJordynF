@@ -300,6 +300,11 @@ export default function Caja() {
       t.ticketsVendidos += Number(online.total_numeros || 0);
       t.ticketsAsignados += Number(online.total_numeros || 0);
       t.enLinea = { numeros: online.total_numeros, monto: online.total_monto };
+      // Abonos confirmados de números apartados: plata ya recibida aunque todavía no sea venta
+      const abonosRec = Number(online.abonos?.recibido || 0);
+      t.totalCobrar += abonosRec;
+      t.cobrado     += abonosRec;
+      t.abonosApartados = abonosRec;
     }
 
     t.deuda = t.totalCobrar - t.cobrado;
@@ -395,9 +400,12 @@ export default function Caja() {
                 { key: 'web', nombre: 'Página web' },
               ].filter(c => (c.key === 'whatsapp' || online.por_origen[c.key].numeros > 0 || online.pendientes?.[c.key]?.numeros > 0)
                           && (!q || c.nombre.toLowerCase().includes(q)));
-              return canales.length > 0 && (
+              const ab = online.abonos;
+              const hayAbonos = ab && (ab.cantidad > 0 || ab.por_confirmar?.cantidad > 0) && (!q || 'abonos apartados'.includes(q));
+              return (canales.length > 0 || hayAbonos) && (
                 <div style={{ ...S.lista, marginBottom: 12 }}>
                   {canales.map(c => <TarjetaCanal key={c.key} canal={c.key} nombre={c.nombre} data={online} precio={rifaActiva.precio} />)}
+                  {hayAbonos && <TarjetaAbonos abonos={ab} />}
                 </div>
               );
             })()}
@@ -1103,6 +1111,53 @@ function ResumenGlobal({ totales, cuentas, porcentaje, precioPorNum, rifaPrecio,
    Lo vendido por ahí ya está pagado: el comprobante se verificó al
    aprobar la reserva. Muestra también lo que viene en camino.
 ════════════════════════════════════════════════════════════ */
+/* Abonos de números apartados: dinero recibido que todavía no es venta.
+   Cuando el cliente completa el pago y se aprueba en Reservas, pasa a ser una
+   venta del canal (página o WhatsApp) y sale de aquí: nunca se cuenta dos veces. */
+function TarjetaAbonos({ abonos: ab }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="jd-card" style={{ borderLeft: '3px solid #7c3aed', padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(124,58,237,.12)', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>
+          <i className="bi bi-piggy-bank-fill" />
+        </div>
+        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: '.92rem', color: 'var(--jordyn-text)' }}>Abonos de apartados</div>
+          <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)' }}>
+            Plata ya recibida de números que el cliente todavía no termina de pagar.
+            {ab.por_confirmar?.cantidad > 0 && <strong style={{ color: '#b37700' }}> · {ab.por_confirmar.cantidad} por confirmar en Reservas ({COP(ab.por_confirmar.monto)})</strong>}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 900, fontSize: '1.15rem', color: '#059669' }}>{COP(ab.recibido)}</div>
+          <div style={{ fontSize: '.64rem', color: 'var(--jordyn-muted)' }}>{ab.cantidad} abono{ab.cantidad === 1 ? '' : 's'} confirmado{ab.cantidad === 1 ? '' : 's'}</div>
+        </div>
+        {ab.cantidad > 0 && (
+          <button className="btn-jordyn-outline" onClick={() => setAbierto(v => !v)} style={{ fontSize: '.72rem', padding: '5px 10px' }}>
+            <i className={`bi bi-chevron-${abierto ? 'up' : 'down'} me-1`} />{abierto ? 'Ocultar' : 'Ver'}
+          </button>
+        )}
+      </div>
+      {abierto && (
+        <div style={{ marginTop: 10, borderTop: '1px solid var(--jordyn-border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ab.lista.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '.78rem' }}>
+              <strong style={{ minWidth: 84, color: '#059669' }}>{COP(a.monto)}</strong>
+              <span style={{ flex: '1 1 160px', minWidth: 0 }}>
+                {a.nombre_cliente || 'Cliente'}
+                <span style={{ color: 'var(--jordyn-muted)' }}> · {a.numeros.length ? `número${a.numeros.length > 1 ? 's' : ''} ${a.numeros.join(', ')}` : 'números ya liberados'}{a.metodo_pago ? ` · ${a.metodo_pago}` : ''}</span>
+              </span>
+              {a.completo && <span style={{ fontSize: '.62rem', fontWeight: 800, color: '#b37700' }}>PAGO COMPLETO · falta aprobar en Reservas</span>}
+              {a.comprobante_url && <a href={a.comprobante_url} target="_blank" rel="noreferrer" style={{ fontSize: '.7rem', color: 'var(--jordyn-primary)', fontWeight: 700 }}><i className="bi bi-paperclip" />Comprobante</a>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TarjetaCanal({ canal, nombre, data, precio }) {
   const [abierto, setAbierto] = useState(false);
   const esWa = canal === 'whatsapp';
