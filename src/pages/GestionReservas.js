@@ -894,6 +894,10 @@ export default function GestionReservas() {
   const [abonos,     setAbonos]     = useState([]);
   const [nAbonos,    setNAbonos]    = useState(0);      // por confirmar
   const [montosAbono, setMontosAbono] = useState({});   // id → monto corregido antes de confirmar
+  // Vista separada por rifa (como en Caja) y por páginas
+  const [rifaSel, setRifaSel] = useState('');           // '' = todas las rifas
+  const [pagina,  setPagina]  = useState(1);
+  useEffect(() => { setPagina(1); }, [filtro, rifaSel]);
 
   useEffect(() => { API.get('/tasas').then(r => setTasas(r.data)).catch(() => {}); }, []);
 
@@ -1044,6 +1048,43 @@ export default function GestionReservas() {
     return Object.values(grupos);
   })();
 
+  /* ── Separar por rifa y paginar ──
+     Los botones de rifa salen de lo que hay en la pestaña actual. En "Todas" la lista
+     va agrupada por rifa, con un título al empezar cada una. */
+  const POR_PAGINA = 15;
+  const enAbonos = filtro === 'abonos';
+  const rifasVista = [...(enAbonos
+      ? abonos.map(a => [a.rifa_id, a.rifa_nombre])
+      : reservasAgrupadas.map(g => [g.principal.rifa_id, g.principal.rifa_nombre]))
+    .reduce((m, [id, nombre]) => m.set(id, { id, nombre: nombre || 'Rifa', n: (m.get(id)?.n || 0) + 1 }), new Map()).values()]
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const rifaActual = rifasVista.some(r => r.id === rifaSel) ? rifaSel : '';
+  const deLaRifa = (id) => !rifaActual || id === rifaActual;
+  // En "Todas": ordenado por rifa (el orden dentro de cada rifa se conserva)
+  const porRifa = (lista, nombreDe) => (rifaActual ? lista : [...lista].sort((a, b) => nombreDe(a).localeCompare(nombreDe(b))));
+  const gruposFiltrados = porRifa(reservasAgrupadas.filter(g => deLaRifa(g.principal.rifa_id)), g => g.principal.rifa_nombre || '');
+  const abonosFiltrados = porRifa(abonos.filter(a => deLaRifa(a.rifa_id)), a => a.rifa_nombre || '');
+  const totalItems = enAbonos ? abonosFiltrados.length : gruposFiltrados.length;
+  const paginas = Math.max(1, Math.ceil(totalItems / POR_PAGINA));
+  const pag = Math.min(pagina, paginas);
+  const dePagina = (lista) => lista.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA);
+  const gruposPagina = dePagina(gruposFiltrados);
+  const abonosPagina = dePagina(abonosFiltrados);
+  // Título de rifa: al empezar la página y cada vez que cambia la rifa (solo en "Todas" con varias rifas)
+  const TituloRifa = ({ lista, i, idDe, nombreDe }) => {
+    if (rifaActual || rifasVista.length < 2) return null;
+    if (i > 0 && idDe(lista[i - 1]) === idDe(lista[i])) return null;
+    const info = rifasVista.find(r => r.id === idDe(lista[i]));
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:10, margin: i === 0 ? '0 0 2px' : '14px 0 2px' }}>
+        <i className="bi bi-trophy-fill" style={{ color:'var(--jordyn-primary)' }}></i>
+        <span style={{ fontWeight:800, fontSize:'.9rem', color:'var(--jordyn-text)' }}>{nombreDe(lista[i])}</span>
+        <span style={{ fontSize:'.68rem', fontWeight:700, color:'var(--jordyn-muted)', background:'var(--jordyn-bg2)', borderRadius:20, padding:'1px 9px' }}>{info?.n || 0}</span>
+        <span style={{ flex:1, height:1, background:'var(--jordyn-border)' }}></span>
+      </div>
+    );
+  };
+
   return (
     <Layout title="RESERVAS DE CLIENTES" vendorName={user?.rol==='vendedor' ? user?.nombre : null}>
 
@@ -1070,12 +1111,32 @@ export default function GestionReservas() {
         ))}
       </div>
 
+      {/* Rifa: como en Caja, se elige una para ver solo lo suyo */}
+      {!loading && rifasVista.length > 1 && (
+        <div style={{ display:'flex', gap:8, marginBottom:'1.1rem', flexWrap:'wrap', alignItems:'center' }}>
+          <span style={{ fontSize:'.64rem', fontWeight:800, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px' }}>
+            <i className="bi bi-funnel-fill me-1"></i>Rifa
+          </span>
+          {[{ id:'', nombre:'Todas', n: rifasVista.reduce((t, r) => t + r.n, 0) }, ...rifasVista].map(r => {
+            const sel = rifaActual === r.id;
+            return (
+              <button key={r.id || 'todas'} onClick={() => setRifaSel(r.id)} aria-pressed={sel}
+                style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 13px', borderRadius:10, cursor:'pointer', fontWeight:700, fontSize:'.78rem', maxWidth:260,
+                  border:`1.5px solid ${sel ? '#7c3aed' : 'var(--jordyn-border)'}`, background: sel ? 'rgba(124,58,237,.1)' : '#fff', color: sel ? '#7c3aed' : 'var(--jordyn-text)' }}>
+                <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.nombre}</span>
+                <span style={{ background: sel ? '#7c3aed' : 'var(--jordyn-bg2)', color: sel ? '#fff' : 'var(--jordyn-muted)', borderRadius:20, padding:'0 7px', fontSize:'.68rem', fontWeight:800, flexShrink:0 }}>{r.n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:'4rem' }}>
           <div className="jd-spinner" style={{ width:44, height:44 }}></div>
         </div>
       ) : filtro === 'abonos' ? (
-        abonos.length === 0 ? (
+        abonosFiltrados.length === 0 ? (
           <div style={{ textAlign:'center', padding:'4rem 2rem' }}>
             <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>🐷</div>
             <div style={{ fontWeight:800, fontSize:'1.1rem', color:'var(--jordyn-text)', marginBottom:4 }}>Sin abonos</div>
@@ -1083,12 +1144,14 @@ export default function GestionReservas() {
           </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {abonos.map(a => {
+            {abonosPagina.map((a, i) => {
               const pend = a.estado === 'pendiente';
               const color = pend ? '#b37700' : a.estado === 'aprobado' ? '#059669' : '#e63946';
               const montoEdit = montosAbono[a.id] ?? String(a.monto);
               return (
-                <div key={a.id} className="jd-card" style={{ padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${color}`, opacity: pend ? 1 : .75 }}>
+                <React.Fragment key={a.id}>
+                <TituloRifa lista={abonosPagina} i={i} idDe={x => x.rifa_id} nombreDe={x => x.rifa_nombre} />
+                <div className="jd-card" style={{ padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${color}`, opacity: pend ? 1 : .75 }}>
                   {a.comprobante_url ? (
                     <a href={a.comprobante_url} target="_blank" rel="noreferrer" title="Ver el comprobante" style={{ flexShrink:0 }}>
                       <img src={a.comprobante_url} alt="Comprobante" style={{ width:58, height:58, objectFit:'cover', borderRadius:10, border:'1.5px solid var(--jordyn-border2)', display:'block' }} />
@@ -1145,11 +1208,12 @@ export default function GestionReservas() {
                     </span>
                   )}
                 </div>
+                </React.Fragment>
               );
             })}
           </div>
         )
-      ) : reservasAgrupadas.length===0 ? (
+      ) : gruposFiltrados.length===0 ? (
         <div style={{ textAlign:'center', padding:'4rem 2rem' }}>
           <div style={{ fontSize:'3rem', marginBottom:'.75rem' }}>📭</div>
           <div style={{ fontWeight:800, fontSize:'1.1rem', color:'var(--jordyn-text)', marginBottom:4 }}>Sin reservas</div>
@@ -1161,13 +1225,15 @@ export default function GestionReservas() {
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {reservasAgrupadas.map(({ principal:r, extras }) => {
+          {gruposPagina.map(({ principal:r, extras }, i) => {
             const est     = EST[r.estado] || EST.pendiente;
             const numeros = [r.numero, ...extras.map(e => e.numero)];
             const esGrupo = numeros.length > 1;
             const totalVal= r.precio * numeros.length;
             return (
-              <div key={r.id} onClick={() => r.estado !== 'apartado' && abrirModal(r)} className="jd-card"
+              <React.Fragment key={r.id}>
+              <TituloRifa lista={gruposPagina} i={i} idDe={g => g.principal.rifa_id} nombreDe={g => g.principal.rifa_nombre} />
+              <div onClick={() => r.estado !== 'apartado' && abrirModal(r)} className="jd-card"
                 style={{ cursor: r.estado === 'apartado' ? 'default' : 'pointer', padding:'.9rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem', flexWrap:'wrap', borderLeft:`3px solid ${est.dot}`, transition:'box-shadow .15s, transform .12s' }}
                 onMouseEnter={e => { e.currentTarget.style.boxShadow='0 4px 16px rgba(10,191,188,.12)'; e.currentTarget.style.transform='translateY(-1px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.boxShadow=''; e.currentTarget.style.transform=''; }}>
@@ -1254,9 +1320,37 @@ export default function GestionReservas() {
                   </>
                 )}
               </div>
+              </React.Fragment>
             );
           })}
         </div>
+      )}
+
+      {/* Paginación */}
+      {!loading && paginas > 1 && (
+        <nav aria-label="Páginas" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, flexWrap:'wrap', marginTop:'1.25rem' }}>
+          <button className="btn-jordyn-outline" onClick={() => setPagina(pag - 1)} disabled={pag === 1} style={{ fontSize:'.78rem', padding:'6px 12px' }}>
+            <i className="bi bi-chevron-left me-1"></i>Anterior
+          </button>
+          {Array.from({ length: paginas }, (_, i) => i + 1)
+            .filter(n => n === 1 || n === paginas || Math.abs(n - pag) <= 1)
+            .map((n, i, arr) => (
+              <React.Fragment key={n}>
+                {i > 0 && n - arr[i - 1] > 1 && <span style={{ color:'var(--jordyn-muted)' }}>…</span>}
+                <button onClick={() => setPagina(n)} aria-current={n === pag ? 'page' : undefined}
+                  style={{ minWidth:34, height:34, borderRadius:8, cursor:'pointer', fontWeight:800, fontSize:'.8rem',
+                    border:`1.5px solid ${n === pag ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: n === pag ? 'var(--jordyn-primary)' : '#fff', color: n === pag ? '#fff' : 'var(--jordyn-text)' }}>
+                  {n}
+                </button>
+              </React.Fragment>
+            ))}
+          <button className="btn-jordyn-outline" onClick={() => setPagina(pag + 1)} disabled={pag === paginas} style={{ fontSize:'.78rem', padding:'6px 12px' }}>
+            Siguiente<i className="bi bi-chevron-right ms-1"></i>
+          </button>
+          <span style={{ fontSize:'.72rem', color:'var(--jordyn-muted)', marginLeft:6 }}>
+            {(pag - 1) * POR_PAGINA + 1}–{Math.min(pag * POR_PAGINA, totalItems)} de {totalItems}
+          </span>
+        </nav>
       )}
 
       {selR && (
