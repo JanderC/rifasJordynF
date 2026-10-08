@@ -36,6 +36,7 @@ const emptyForm = {
   ofertas: [],
   categoria_seleccionada_id: null,
   // Venta en línea
+  imagenes: [],                    // fotos adicionales (URLs ya subidas); la principal es imagen_base64
   publicada: true,                 // sale en la página del cliente y la ofrece el bot
   premio_segundo: '',              // 2.º premio (opcional)
   premio_tercero: '',              // 3.er premio (opcional)
@@ -2708,6 +2709,39 @@ export default function GestionRifas() {
     setForm(p => ({ ...p, imagen_base64: b64 }));
   };
 
+  // Fotos adicionales: se suben una por una y quedan como URLs (carrusel en la página)
+  const [subiendoFotos, setSubiendoFotos] = useState(false);
+  const MAX_FOTOS = 10;
+  const handleMasFotos = async (e) => {
+    const archivos = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!archivos.length) return;
+    const cupo = MAX_FOTOS - (form.imagenes || []).length;
+    if (cupo <= 0) { toast.error(`Máximo ${MAX_FOTOS} fotos adicionales`); return; }
+    setSubiendoFotos(true);
+    let subidas = 0;
+    for (const file of archivos.slice(0, cupo)) {
+      if (!file.type.startsWith('image/')) { toast.error(`${file.name} no es una imagen`); continue; }
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name} pesa más de 5MB`); continue; }
+      try {
+        const fd = new FormData();
+        fd.append('imagen', file);
+        const r = await API.post('/upload/rifa-foto', fd);
+        setForm(p => ({ ...p, imagenes: [...(p.imagenes || []), r.data.url] }));
+        subidas++;
+      } catch (err) { toast.error(err.response?.data?.error || `No se pudo subir ${file.name}`); }
+    }
+    setSubiendoFotos(false);
+    if (subidas) toast.success(`${subidas} foto${subidas === 1 ? '' : 's'} agregada${subidas === 1 ? '' : 's'}. Guarda la rifa para publicarlas.`);
+    if (archivos.length > cupo) toast.info(`Solo se agregaron ${cupo}: el máximo es ${MAX_FOTOS}`);
+  };
+  const moverFoto = (i, d) => setForm(p => {
+    const l = [...(p.imagenes || [])]; const j = i + d;
+    if (j < 0 || j >= l.length) return p;
+    [l[i], l[j]] = [l[j], l[i]];
+    return { ...p, imagenes: l };
+  });
+
   const handleNueva = () => {
     setForm(emptyForm);
     setEditId(null);
@@ -2736,6 +2770,7 @@ export default function GestionRifas() {
       ticket_template_id:        r.ticket_template_id || null,
       ofertas:                   Array.isArray(r.ofertas) ? r.ofertas : [],
       categoria_seleccionada_id: catId,
+      imagenes:                  Array.isArray(r.imagenes) ? r.imagenes : [],
       publicada:                 r.publicada !== false,
       premio_segundo:            r.premio_segundo || '',
       premio_tercero:            r.premio_tercero || '',
@@ -2800,6 +2835,7 @@ export default function GestionRifas() {
         ofertas:               form.ofertas || [],
         vendedores_categorias: vendedoresSeleccionados,
         categoria_id:          form.categoria_seleccionada_id || null,
+        imagenes:              form.imagenes || [],
         publicada:             form.publicada !== false,
         premio_segundo:        form.premio_segundo || '',
         premio_tercero:        form.premio_tercero || '',
@@ -3276,6 +3312,43 @@ export default function GestionRifas() {
                   </div>
                 )}
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImagen} />
+              </div>
+
+              {/* Más fotos (carrusel tipo Instagram en la página del cliente) */}
+              <div className="col-12">
+                <label className="jd-label">
+                  MÁS FOTOS
+                  <span style={{ fontSize:'.6rem', color:'var(--jordyn-muted)', fontWeight:600, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                    (opcional — el cliente las pasa como en Instagram; la de arriba es la primera)
+                  </span>
+                </label>
+                <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'stretch' }}>
+                  {(form.imagenes || []).map((u, i) => (
+                    <div key={u} style={{ position:'relative', width:104, height:104, borderRadius:10, overflow:'hidden', border:'2px solid var(--jordyn-border)', background:'var(--jordyn-bg2)' }}>
+                      <img src={u.includes('/upload/') ? u.replace('/upload/', '/upload/f_auto,q_auto,c_fill,w_220,h_220/') : u} alt={`Foto ${i + 2}`} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
+                      <span style={{ position:'absolute', top:4, left:4, background:'rgba(0,0,0,.65)', color:'#fff', borderRadius:10, padding:'0 6px', fontSize:'.62rem', fontWeight:800 }}>{i + 2}</span>
+                      <button type="button" onClick={() => setForm(p => ({ ...p, imagenes: p.imagenes.filter((_, j) => j !== i) }))} aria-label={`Quitar la foto ${i + 2}`} title="Quitar"
+                        style={{ position:'absolute', top:4, right:4, background:'rgba(230,57,70,.9)', border:'none', color:'#fff', borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:'.7rem', lineHeight:1 }}>✕</button>
+                      <div style={{ position:'absolute', bottom:4, left:4, right:4, display:'flex', justifyContent:'space-between' }}>
+                        <button type="button" onClick={() => moverFoto(i, -1)} disabled={i === 0} aria-label="Mover antes" title="Mover antes"
+                          style={{ background:'rgba(255,255,255,.9)', border:'none', borderRadius:6, width:24, height:22, cursor:'pointer', opacity: i === 0 ? .4 : 1 }}>‹</button>
+                        <button type="button" onClick={() => moverFoto(i, 1)} disabled={i === form.imagenes.length - 1} aria-label="Mover después" title="Mover después"
+                          style={{ background:'rgba(255,255,255,.9)', border:'none', borderRadius:6, width:24, height:22, cursor:'pointer', opacity: i === form.imagenes.length - 1 ? .4 : 1 }}>›</button>
+                      </div>
+                    </div>
+                  ))}
+                  {(form.imagenes || []).length < MAX_FOTOS && (
+                    <label style={{ width:104, height:104, borderRadius:10, border:'2px dashed var(--jordyn-border2)', background:'var(--jordyn-bg)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4, cursor: subiendoFotos ? 'wait' : 'pointer', color:'var(--jordyn-primary)', fontSize:'.7rem', fontWeight:700, textAlign:'center' }}>
+                      {subiendoFotos
+                        ? <><span className="jd-spinner" style={{ width:20, height:20, borderWidth:2 }}></span>Subiendo…</>
+                        : <><i className="bi bi-images" style={{ fontSize:'1.4rem' }}></i>Agregar fotos</>}
+                      <input type="file" accept="image/*" multiple hidden disabled={subiendoFotos} onChange={handleMasFotos} />
+                    </label>
+                  )}
+                </div>
+                <div style={{ fontSize:'.66rem', color:'var(--jordyn-muted)', marginTop:6 }}>
+                  Hasta {MAX_FOTOS} fotos, máx 5MB cada una. Puedes elegir varias a la vez. Los cambios se publican al guardar la rifa.
+                </div>
               </div>
 
               {/* Nombre */}

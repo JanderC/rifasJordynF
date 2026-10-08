@@ -20,7 +20,7 @@ const MONEDAS = {
 
 const COLOR_DEFECTO = '#089a97';
 const MAX_MB = 5;
-const VACIO = { nombre: '', icono: '🏦', color: '', moneda: 'COP', pais: '', nota: '', presencial: false, activo: true, campos: [{ label: 'Banco', valor: '' }, { label: 'Número de cuenta', valor: '' }, { label: 'Titular', valor: '' }] };
+const VACIO = { nombre: '', icono: '🏦', color: '', moneda: 'COP', pais: '', nota: '', presencial: false, pedir_titular: false, activo: true, campos: [{ label: 'Banco', valor: '' }, { label: 'Número de cuenta', valor: '' }, { label: 'Titular', valor: '' }] };
 const ICONOS = ['🏦', '📱', '💳', '💜', '💙', '💚', '💛', '💵', '🪙', '🇻🇪', '🇨🇴', '🇺🇸'];
 
 const fmtFecha = f =>
@@ -91,7 +91,7 @@ export default function CuentasBancarias() {
   const abrir = (c = null) => {
     setEditId(c?.id ?? null);
     setForm(c
-      ? { nombre: c.nombre, icono: c.icono || '💳', color: c.color || '', moneda: c.moneda, pais: c.pais || '', nota: c.nota || '', presencial: !!c.presencial, activo: !!c.activo, campos: (c.campos || []).map(x => ({ ...x })) }
+      ? { nombre: c.nombre, icono: c.icono || '💳', color: c.color || '', moneda: c.moneda, pais: c.pais || '', nota: c.nota || '', presencial: !!c.presencial, pedir_titular: !!c.pedir_titular, activo: !!c.activo, campos: (c.campos || []).map(x => ({ ...x })) }
       : { ...VACIO, campos: VACIO.campos.map(x => ({ ...x })) });
     setArchivo(null); setPreview(c?.imagen_url || null);
     if (fileRef.current) fileRef.current.value = '';
@@ -307,6 +307,12 @@ export default function CuentasBancarias() {
                       <span style={{ display:'block', fontSize:'.68rem', fontWeight:500, color:'var(--jordyn-muted)' }}>El bot no cobra con este método: le avisa a una persona para que lo coordine.</span>
                     </span>
                   </label>
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:8, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>
+                    <input type="checkbox" checked={!!form.pedir_titular} onChange={e => set('pedir_titular', e.target.checked)} style={{ width:18, height:18, marginTop:2, accentColor:'var(--jordyn-primary)' }} />
+                    <span>Pedir el nombre de quien envía el pago
+                      <span style={{ display:'block', fontSize:'.68rem', fontWeight:500, color:'var(--jordyn-muted)' }}>Útil en Zelle: el cliente escribe quién hizo la transferencia (en la página y con el bot) y lo ves en Reservas.</span>
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -348,6 +354,7 @@ export default function CuentasBancarias() {
                   {MONEDAS[c.moneda]?.corto || c.moneda}
                 </span>
                 {c.presencial && <span style={{ fontSize:'.6rem', fontWeight:800, padding:'2px 8px', borderRadius:20, background:'rgba(240,165,0,.12)', color:'#a07000' }}>EN PERSONA</span>}
+                {c.pedir_titular && <span style={{ fontSize:'.6rem', fontWeight:800, padding:'2px 8px', borderRadius:20, background:'rgba(67,97,238,.1)', color:'#4361ee' }}>PIDE QUIÉN ENVÍA</span>}
                 {!c.activo && <span style={{ fontSize:'.6rem', fontWeight:800, padding:'2px 8px', borderRadius:20, background:'rgba(0,0,0,.7)', color:'#fff' }}><i className="bi bi-eye-slash-fill me-1"></i>OCULTA</span>}
                 <span style={{ marginLeft:'auto', display:'flex', gap:4 }}>
                   <button className="btn-jordyn-outline" onClick={() => mover(i, -1)} disabled={i === 0} style={{ padding:'3px 8px', fontSize:'.7rem' }} title="Subir" aria-label="Subir"><i className="bi bi-arrow-up"></i></button>

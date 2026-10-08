@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../services/api';
 import GanadoresPublico from '../components/GanadoresPublico';
@@ -162,6 +162,7 @@ function useMetodosPagoServidor() {
             campos: Array.isArray(m.campos) ? m.campos : [],
             nota: m.nota,
             imagen: m.imagen || null,   // logo subido en el panel (si no hay, se usa el ícono)
+            pedir_titular: !!m.pedir_titular,   // hay que decir quién envió el pago (p. ej. Zelle)
           };
           if (m.moneda) METODO_MONEDA[nombre] = m.moneda;
         }
@@ -662,10 +663,12 @@ const injectStyles = () => {
       /* En el teléfono la foto de la rifa ocupa todo el ancho y toma su alto natural
          (antes quedaba encogida dentro de una caja baja, con franjas a los lados) */
       .hero-img-caja.con-imagen { min-height:0 !important; height:auto !important; }
-      .hero-img-caja.con-imagen .hero-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:85vh; }
+      .hero-img-caja.con-imagen:not(.galeria) .hero-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:85vh; }
       .hero-img-degradado { display:none; }
       .rifa-card-img-caja.con-imagen { height:auto !important; }
-      .rifa-card-img-caja.con-imagen .rifa-card-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:75vh; }
+      .rifa-card-img-caja.con-imagen:not(.galeria) .rifa-card-img { position:relative !important; inset:auto !important; width:100% !important; height:auto !important; max-height:75vh; }
+      /* Con varias fotos el marco es fijo (4:5, como Instagram) para que no salte al pasar de una a otra */
+      .hero-img-caja.con-imagen.galeria, .rifa-card-img-caja.con-imagen.galeria { aspect-ratio:4 / 5; }
       .nav-solo-escritorio { display:none !important; }
       .pub-marca-img { height:40px; }
       .count-unit { min-width:0; padding:12px 4px 9px; border-radius:14px; }
@@ -837,6 +840,57 @@ function BannerOfertas({ ofertas, precioUnitario }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   GALERÍA DE FOTOS DE LA RIFA (tipo Instagram)
+   La foto principal + las que el dueño agregue en el panel. Se pasa
+   con las flechas, tocando los puntos o deslizando el dedo.
+═══════════════════════════════════════════════════════════ */
+function useGaleria(rifa) {
+  const fotos = useMemo(
+    () => [rifa.imagen_url, ...(Array.isArray(rifa.imagenes) ? rifa.imagenes : [])].filter(Boolean),
+    [rifa.imagen_url, rifa.imagenes]);
+  const [pos, setPos] = useState(0);
+  const idx = Math.min(pos, Math.max(fotos.length - 1, 0));
+  const ir = useCallback((d) => setPos((x) => (Math.min(x, fotos.length - 1) + d + fotos.length) % fotos.length), [fotos.length]);
+  const inicio = useRef(null);
+  const gestos = fotos.length > 1 ? {
+    onTouchStart: (e) => { inicio.current = e.touches[0].clientX; },
+    onTouchEnd: (e) => {
+      if (inicio.current == null) return;
+      const dx = e.changedTouches[0].clientX - inicio.current;
+      inicio.current = null;
+      if (Math.abs(dx) > 40) ir(dx < 0 ? 1 : -1);
+    },
+  } : {};
+  // La siguiente se va cargando para que el cambio sea inmediato
+  useEffect(() => {
+    if (fotos.length > 1) { const sig = new Image(); sig.src = fotos[(idx + 1) % fotos.length]; }
+  }, [idx, fotos]);
+  return { fotos, idx, actual: fotos[idx] || null, ir, irA: setPos, gestos };
+}
+
+function ControlesGaleria({ gal }) {
+  if (gal.fotos.length < 2) return null;
+  const flecha = { position:'absolute', top:'50%', transform:'translateY(-50%)', zIndex:3, width:38, height:38, borderRadius:'50%', border:'none', cursor:'pointer',
+    background:'rgba(255,255,255,.92)', color:DARK, fontSize:'1.2rem', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(0,0,0,.3)' };
+  return (
+    <>
+      <button type="button" aria-label="Foto anterior" style={{ ...flecha, left:10 }} onClick={(e) => { e.stopPropagation(); gal.ir(-1); }}>‹</button>
+      <button type="button" aria-label="Foto siguiente" style={{ ...flecha, right:10 }} onClick={(e) => { e.stopPropagation(); gal.ir(1); }}>›</button>
+      <span style={{ position:'absolute', top:12, right:12, zIndex:3, background:'rgba(0,0,0,.6)', color:'#fff', borderRadius:20, padding:'3px 10px', fontSize:'.7rem', fontWeight:700, backdropFilter:'blur(4px)' }}>
+        {gal.idx + 1} / {gal.fotos.length}
+      </span>
+      <div style={{ position:'absolute', bottom:12, left:0, right:0, zIndex:3, display:'flex', justifyContent:'center', gap:6 }}>
+        {gal.fotos.map((_, i) => (
+          <button key={i} type="button" aria-label={`Ver foto ${i + 1}`} aria-current={i === gal.idx} onClick={(e) => { e.stopPropagation(); gal.irA(i); }}
+            style={{ width: i === gal.idx ? 20 : 8, height:8, borderRadius:8, border:'none', padding:0, cursor:'pointer', transition:'width .2s, background .2s',
+              background: i === gal.idx ? '#fff' : 'rgba(255,255,255,.55)', boxShadow:'0 1px 4px rgba(0,0,0,.4)' }} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    PREMIOS DE LA RIFA: el premio mayor y los adicionales
    (los adicionales se cargan en el panel, al crear/editar la rifa)
 ═══════════════════════════════════════════════════════════ */
@@ -920,7 +974,8 @@ const EtiquetaApartado = ({ rifa, estilo }) => (rifa.pago_diferido ? (
 function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
-  const tieneImagen = rifa.imagen_url && !imgError;
+  const gal = useGaleria(rifa);
+  const tieneImagen = gal.actual && !imgError;
   const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
   const progreso = useRifaProgress(rifa.id, refreshKey);
   const pctHero = Math.min(100, progreso.pct);
@@ -934,18 +989,18 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
 
   return (
     <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
-      <div className={`hero-img-caja${tieneImagen ? ' con-imagen' : ''}`} style={{ position:'relative', overflow:'hidden', height:'100%', minHeight:520, background:'#0d1e1e' }}>
+      <div className={`hero-img-caja${tieneImagen ? ' con-imagen' : ''}${gal.fotos.length > 1 ? ' galeria' : ''}`} {...gal.gestos} style={{ position:'relative', overflow:'hidden', height:'100%', minHeight:520, background:'#0d1e1e' }}>
         {tieneImagen ? (
           <>
             {/* Fondo borroso por si quedan franjas (efecto cinema) */}
             <div style={{
               position:'absolute', inset:0,
-              background:`url(${rifa.imagen_url}) center/cover no-repeat`,
+              background:`url(${gal.actual}) center/cover no-repeat`,
               filter:'blur(40px) brightness(.35)',
               transform:'scale(1.25)',
             }}></div>
             {/* Imagen principal: contain para que se vea COMPLETA sin recortes */}
-            <img className="hero-img" src={rifa.imagen_url} alt={rifa.premio} onError={() => setImgError(true)}
+            <img className="hero-img" src={gal.actual} alt={gal.fotos.length > 1 ? `${rifa.premio} — foto ${gal.idx + 1} de ${gal.fotos.length}` : rifa.premio} onError={() => setImgError(true)}
               style={{
                 position:'absolute', inset:0,
                 width:'100%', height:'100%',
@@ -959,6 +1014,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
             <div style={{ fontSize:'8rem', opacity:.2, animation:'heroFloat 4s ease-in-out infinite' }}>🎰</div>
           </div>
         )}
+        {tieneImagen && <ControlesGaleria gal={gal} />}
         <div className="hero-img-degradado" style={{ position:'absolute', inset:0, background:`linear-gradient(to right, transparent 70%, ${DARK} 100%)`, pointerEvents:'none' }}></div>
       </div>
 
@@ -1187,7 +1243,7 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
   const numeros = numerosObjs.map(n => n.numero);
 
   const [step,       setStep]     = useState(1);
-  const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'' });
+  const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'', pagador:'' });
   const [imagen,     setImagen]   = useState(null);
   const [imgB64,     setImgB64]   = useState('');
   const [imgNombre,  setImgN]     = useState('');
@@ -1239,6 +1295,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
     if (!form.nombre.trim()) { setError('Ingresa tu nombre completo'); return; }
     if (!form.cedula.trim()) { setError('La cédula es obligatoria'); return; }
     if (apartar && form.telefono.replace(/\D/g,'').length < 7) { setError('Escribe tu WhatsApp: por ahí te recordamos el pago y te llega tu ticket'); return; }
+    if (!apartar && METODOS_PAGO[form.metodo_pago]?.pedir_titular && form.pagador.trim().length < 3) { setError(`Escribe el nombre de la persona que envió el pago por ${form.metodo_pago}`); return; }
     if (!apartar && !imgB64) { setError('El comprobante de pago es obligatorio'); return; }
     // Validar correo solo si fue ingresado
     if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
@@ -1256,7 +1313,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
         telefono:           telefonoFull,
         ...(apartar
           ? { apartar: true }
-          : { metodo_pago: form.metodo_pago, comprobante_base64: imgB64, comprobante_nombre: imgNombre }),
+          : { metodo_pago: form.metodo_pago, comprobante_base64: imgB64, comprobante_nombre: imgNombre, pagador: form.pagador.trim() || undefined }),
       });
       const ids = (r.data.reservas || [r.data.reserva]).map(rv => rv?.id).filter(Boolean);
       setApartado(r.data.apartado ? r.data : null);
@@ -1495,6 +1552,13 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
               })()}
 
               {form.metodo_pago && <PagoInlineCard metodo={form.metodo_pago} />}
+              {METODOS_PAGO[form.metodo_pago]?.pedir_titular && (
+                <div style={{ marginTop:14 }}>
+                  <label className="pub-label">¿Quién envió el pago por {form.metodo_pago}? *</label>
+                  <input className="pub-input" value={form.pagador} onChange={e => upd('pagador', e.target.value)} placeholder="Nombre y apellido del titular que hizo el envío" maxLength={120} />
+                  <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:5 }}>Así ubicamos tu pago más rápido, sobre todo si lo envió otra persona.</div>
+                </div>
+              )}
               <div style={{ height:20 }}></div>
 
               {/* ③ Comprobante */}
@@ -1680,6 +1744,7 @@ function ModalMisApartados({ onClose, onPagado }) {
   const [modoPago, setModoPago] = useState('todo');     // 'todo' = lo que falta | 'abono' = una parte
   const [montoAbono, setMontoAbono] = useState('');
   const [mensajeOk, setMensajeOk] = useState('');
+  const [pagador,  setPagador]  = useState('');   // quién envió el pago (métodos que lo piden)
   const [imagen,   setImagen]   = useState(null);
   const [imgB64,   setImgB64]   = useState('');
   const [error,    setError]    = useState('');
@@ -1721,10 +1786,11 @@ function ModalMisApartados({ onClose, onPagado }) {
     if (modoPago === 'abono' && !(abonoNum > 0)) { setError('Escribe cuánto vas a abonar'); return; }
     if (modoPago === 'abono' && abonoNum > falta) { setError(`Solo te faltan ${fmt(falta)}`); return; }
     if (!metodo) { setError('Elige con qué método pagaste'); return; }
+    if (METODOS_PAGO[metodo]?.pedir_titular && pagador.trim().length < 3) { setError(`Escribe el nombre de la persona que envió el pago por ${metodo}`); return; }
     if (!imgB64) { setError('Sube la captura del comprobante'); return; }
     setError(''); setCargando(true);
     try {
-      const r = await API.post('/publico/apartados/pagar', { rifa_id: sel.rifa_id, telefono: telefonoFull, cedula: form.cedula, metodo_pago: metodo, comprobante_base64: imgB64, monto: montoPago });
+      const r = await API.post('/publico/apartados/pagar', { rifa_id: sel.rifa_id, telefono: telefonoFull, cedula: form.cedula, metodo_pago: metodo, comprobante_base64: imgB64, monto: montoPago, pagador: pagador.trim() || undefined });
       setMensajeOk(r.data?.mensaje || '');
       setPaso('listo');
       onPagado?.();
@@ -1854,6 +1920,12 @@ function ModalMisApartados({ onClose, onPagado }) {
                 </div>
               )}
               {metodo && <PagoInlineCard metodo={metodo} />}
+              {METODOS_PAGO[metodo]?.pedir_titular && (
+                <div style={{ marginTop:14 }}>
+                  <label className="pub-label">¿Quién envió el pago por {metodo}? *</label>
+                  <input className="pub-input" value={pagador} onChange={e => setPagador(e.target.value)} placeholder="Nombre y apellido del titular que hizo el envío" maxLength={120} />
+                </div>
+              )}
 
               <div style={{ fontSize:'.78rem', color:MORADO, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', margin:'20px 0 10px' }}>Comprobante de pago</div>
               <div onClick={() => fileRef.current?.click()}
@@ -2614,7 +2686,8 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const progreso = useRifaProgress(rifa.id, refreshKey);
   const pct = Math.min(100, progreso.pct);
-  const tieneImagen  = rifa.imagen_url && !imgError;
+  const gal = useGaleria(rifa);
+  const tieneImagen  = gal.actual && !imgError;
   const tieneOfertas = rifa.ofertas && rifa.ofertas.length > 0;
 
   // Mejor oferta para mostrar en el resumen
@@ -2635,20 +2708,20 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
       onMouseEnter={e => { e.currentTarget.style.transform='translateY(-6px)'; e.currentTarget.style.boxShadow=`0 16px 48px rgba(10,180,180,.15)`; }}
       onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 24px rgba(10,100,100,.08)'; }}>
 
-      <div className={`rifa-card-img-caja${tieneImagen ? ' con-imagen' : ''}`} style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
+      <div className={`rifa-card-img-caja${tieneImagen ? ' con-imagen' : ''}${gal.fotos.length > 1 ? ' galeria' : ''}`} {...gal.gestos} style={{ position:'relative', height:220, overflow:'hidden', background:`linear-gradient(135deg,${TURQ}22,${TURQ2}33)` }}>
         {tieneImagen ? (
           <>
             {/* Fondo borroso para rellenar (efecto cinema) */}
             <div style={{
               position:'absolute', inset:0,
-              background:`url(${rifa.imagen_url}) center/cover no-repeat`,
+              background:`url(${gal.actual}) center/cover no-repeat`,
               filter:'blur(24px) brightness(.7)',
               transform:'scale(1.15)',
             }}></div>
             {/* Imagen completa encima del fondo borroso */}
             <img
               className="rifa-card-img"
-              src={rifa.imagen_url}
+              src={gal.actual}
               alt={rifa.nombre}
               onError={() => setImgError(true)}
               style={{

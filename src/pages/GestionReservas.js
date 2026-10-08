@@ -1107,6 +1107,7 @@ export default function GestionReservas() {
                       {a.numeros.length > 0 && <span style={{ marginLeft:8 }}>🎟 {a.numeros.join(', ')}</span>}
                       {a.telefono && <span style={{ marginLeft:8 }}><i className="bi bi-telephone-fill me-1"></i>{a.telefono}</span>}
                       {a.metodo_pago && <span style={{ marginLeft:8 }}><i className="bi bi-credit-card me-1"></i>{a.metodo_pago}</span>}
+                      {a.pagador && <span style={{ marginLeft:8, color:'#4361ee', fontWeight:700 }}><i className="bi bi-person-check-fill me-1"></i>Envió: {a.pagador}</span>}
                     </div>
                     <div style={{ fontSize:'.72rem', marginTop:3, fontWeight:600, color: a.apartado_vigente ? '#0e7490' : 'var(--jordyn-muted)' }}>
                       {a.apartado_vigente
@@ -1186,6 +1187,7 @@ export default function GestionReservas() {
                     {r.rifa_nombre}
                     {r.telefono    && <span style={{ marginLeft:10 }}><i className="bi bi-telephone-fill me-1"></i>{r.telefono}</span>}
                     {r.metodo_pago && <span style={{ marginLeft:10 }}><i className="bi bi-credit-card me-1"></i>{r.metodo_pago}</span>}
+                    {r.pagador && <span style={{ marginLeft:10, color:'#4361ee', fontWeight:700 }}><i className="bi bi-person-check-fill me-1"></i>Envió: {r.pagador}</span>}
                   </div>
                   {r.estado === 'apartado' && (
                     <div style={{ fontSize:'.72rem', color:'#7c3aed', fontWeight:700, marginTop:3 }}>
