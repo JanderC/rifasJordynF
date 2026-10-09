@@ -64,6 +64,11 @@ export default function Sidebar() {
   ];
 
   const navs = user?.rol === 'dueno' ? navsDueno : navsVendedor;
+  // Barra de abajo en el teléfono: lo que más usa el dueño, en este orden (el resto está en el menú ☰)
+  const BARRA_DUENO = ['/rifas', '/reservas', '/whatsapp', '/caja', '/resultados'];
+  const navsBarra = user?.rol === 'dueno'
+    ? BARRA_DUENO.map(to => navsDueno.find(n => n.to === to))
+    : navs.slice(0, 5);
   const currentNav = navs.find(n => location.pathname === n.to);
   const pageTitle  = currentNav?.label || 'RESUELVE TU SEMANA';
 
@@ -202,7 +207,7 @@ export default function Sidebar() {
       {/* ── Bottom nav mobile ── */}
       <nav className="jd-bottom-nav">
         <div className="jd-bottom-nav-inner">
-          {navs.slice(0, 5).map(n => (
+          {navsBarra.map(n => (
             <NavLink
               key={n.to}
               to={n.to}
