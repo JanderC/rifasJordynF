@@ -971,6 +971,15 @@ const EtiquetaApartado = ({ rifa, estilo }) => (rifa.pago_diferido ? (
    HERO DE LA RIFA PRINCIPAL
    FIX PUNTO 1B: condición !cd.invalid agregada al render del countdown
 ═══════════════════════════════════════════════════════════ */
+// Rifa con las ventas cerradas: sigue a la vista, sin números para comprar
+const SuerteParaTodos = ({ oscuro = false }) => (
+  <div role="status" style={{ width:'100%', textAlign:'center', borderRadius:16, padding:'14px 16px', marginTop: oscuro ? 0 : 'auto',
+    background: oscuro ? 'rgba(255,255,255,.1)' : `${TURQ}10`, border:`1.5px dashed ${oscuro ? 'rgba(255,255,255,.4)' : `${TURQ}77`}` }}>
+    <div style={{ fontSize:'1.15rem', fontWeight:900, color: oscuro ? '#fff' : TURQ_DK }}>🍀 ¡Suerte para todos!</div>
+    <div style={{ fontSize:'.74rem', color: oscuro ? 'rgba(255,255,255,.72)' : `${DARK}88`, marginTop:3 }}>Las ventas de esta rifa ya cerraron</div>
+  </div>
+);
+
 function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
@@ -1117,9 +1126,11 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
             <div style={{ fontSize:'.52rem', color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:2 }}>Por número</div>
             <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>{fmt(rifa.precio)}</div>
           </div>
+          {rifa.cerrada ? <SuerteParaTodos oscuro /> : (
           <button className="pub-btn" onClick={() => onVerNumeros(rifa)} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, padding:'15px 28px', borderRadius:50, fontSize:'.95rem', fontWeight:700, width:'100%', justifyContent:'center', animation:'glowPulse 2.5s ease-in-out infinite' }}>
             🎟 Ver números disponibles
           </button>
+          )}
         </div>
       </div>
       <style>{`@media (max-width: 640px) { .hero-feat-card { grid-template-columns:1fr !important; } .hero-feat-card > div:first-child { min-height:260px !important; } }`}</style>
@@ -2821,9 +2832,11 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
             <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${TURQ},${TURQ2})`, borderRadius:8, transition:'width 1s ease', boxShadow:`0 0 10px ${TURQ}66` }}></div>
           </div>
         </div>
+        {rifa.cerrada ? <SuerteParaTodos /> : (
         <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14, marginTop:'auto' }}>
           Ver números disponibles
         </button>
+        )}
       </div>
     </div>
   );
@@ -2870,6 +2883,7 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   }, [refreshKey]);
 
   const handleSelRifa = rifa => {
+    if (rifa.cerrada) return;   // ventas cerradas: no se muestran los números
     setRifaSel(rifa);
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
   };

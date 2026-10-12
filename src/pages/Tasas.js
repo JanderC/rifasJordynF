@@ -55,6 +55,17 @@ const TASAS_CONFIG = {
   },
 };
 
+/* ─── Tasas del día que se pueden usar en cada tasa del sistema ─── */
+const FUENTES_UI = {
+  BSD_POR_USD: [
+    { id: 'bcv',      nombre: 'BCV (oficial)',  sub: 'Banco Central de Venezuela',  icono: '🏛️', fmt: v => fmtBs(v) },
+    { id: 'paralelo', nombre: 'Dólar paralelo', sub: 'Promedio del mercado',        icono: '📈', fmt: v => fmtBs(v) },
+  ],
+  COP_POR_USD: [
+    { id: 'oficial',  nombre: 'Dólar oficial en Colombia', sub: 'Promedio compra / venta', icono: '🇨🇴', fmt: v => fmtCOP(v) },
+  ],
+};
+
 /* ─── Hook: dólar paralelo Venezuela ─── */
 function useDolarParalelo() {
   const [data, setData] = useState({ tasa: null, fuente: null, fecha: null });
@@ -233,7 +244,14 @@ export default function Tasas() {
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState('');
   const [edits,   setEdits]   = useState({});
-  const paralelo = useDolarParalelo();
+  const [refs,    setRefs]    = useState(null);   // { referencias, fuentes }
+  const [aplicando, setAplicando] = useState('');
+
+  const loadRefs = useCallback(async (fresca = false) => {
+    try { const r = await API.get(`/tasas/referencias${fresca ? '?fresca=1' : ''}`); setRefs(r.data); }
+    catch { setRefs(p => p || { referencias: {}, fuentes: {} }); }
+  }, []);
+  useEffect(() => { loadRefs(); }, [loadRefs]);
 
   const load = useCallback(async () => {
     try {
@@ -262,6 +280,27 @@ export default function Tasas() {
     } finally { setSaving(''); }
   };
 
+  // Copiar una vez el valor del día (la tasa sigue manual)
+  const usarHoy = async (clave, f) => {
+    setAplicando(`${clave}:${f.id}`);
+    try {
+      const r = await API.post(`/tasas/${clave}/sincronizar`, { fuente: f.id });
+      toast.success(`✅ Tasa actualizada con ${f.nombre}: ${f.fmt(r.data.valor)}`);
+      await load(); loadRefs();
+    } catch (err) { toast.error(err.response?.data?.error || 'No se pudo consultar la tasa'); }
+    finally { setAplicando(''); }
+  };
+  // Dejarla siguiendo sola esa fuente (o volver a manual)
+  const seguir = async (clave, fuente, nombre) => {
+    setAplicando(`${clave}:auto`);
+    try {
+      await API.put(`/tasas/${clave}/fuente`, { fuente });
+      toast.success(fuente === 'manual' ? 'La tasa quedó en manual' : `✅ Desde ahora sigue sola a ${nombre}`);
+      await load(); loadRefs();
+    } catch (err) { toast.error(err.response?.data?.error || 'No se pudo cambiar'); }
+    finally { setAplicando(''); }
+  };
+
   const cfg = clave => TASAS_CONFIG[clave] || {
     label: clave, descripcion: '', icono: '💱',
     monedaBase: '', monedaRef: '', placeholder: '0', step: '1',
@@ -287,8 +326,9 @@ export default function Tasas() {
           <i className="bi bi-info-circle me-1"></i>
           Configura aquí las tasas del sistema.
           <strong> COP/USD</strong> se aplica en Zelle y conversiones generales.
-          <strong> BsD/USD</strong> es la referencia para Pago Móvil — si no la guardas, el sistema
-          usa el dólar paralelo de <code>ve.dolarapi.com</code> en tiempo real como respaldo.
+          <strong> BsD/USD</strong> es la que se usa para Pago Móvil.
+          Puedes escribirlas a mano o tomarlas del <strong>BCV</strong>, del paralelo o del dólar oficial de Colombia:
+          una sola vez, o dejarlas en automático para que se actualicen solas.
           El cliente nunca ve la tasa, solo el monto convertido.
         </p>
       </div>
@@ -395,72 +435,66 @@ export default function Tasas() {
                   </div>
                 </div>
 
-                {/* ─── Referencia paralelo (COP y BSD) ─── */}
-                {(clave === 'COP_POR_USD' || clave === 'BSD_POR_USD') && (
-                  <div style={{
-                    marginTop:18, borderTop:'1px solid var(--jordyn-border)',
-                    paddingTop:16, display:'flex', flexDirection:'column', gap:10,
-                  }}>
-                    <div style={{ fontSize:'.66rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px' }}>
-                      <i className="bi bi-globe2 me-1"></i>Referencia en tiempo real — Dólar Paralelo Venezuela
-                    </div>
-
-                    <div style={{
-                      background:`${aa}0.06)`, border:`1px solid ${aa}0.20)`,
-                      borderRadius:10, padding:'12px 16px',
-                      display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10,
-                    }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <span style={{ fontSize:'1.3rem' }}>🇻🇪</span>
-                        <div>
-                          <div style={{ fontSize:'.72rem', fontWeight:700, color:'var(--jordyn-text)' }}>
-                            Dólar Paralelo Venezuela
-                          </div>
-                          <div style={{ fontSize:'.6rem', color:'var(--jordyn-muted)' }}>
-                            ve.dolarapi.com · actualización automática
-                          </div>
+                {/* ─── Tasas del día: BCV / paralelo / oficial de Colombia ─── */}
+                {FUENTES_UI[clave] && (() => {
+                  const fuenteActual = refs?.fuentes?.[clave]?.fuente || 'manual';
+                  const info = refs?.fuentes?.[clave];
+                  return (
+                    <div style={{ marginTop:18, borderTop:'1px solid var(--jordyn-border)', paddingTop:16, display:'flex', flexDirection:'column', gap:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                        <div style={{ fontSize:'.66rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'1px' }}>
+                          <i className="bi bi-globe2 me-1"></i>Tasas del día
                         </div>
+                        <span style={{ fontSize:'.68rem', fontWeight:800, borderRadius:20, padding:'2px 10px',
+                          background: fuenteActual === 'manual' ? 'var(--jordyn-bg2)' : 'rgba(6,214,160,.12)', color: fuenteActual === 'manual' ? 'var(--jordyn-muted)' : '#059669' }}>
+                          {fuenteActual === 'manual' ? 'Manual' : `Automática · ${FUENTES_UI[clave].find(f => f.id === fuenteActual)?.nombre || fuenteActual}`}
+                        </span>
                       </div>
-                      <div style={{ textAlign:'right' }}>
-                        {paralelo.tasa ? (
-                          <>
-                            <div style={{ fontSize:'1.1rem', fontWeight:900, color:c.accentColor }}>
-                              {fmtBs(paralelo.tasa)}
-                            </div>
-                            <div style={{ fontSize:'.58rem', color:'var(--jordyn-muted)' }}>por 1 USD</div>
-                            {paralelo.fecha && (
-                              <div style={{ fontSize:'.54rem', color:'var(--jordyn-muted)', marginTop:2 }}>
-                                {fmtFecha(paralelo.fecha)}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div style={{ fontSize:'.75rem', color:'var(--jordyn-muted)' }}>
-                            <span className="jd-spinner" style={{ width:14, height:14, borderWidth:2, display:'inline-block', marginRight:4 }}></span>
-                            Cargando...
-                          </div>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Nota explicativa */}
-                    <div style={{
-                      background:'rgba(240,165,0,.05)', border:'1px solid rgba(240,165,0,.18)',
-                      borderRadius:8, padding:'8px 12px',
-                      fontSize:'.7rem', color:'var(--jordyn-muted)', lineHeight:1.55,
-                    }}>
-                      <i className="bi bi-lightbulb me-1" style={{ color:'var(--jordyn-gold)' }}></i>
-                      {clave === 'BSD_POR_USD'
-                        ? <>La tasa <strong>BsD/USD</strong> que guardes aquí actúa como <strong>respaldo</strong>.
-                            En el módulo del cliente (Pago Móvil), el monto en bolívares se calcula primero
-                            con la tasa paralela en tiempo real; si la API no responde, usa esta tasa manual.</>
-                        : <>La tasa <strong>COP/USD</strong> la configuras tú manualmente. Se aplica en Zelle
-                            y en la calculadora inferior. La referencia venezolana es informativa para que puedas
-                            ajustar el valor de forma coherente con el mercado.</>
-                      }
+                      {FUENTES_UI[clave].map(f => {
+                        const ref = refs?.referencias?.[f.id];
+                        const siguiendo = fuenteActual === f.id;
+                        return (
+                          <div key={f.id} style={{ background:`${aa}0.06)`, border:`1.5px solid ${siguiendo ? 'rgba(6,214,160,.6)' : `${aa}0.20)`}`, borderRadius:10, padding:'12px 16px',
+                            display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:170 }}>
+                              <span style={{ fontSize:'1.3rem' }}>{f.icono}</span>
+                              <div>
+                                <div style={{ fontSize:'.78rem', fontWeight:700, color:'var(--jordyn-text)' }}>{f.nombre}</div>
+                                <div style={{ fontSize:'.6rem', color:'var(--jordyn-muted)' }}>{f.sub}{ref?.fecha ? ` · ${fmtFecha(ref.fecha)}` : ''}</div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize:'1.1rem', fontWeight:900, color:c.accentColor }}>
+                              {!refs ? <span className="jd-spinner" style={{ width:14, height:14, borderWidth:2, display:'inline-block' }}></span>
+                                : ref?.valor ? <>{f.fmt(ref.valor)} <span style={{ fontSize:'.58rem', color:'var(--jordyn-muted)', fontWeight:600 }}>por 1 USD</span></>
+                                : <span style={{ fontSize:'.72rem', color:'var(--jordyn-muted)', fontWeight:600 }}>No disponible ahora</span>}
+                            </div>
+                            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                              <button type="button" className="btn-jordyn-outline" disabled={!ref?.valor || !!aplicando} onClick={() => usarHoy(clave, f)}
+                                title="Copia este valor a la tasa una sola vez" style={{ fontSize:'.74rem', padding:'5px 11px' }}>
+                                {aplicando === `${clave}:${f.id}` ? 'Aplicando…' : <><i className="bi bi-download me-1"></i>Usar este valor</>}
+                              </button>
+                              <button type="button" disabled={!!aplicando || (!siguiendo && !ref?.valor)} onClick={() => seguir(clave, siguiendo ? 'manual' : f.id, f.nombre)}
+                                title={siguiendo ? 'Dejar de actualizarla sola' : 'La tasa se actualiza sola cada hora con este valor'}
+                                style={{ fontSize:'.74rem', padding:'5px 11px', borderRadius:8, cursor:'pointer', fontWeight:700,
+                                  border:`1.5px solid ${siguiendo ? '#059669' : 'var(--jordyn-border)'}`, background: siguiendo ? '#059669' : '#fff', color: siguiendo ? '#fff' : 'var(--jordyn-text)' }}>
+                                <i className={`bi ${siguiendo ? 'bi-check2-circle' : 'bi-arrow-repeat'} me-1`}></i>{siguiendo ? 'En automático' : 'Automática'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <div style={{ background:'rgba(240,165,0,.05)', border:'1px solid rgba(240,165,0,.18)', borderRadius:8, padding:'8px 12px', fontSize:'.7rem', color:'var(--jordyn-muted)', lineHeight:1.55 }}>
+                        <i className="bi bi-lightbulb me-1" style={{ color:'var(--jordyn-gold)' }}></i>
+                        {fuenteActual === 'manual'
+                          ? <>Está en <strong>manual</strong>: vale lo que escribas arriba. «Usar este valor» lo copia una vez; «Automática» la deja actualizándose sola cada hora.</>
+                          : <>Se actualiza sola cada hora{info?.revisado_at ? <> (última revisión: {fmtFecha(info.revisado_at)})</> : null}. Si escribes un valor a mano y guardas, vuelve a manual.</>}
+                        {info?.error && <span style={{ color:'#c62e3a', fontWeight:700 }}> No se pudo consultar la última vez: se mantiene el valor anterior.</span>}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}

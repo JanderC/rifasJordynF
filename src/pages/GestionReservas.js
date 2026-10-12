@@ -12,6 +12,8 @@ import {
 import { DEFAULT_DESIGN } from '../components/Ticket';
 import { fmtFecha, fmtTimestamp } from '../utils/dates';
 import { useAuth } from '../context/AuthContext';
+import LecturaComprobante from '../components/LecturaComprobante';
+import ArchivoComprobantes from '../components/ArchivoComprobantes';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://rifasjordynb-production.up.railway.app';
 
@@ -142,6 +144,7 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
   const lista = [reserva, ...hermanas]
     .filter(r => r.comprobante_base64)
     .map(r => ({
+      id: r.id,
       numero: r.numero,
       metodo: r.metodo_pago || null,
       datos: r.comprobante_datos || null,   // leído con IA (compras por WhatsApp)
@@ -196,16 +199,8 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
           <span style={{ color:'var(--jordyn-muted)' }}>· revisa que la captura coincida</span>
         </div>
       )}
-      {actual.datos && actual.datos.es_comprobante !== false && (actual.datos.monto || actual.datos.referencia) && (
-        <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginBottom:8, fontSize:'.72rem' }}>
-          <span style={{ fontWeight:700, color:'var(--jordyn-muted)' }}><i className="bi bi-stars me-1" style={{ color:'var(--jordyn-primary)' }}></i>Leído por IA:</span>
-          {actual.datos.monto != null && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px', fontWeight:700 }}>{actual.datos.monto} {actual.datos.moneda || ''}</span>}
-          {actual.datos.referencia && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>Ref. {actual.datos.referencia}</span>}
-          {actual.datos.banco && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>{actual.datos.banco}</span>}
-          {actual.datos.fecha && <span style={{ background:'var(--jordyn-bg2)', borderRadius:20, padding:'2px 9px' }}>{actual.datos.fecha}</span>}
-          {Number(actual.datos.diferencia) < 0 && <span style={{ background:'rgba(230,57,70,.1)', color:'#c62e3a', borderRadius:20, padding:'2px 9px', fontWeight:700 }}>⚠️ Faltan {Math.abs(actual.datos.diferencia)}</span>}
-        </div>
-      )}
+      {/* Datos leídos con IA (se leen al abrir si no se habían leído) y aviso de referencia repetida */}
+      <LecturaComprobante key={`lectura-${actual.id}`} tipo="reserva" id={actual.id} datos={actual.datos} />
       <ComprobanteVisor key={`visor-${pagina}`} src={actual.src} />
     </div>
   );
@@ -904,6 +899,7 @@ export default function GestionReservas() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (filtro === 'comprobantes') { setReservas([]); return; }   // el archivo carga lo suyo
       if (filtro === 'abonos') {
         const a = await API.get('/publico/admin/abonos');
         setAbonos(a.data); setReservas([]);
@@ -1047,6 +1043,7 @@ export default function GestionReservas() {
     { key:'aprobado',  label:'Aprobados',  icon:'bi-check-circle-fill', color:'#059669',             count:conteos.aprobado||0  },
     { key:'rechazado', label:'Rechazados', icon:'bi-x-circle-fill',     color:'#e63946',             count:conteos.rechazado||0 },
     { key:'todos',     label:'Todos',      icon:'bi-list-ul',            color:'var(--jordyn-muted)', count:conteos.todos||0     },
+    { key:'comprobantes', label:'Comprobantes', icon:'bi-images',        color:'#0f766e',             count:0 },
   ];
 
   const reservasAgrupadas = (() => {
@@ -1142,7 +1139,9 @@ export default function GestionReservas() {
         </div>
       )}
 
-      {loading ? (
+      {filtro === 'comprobantes' ? (
+        <ArchivoComprobantes />
+      ) : loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:'4rem' }}>
           <div className="jd-spinner" style={{ width:44, height:44 }}></div>
         </div>

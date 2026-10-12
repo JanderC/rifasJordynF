@@ -88,6 +88,9 @@ export default function ConfigBot() {
 
   const set = (k, v) => setCfg((c) => ({ ...c, [k]: v }));
   const setSub = (grupo, k, v) => setCfg((c) => ({ ...c, [grupo]: { ...c[grupo], [k]: v } }));
+  // Leer imágenes: DeepSeek no puede; sirve la clave de Groq, Gemini o Claude (guardada aquí o en el servidor)
+  const sinVision = cfg.proveedor === 'deepseek'
+    && !['groq', 'gemini', 'anthropic'].some((p) => cfg.api_keys?.[p] || proveedores.find((x) => x.id === p)?.claveEnServidor);
   // Recordatorios de pago
   const rec = cfg.recordatorios_apartado || {};
   const recCada = rec.frecuencia === 'cada';
@@ -265,7 +268,7 @@ export default function ConfigBot() {
 
             <div style={{ marginTop: 10 }}>
               <div className="wcb-opcion"><div><b>Pedir cédula</b><span>Obligatoria para apartar, igual que en la página.</span></div><Toggle on={cfg.pedir_cedula} onClick={() => set('pedir_cedula', !cfg.pedir_cedula)} /></div>
-              <div className="wcb-opcion"><div><b>Leer los comprobantes con IA</b><span>Extrae monto, banco y referencia de la captura para que los revises más rápido.</span></div><Toggle on={cfg.leer_comprobantes} onClick={() => set('leer_comprobantes', !cfg.leer_comprobantes)} /></div>
+              <div className="wcb-opcion"><div><b>Leer los comprobantes con IA</b><span>Extrae monto, banco y referencia de la captura para que los revises más rápido, y avisa si una referencia se repite.{cfg.proveedor === 'deepseek' && !sinVision && ' DeepSeek no lee imágenes: las fotos se leen con la otra clave guardada (Groq, Gemini o Claude).'}{sinVision && <b style={{ color: '#c2410c' }}> {prov?.nombre || 'Esta IA'} no lee imágenes: selecciona Groq o Google Gemini, pega su API key (gratis), guarda y vuelve a elegir {prov?.nombre || 'tu IA'}. Esa clave se usa solo para leer las fotos.</b>}</span></div><Toggle on={cfg.leer_comprobantes} onClick={() => set('leer_comprobantes', !cfg.leer_comprobantes)} /></div>
               <div className="wcb-opcion"><div><b>Avisar si rechazas un pago</b><span>Le escribe al cliente con amabilidad cuando rechazas su reserva en Reservas.</span></div><Toggle on={cfg.avisar_rechazo} onClick={() => set('avisar_rechazo', !cfg.avisar_rechazo)} /></div>
               <div className="wcb-opcion"><div><b>Escuchar notas de voz</b><span>Transcribe los audios de los clientes y el bot los responde; la transcripción también sale en Chats. Usa la API key de Groq (gratis) o la de OpenAI, la que esté guardada, aunque el bot converse con otro proveedor{cfg.api_keys?.groq || cfg.api_keys?.openai ? '.' : ': ahora no hay ninguna de las dos guardada, así que el bot le pide al cliente que escriba.'}</span></div><Toggle on={cfg.transcribir_audios !== false} onClick={() => set('transcribir_audios', cfg.transcribir_audios === false)} /></div>
             </div>
@@ -277,7 +280,7 @@ export default function ConfigBot() {
           {/* Recordatorios de pago */}
           <div className="wcb-card">
             <h4><i className="bi bi-bell" />Recordatorios de pago</h4>
-            <div className="desc">Para las rifas donde se puede apartar sin pagar: el bot le recuerda al cliente lo que debe. Es el mismo mensaje del botón <b>Recordar</b> de Reservas.</div>
+            <div className="desc">Para las rifas donde se puede apartar sin pagar: el bot le recuerda al cliente lo que debe. Es el mismo mensaje del botón <b>Recordar</b> de Reservas. Si una rifa tiene sus propios días y horas (se ponen al editar la rifa), en esa rifa salen solo en esos momentos.</div>
             <div className="wcb-opcion"><div><b>Enviar recordatorios automáticos</b><span>Si lo apagas, solo sale cuando presionas Recordar en Reservas.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
 
             <label className="wcb-label">¿Cada cuánto se envía?</label>

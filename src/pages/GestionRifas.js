@@ -44,7 +44,12 @@ const emptyForm = {
   pago_diferido: false,            // se puede apartar sin pagar
   diferido_limite_horas: 3,        // se paga hasta X horas antes del sorteo
   diferido_max_numeros: 10,        // tope de números sin pagar por persona
+  recordatorios_programados: [],   // días y horas (Venezuela) en que el bot recuerda el pago: 'AAAA-MM-DDTHH:mm'
 };
+
+// Momento ISO ↔ valor de <input type="datetime-local"> en hora de Venezuela (UTC-4, sin cambio de hora)
+const isoAHoraVE = (iso) => { const t = new Date(iso).getTime(); return Number.isFinite(t) ? new Date(t - 4 * 3600000).toISOString().slice(0, 16) : ''; };
+const horaVEAIso = (v) => { const d = new Date(`${v}:00-04:00`); return isNaN(d.getTime()) ? null : d.toISOString(); };
 
 const fmtCOP = v =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
@@ -1894,7 +1899,7 @@ function ModalProgramarDesactivacion({ rifa, onClose, onSaved }) {
           <div style={{ background:'rgba(10,191,188,0.06)',border:'1px solid rgba(10,191,188,0.18)',borderRadius:10,padding:'0.75rem 1rem',marginBottom:'1.25rem',fontSize:'0.76rem',color:'var(--jordyn-muted)',lineHeight:1.65 }}>
             <i className="bi bi-info-circle-fill me-2" style={{ color:'var(--jordyn-primary)' }}></i>
             La rifa se <strong>desactivará automáticamente</strong> en la fecha y hora elegida.
-            Quedará inactiva y dejará de mostrarse a los clientes. Puedes volver a activarla manualmente en cualquier momento.
+            Se cierran las ventas, pero la rifa <strong>sigue en la página del cliente</strong>: ya no se ven los números disponibles y sale el mensaje «¡Suerte para todos!». Para quitarla de la página, archívala o quítale la publicación. Puedes volver a activarla cuando quieras.
           </div>
 
           {/* Input */}
@@ -2778,6 +2783,7 @@ export default function GestionRifas() {
       pago_diferido:             !!r.pago_diferido,
       diferido_limite_horas:     r.diferido_limite_horas ?? 3,
       diferido_max_numeros:      r.diferido_max_numeros ?? 10,
+      recordatorios_programados: (Array.isArray(r.recordatorios_programados) ? r.recordatorios_programados : []).map(isoAHoraVE).filter(Boolean),
     });
     setVendedoresCat([]);
     setSelectedVendorIds([]);
@@ -2843,6 +2849,7 @@ export default function GestionRifas() {
         pago_diferido:         !!form.pago_diferido,
         diferido_limite_horas: Number(form.diferido_limite_horas) || 0,
         diferido_max_numeros:  Number(form.diferido_max_numeros) || 10,
+        recordatorios_programados: (form.recordatorios_programados || []).map(horaVEAIso).filter(Boolean),
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
@@ -2864,8 +2871,10 @@ export default function GestionRifas() {
       load();
     } catch { toast.error('No se pudo cambiar'); }
   };
-  const handleToggle   = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
+  const handleToggle   = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: !r.activa, estado: r.activa ? 'inactiva' : 'activa' }); toast.success(r.activa ? 'Rifa desactivada' : 'Rifa activada'); load(); } catch { toast.error('Error'); } };
   const handleArchivar = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: false, estado: 'archivada' }); toast.success('Rifa archivada'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error archivando rifa'); } };
+  // Desarchivar: vuelve a la lista de rifas como INACTIVA (se activa aparte, cuando el dueño quiera)
+  const handleDesarchivar = async (r) => { try { await API.put(`/rifas/${r.id}`, { activa: false, estado: 'inactiva' }); toast.success('Rifa desarchivada: quedó inactiva, actívala cuando quieras'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Error desarchivando rifa'); } };
   // Paso 1: intentar DELETE sin force. Si el backend devuelve 409 con info,
   // se guarda en confirmDelete para mostrar el modal de advertencia.
   const handleDelete = async (r) => {
@@ -2986,7 +2995,7 @@ export default function GestionRifas() {
           }}>
             <span className={r.activa ? 'badge-disponible' : 'badge-agotado'}
                   style={{ fontSize: '0.66rem', boxShadow: '0 2px 8px rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }}>
-              {archivada ? 'ARCHIVADA' : r.activa ? '● ACTIVA' : 'INACTIVA'}
+              {archivada ? 'ARCHIVADA' : r.activa ? '● ACTIVA' : r.cerrada_visible ? 'VENTAS CERRADAS' : 'INACTIVA'}
             </span>
             {r.tipo && (
               <span className={r.tipo === 'simultanea' ? 'badge-simultanea' : 'badge-sencilla'}
@@ -3265,7 +3274,7 @@ export default function GestionRifas() {
           {archivada && (
             <div className="d-flex gap-2">
               <button className="btn-jordyn-danger" onClick={() => handleDelete(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-trash3"></i> Eliminar</button>
-              <button onClick={() => handleToggle({ ...r, activa: false })} style={{ background: 'rgba(6,214,160,0.08)', border: '1.5px solid rgba(6,214,160,0.35)', color: 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-arrow-counterclockwise me-1"></i>Restaurar</button>
+              <button onClick={() => handleDesarchivar(r)} title="Sacarla del archivo" style={{ background: 'rgba(6,214,160,0.08)', border: '1.5px solid rgba(6,214,160,0.35)', color: 'var(--jordyn-green)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-arrow-counterclockwise me-1"></i>Desarchivar</button>
             </div>
           )}
         </div>
@@ -3673,6 +3682,37 @@ export default function GestionRifas() {
                         </div>
                         <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:4 }}>
                           Evita que una sola persona bloquee muchos números sin pagar. Para llevar más tiene que pagar.
+                        </div>
+                      </div>
+                      <div className="col-12">
+                        <label className="jd-label">RECORDATORIOS DE PAGO DE ESTA RIFA (DÍA Y HORA)</label>
+                        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                          {(form.recordatorios_programados || []).map((v, i) => (
+                            <div key={i} style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                              <i className="bi bi-bell-fill" style={{ color:'#7c3aed' }}></i>
+                              <input className="jd-input" type="datetime-local" style={{ width:'auto', maxWidth:'100%' }} value={v}
+                                onChange={e => setForm(p => ({ ...p, recordatorios_programados: p.recordatorios_programados.map((x, j) => j === i ? e.target.value : x) }))}
+                                aria-label={`Recordatorio ${i + 1}: día y hora`} />
+                              <button type="button" title="Quitar este recordatorio"
+                                onClick={() => setForm(p => ({ ...p, recordatorios_programados: p.recordatorios_programados.filter((_, j) => j !== i) }))}
+                                style={{ border:'1.5px solid rgba(230,57,70,.4)', background:'transparent', color:'var(--jordyn-red)', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.78rem' }}>
+                                <i className="bi bi-trash3"></i>
+                              </button>
+                              {v && horaVEAIso(v) && new Date(horaVEAIso(v)) < new Date() && <span style={{ fontSize:'.68rem', color:'var(--jordyn-muted)' }}>ya pasó</span>}
+                            </div>
+                          ))}
+                          {(form.recordatorios_programados || []).length < 12 && (
+                            <button type="button"
+                              onClick={() => setForm(p => ({ ...p, recordatorios_programados: [...(p.recordatorios_programados || []), p.fecha_sorteo ? `${p.fecha_sorteo}T09:00` : ''] }))}
+                              style={{ alignSelf:'flex-start', border:'1.5px dashed rgba(124,58,237,.5)', background:'rgba(124,58,237,.05)', color:'#7c3aed', borderRadius:8, padding:'6px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
+                              <i className="bi bi-plus-lg me-1"></i>Agregar día y hora
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:6 }}>
+                          {(form.recordatorios_programados || []).length
+                            ? 'A esa hora (de Venezuela) el bot le escribe por WhatsApp a quienes tengan números de esta rifa apartados sin pagar, con el mensaje configurado en WhatsApp → Bot. En esta rifa no salen los recordatorios de la frecuencia general.'
+                            : 'Sin fechas propias, esta rifa usa la frecuencia general configurada en WhatsApp → Bot → Recordatorios de pago.'}
                         </div>
                       </div>
                     </div>
