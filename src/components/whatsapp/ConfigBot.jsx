@@ -43,6 +43,9 @@ function Toggle({ on, onClick, title }) {
   return <button type="button" className={`wcb-toggle${on ? ' on' : ''}`} onClick={onClick} title={title} aria-pressed={on} />;
 }
 
+// Días de la semana para los recordatorios: [número (0 = domingo), nombre, plural]
+const DIAS_SEMANA = [[1, 'Lunes', 'lunes'], [2, 'Martes', 'martes'], [3, 'Miércoles', 'miércoles'], [4, 'Jueves', 'jueves'], [5, 'Viernes', 'viernes'], [6, 'Sábado', 'sábados'], [0, 'Domingo', 'domingos']];
+
 // Variables del mensaje de recordatorio de pago (las mismas que reemplaza el servidor)
 const VARIABLES_RECORDATORIO = [
   ['nombre', 'nombre del cliente'], ['numeros', 'números apartados'], ['rifa', 'nombre de la rifa'], ['premio', 'premio de la rifa'],
@@ -94,6 +97,12 @@ export default function ConfigBot() {
   // Recordatorios de pago
   const rec = cfg.recordatorios_apartado || {};
   const recCada = rec.frecuencia === 'cada';
+  const recDias = rec.frecuencia === 'dias';
+  const diasSel = (Array.isArray(rec.dias) ? rec.dias : [1, 6]).map(Number);
+  const recHora = rec.hora || '10:00';
+  const alternarDia = (d) => setSub('recordatorios_apartado', 'dias', (diasSel.includes(d) ? diasSel.filter((x) => x !== d) : [...diasSel, d]).sort((a, b) => a - b));
+  const hora12 = (h) => { const [hh, mm] = String(h).split(':').map(Number); return `${((hh + 11) % 12) + 1}:${String(mm || 0).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
+  const listaDias = (() => { const n = DIAS_SEMANA.filter(([d]) => diasSel.includes(d)).map(([, , plural]) => plural); return n.length > 1 ? `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}` : n[0] || ''; })();
   const recHoras = Math.min(72, Math.max(1, Number(rec.cada_horas) || 12));
   const recFinal = Math.min(12, Math.max(1, Number(rec.final_horas) || 2));
   const insertarVariable = (k) => {
@@ -285,7 +294,8 @@ export default function ConfigBot() {
 
             <label className="wcb-label">¿Cada cuánto se envía?</label>
             <div className="wcb-fila">
-              <select className="jd-input" value={recCada ? 'cada' : 'momentos'} onChange={(e) => setSub('recordatorios_apartado', 'frecuencia', e.target.value)}>
+              <select className="jd-input" value={recDias ? 'dias' : recCada ? 'cada' : 'momentos'} onChange={(e) => setSub('recordatorios_apartado', 'frecuencia', e.target.value)}>
+                <option value="dias">Los días de la semana y a la hora que yo elija</option>
                 <option value="momentos">En los momentos clave (víspera y día del sorteo)</option>
                 <option value="cada">Cada cierto número de horas</option>
               </select>
@@ -296,16 +306,40 @@ export default function ConfigBot() {
                 </div>
               )}
             </div>
-            <label className="wcb-label">Aviso final: horas antes de que venza el plazo</label>
-            <input className="jd-input" type="number" min={1} max={12} style={{ maxWidth: 150 }} value={rec.final_horas ?? 2}
-              onChange={(e) => setSub('recordatorios_apartado', 'final_horas', e.target.value === '' ? '' : Number(e.target.value))} />
+            {recDias && (
+              <>
+                <label className="wcb-label">Días en que se envía</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {DIAS_SEMANA.map(([d, nombre]) => {
+                    const on = diasSel.includes(d);
+                    return (
+                      <button key={d} type="button" aria-pressed={on} onClick={() => alternarDia(d)}
+                        style={{ border: `1.5px solid ${on ? '#7c3aed' : 'var(--jordyn-border)'}`, background: on ? '#7c3aed' : '#fff', color: on ? '#fff' : 'var(--jordyn-text)', borderRadius: 20, padding: '6px 14px', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                        {nombre}
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="wcb-label">Hora (de Venezuela)</label>
+                <input className="jd-input" type="time" style={{ maxWidth: 150 }} value={recHora} onChange={(e) => setSub('recordatorios_apartado', 'hora', e.target.value)} />
+              </>
+            )}
+            {!recDias && (
+              <>
+                <label className="wcb-label">Aviso final: horas antes de que venza el plazo</label>
+                <input className="jd-input" type="number" min={1} max={12} style={{ maxWidth: 150 }} value={rec.final_horas ?? 2}
+                  onChange={(e) => setSub('recordatorios_apartado', 'final_horas', e.target.value === '' ? '' : Number(e.target.value))} />
+              </>
+            )}
             <div className="wcb-resultado ok" style={{ marginTop: 10 }}>
               <i className="bi bi-clock-history me-1" />
               {rec.activo === false ? 'Los recordatorios automáticos están apagados.'
+                : recDias
+                  ? (diasSel.length ? `Se envía los ${listaDias} a las ${hora12(recHora)} (hora de Venezuela), a quienes tengan números apartados sin pagar. Se detiene cuando el cliente paga.` : 'Elige al menos un día para que se envíen.')
                 : recCada
                   ? `Se envía cada ${recHoras} ${recHoras === 1 ? 'hora' : 'horas'} desde que el cliente aparta, y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`
                   : `Se envía 3 veces: la víspera del sorteo (10:00 am), el día del sorteo (9:00 am) y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`}
-              {rec.activo !== false && ' Solo de día (8:00 am a 9:30 pm) y se detiene cuando el cliente paga.'}
+              {rec.activo !== false && !recDias && ' Solo de día (8:00 am a 9:30 pm) y se detiene cuando el cliente paga.'}
             </div>
 
             <label className="wcb-label">Mensaje</label>
