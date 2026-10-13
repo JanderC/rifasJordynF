@@ -44,6 +44,7 @@ const emptyForm = {
   pago_diferido: false,            // se puede apartar sin pagar
   diferido_limite_horas: 3,        // se paga hasta X horas antes del sorteo
   diferido_max_numeros: 10,        // tope de números sin pagar por persona
+  venta_minima: 1,                 // números que hay que llevar, como mínimo, en cada compra en línea
   recordatorios_programados: [],   // días y horas (Venezuela) en que el bot recuerda el pago: 'AAAA-MM-DDTHH:mm'
 };
 
@@ -2793,6 +2794,7 @@ export default function GestionRifas() {
       pago_diferido:             !!r.pago_diferido,
       diferido_limite_horas:     r.diferido_limite_horas ?? 3,
       diferido_max_numeros:      r.diferido_max_numeros ?? 10,
+      venta_minima:              r.venta_minima ?? 1,
       recordatorios_programados: (Array.isArray(r.recordatorios_programados) ? r.recordatorios_programados : []).map(isoAHoraVE).filter(Boolean),
     });
     setVendedoresCat([]);
@@ -2859,6 +2861,7 @@ export default function GestionRifas() {
         pago_diferido:         !!form.pago_diferido,
         diferido_limite_horas: Number(form.diferido_limite_horas) || 0,
         diferido_max_numeros:  Number(form.diferido_max_numeros) || 10,
+        venta_minima:          Math.max(1, Number(form.venta_minima) || 1),
         recordatorios_programados: (form.recordatorios_programados || []).map(horaVEAIso).filter(Boolean),
       };
       if (editId) {
@@ -3652,6 +3655,19 @@ export default function GestionRifas() {
                     </span>
                   </label>
 
+                  <div style={{ padding:'10px 12px', borderRadius:10, marginTop:8, border:`1.5px solid ${Number(form.venta_minima) > 1 ? 'rgba(10,191,188,.5)' : 'var(--jordyn-border)'}`, background: Number(form.venta_minima) > 1 ? 'rgba(10,191,188,.05)' : 'transparent' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                      <span style={{ fontWeight:700, fontSize:'.86rem', color:'var(--jordyn-text)' }}>Venta mínima</span>
+                      <input className="jd-input" type="number" min={1} max={50} style={{ width:84 }} value={form.venta_minima}
+                        onChange={e => setForm(p => ({ ...p, venta_minima: e.target.value }))} aria-label="Venta mínima: números por compra" />
+                      <span style={{ fontSize:'.82rem' }}>{Number(form.venta_minima) === 1 ? 'número por compra' : 'números por compra'}</span>
+                    </div>
+                    <span style={{ display:'block', fontSize:'.72rem', color:'var(--jordyn-muted)', marginTop:4 }}>
+                      {Number(form.venta_minima) > 1
+                        ? `En la página y por el bot el cliente tiene que llevar al menos ${Number(form.venta_minima)} números en cada compra o apartado. No aplica a lo que venden los vendedores.`
+                        : 'Con 1 se puede comprar de a un número. Sube el valor si esta rifa se vende por paquetes (por ejemplo, mínimo 3).'}
+                    </span>
+                  </div>
                   <label style={{ display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', padding:'10px 12px', borderRadius:10, marginTop:8, border:`1.5px solid ${form.pago_diferido ? 'rgba(124,58,237,.45)' : 'var(--jordyn-border)'}`, background: form.pago_diferido ? 'rgba(124,58,237,.05)' : 'var(--jordyn-bg)' }}>
                     <input type="checkbox" checked={!!form.pago_diferido} onChange={e => setForm(p => ({ ...p, pago_diferido: e.target.checked }))} style={{ width:18, height:18, marginTop:2, accentColor:'#7c3aed' }} />
                     <span>

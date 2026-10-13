@@ -2015,16 +2015,44 @@ function BuscadorNumeros4({ rifa, onComprar }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [sel,      setSel]      = useState([]);     // [{ numero, idx }]
   const idxRef = useRef(1);
+  // Números de la suerte (libres al azar, con terminación opcional) y parecidos a uno ocupado
+  const [sugeridos,   setSugeridos]   = useState([]);
+  const [totalLibres, setTotalLibres] = useState(null);
+  const [termina,     setTermina]     = useState('');
+  const [cargandoSug, setCargandoSug] = useState(false);
+  const [parecidos,   setParecidos]   = useState([]);
+  // Venta mínima de la rifa (números por compra)
+  const minimo = Math.max(1, Number(rifa.venta_minima) || 1);
 
   const numNorm  = valor.replace(/\D/g, '').slice(0, cifras);
   const completo = numNorm.length === cifras;
 
+  const cargarSugeridos = useCallback(async (term = '') => {
+    setCargandoSug(true);
+    try {
+      const { data } = await API.get(`/publico/rifas/${rifa.id}/sugerencias`, { params: { cantidad: 16, ...(term ? { termina: term } : {}) } });
+      setSugeridos(data.numeros || []);
+      setTotalLibres(data.total_libres ?? null);
+    } catch { setSugeridos([]); }
+    finally { setCargandoSug(false); }
+  }, [rifa.id]);
+  // Al entrar y cada vez que cambia la terminación (con una pausa mientras escribe)
+  useEffect(() => {
+    const t = setTimeout(() => cargarSugeridos(termina), termina ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [termina, cargarSugeridos]);
+
   const buscar = async () => {
     if (!completo) { setErrorMsg(`Escribe los ${cifras} dígitos`); return; }
-    setCargando(true); setErrorMsg(''); setRes(null);
+    setCargando(true); setErrorMsg(''); setRes(null); setParecidos([]);
     try {
       const { data } = await API.get(`/publico/rifas/${rifa.id}/numero/${numNorm}`);
       setRes(data);
+      // Ocupado: se ofrecen los libres más parecidos (vecinos y misma terminación)
+      if (data.estado !== 'disponible') {
+        API.get(`/publico/rifas/${rifa.id}/sugerencias`, { params: { cerca: data.numero, cantidad: 8 } })
+          .then(r => setParecidos(r.data.numeros || [])).catch(() => {});
+      }
     } catch (e) {
       setErrorMsg(e?.response?.data?.error || 'No se pudo consultar el número');
     } finally { setCargando(false); }
@@ -2034,6 +2062,18 @@ function BuscadorNumeros4({ rifa, onComprar }) {
     if (sel.some(s => s.numero === numero)) return;
     setSel(prev => [...prev, { numero, idx: idxRef.current++ }]);
   };
+  // En las listas de sugeridos: tocar lo agrega, tocar otra vez lo quita
+  const alternar = (numero) => setSel(prev => (prev.some(s => s.numero === numero)
+    ? prev.filter(s => s.numero !== numero)
+    : [...prev, { numero, idx: idxRef.current++ }]));
+  const enCarrito = (numero) => sel.some(s => s.numero === numero);
+  const faltanMin = Math.max(0, minimo - sel.length);
+  // Con las cifras completas se consulta solo, sin tener que tocar la lupa
+  useEffect(() => {
+    if (!completo) return undefined;
+    const t = setTimeout(() => { buscar(); }, 250);
+    return () => clearTimeout(t);
+  }, [numNorm]);   // eslint-disable-line
   const quitar  = (idx) => setSel(prev => prev.filter(s => s.idx !== idx));
   const limpiar = () => setSel([]);
 
@@ -2063,6 +2103,11 @@ function BuscadorNumeros4({ rifa, onComprar }) {
           transition:all .2s}
         .b4-digit-box:focus{border-color:${TURQ};background:rgba(10,191,188,.12)}
         @media(max-width:640px){.b4-digit-box{font-size:2rem;letter-spacing:.35em}}
+        .b4-sug{font-family:'Poppins',sans-serif;font-weight:800;font-size:1rem;letter-spacing:2px;border-radius:12px;padding:10px 6px;cursor:pointer;
+          transition:all .15s;border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;min-width:84px}
+        .b4-sug:hover{transform:translateY(-2px)}
+        .b4-sug.claro{border-color:${TURQ}44;background:${TURQ}0d;color:${DARK}}
+        .b4-sug.on,.b4-sug.claro.on{background:${VERDE};border-color:${VERDE};color:#fff}
       `}</style>
 
       {ofertas.length > 0 && <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />}
@@ -2085,8 +2130,13 @@ function BuscadorNumeros4({ rifa, onComprar }) {
             Busca tu número de la suerte
           </div>
           <div style={{ fontSize:'.82rem', color:'rgba(255,255,255,.55)', marginTop:6 }}>
-            Escribe el número que quieres y mira si está libre
+            Escribe el número que quieres y al instante te digo si está libre
           </div>
+          {minimo > 1 && (
+            <div style={{ display:'inline-block', marginTop:10, background:`${NARANJA}22`, border:`1px solid ${NARANJA}66`, color:'#ffd9c7', borderRadius:999, padding:'5px 14px', fontSize:'.76rem', fontWeight:700 }}>
+              🎟 En esta rifa se llevan mínimo {minimo} números por compra
+            </div>
+          )}
         </div>
 
         <div style={{ display:'flex', gap:10, alignItems:'stretch', position:'relative', maxWidth:420, margin:'0 auto' }}>
@@ -2145,6 +2195,52 @@ function BuscadorNumeros4({ rifa, onComprar }) {
                 ✓ Ya está en tu carrito
               </div>
             )}
+            {!info.puede && parecidos.length > 0 && (
+              <div style={{ marginTop:18 }}>
+                <div style={{ fontSize:'.76rem', color:'rgba(255,255,255,.75)', fontWeight:700, marginBottom:9 }}>Estos parecidos sí están libres 👇</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
+                  {parecidos.map(n => (
+                    <button key={n} type="button" className={`b4-sug${enCarrito(n) ? ' on' : ''}`} onClick={() => alternar(n)} aria-pressed={enCarrito(n)}>{enCarrito(n) ? '✓ ' : ''}{n}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Números de la suerte: libres al azar, con terminación opcional ── */}
+      <div style={{ background:'#fff', border:`1.5px solid ${TURQ}33`, borderRadius:20, padding:'18px 18px 16px', marginBottom:20, boxShadow:'0 6px 24px rgba(10,100,100,.06)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:12 }}>
+          <div>
+            <div style={{ fontSize:'1.02rem', fontWeight:800, color:DARK }}>🎲 Números de la suerte</div>
+            <div style={{ fontSize:'.76rem', color:`${DARK}88` }}>
+              ¿No tienes uno en mente? Toca los que te gusten{totalLibres != null ? ` · quedan ${totalLibres.toLocaleString('es-CO')} libres${termina ? ` que terminan en ${termina}` : ''}` : ''}
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:7, fontSize:'.76rem', fontWeight:700, color:`${DARK}aa`, margin:0 }}>
+              Que termine en
+              <input inputMode="numeric" value={termina} maxLength={cifras - 1} placeholder="57"
+                onChange={e => setTermina(e.target.value.replace(/\D/g, '').slice(0, cifras - 1))}
+                aria-label="Terminación del número"
+                style={{ width:74, textAlign:'center', fontFamily:"'Poppins',sans-serif", fontWeight:800, fontSize:'1rem', letterSpacing:2, border:`1.5px solid ${TURQ}55`, borderRadius:10, padding:'7px 6px', outline:'none', color:DARK }} />
+            </label>
+            <button type="button" onClick={() => cargarSugeridos(termina)} disabled={cargandoSug}
+              style={{ border:'none', borderRadius:10, padding:'9px 14px', background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', fontFamily:"'Poppins',sans-serif", fontWeight:800, fontSize:'.8rem', cursor:'pointer', opacity: cargandoSug ? .6 : 1 }}>
+              {cargandoSug ? 'Buscando…' : '🔄 Dame otros'}
+            </button>
+          </div>
+        </div>
+        {sugeridos.length > 0 ? (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(84px, 1fr))', gap:8, opacity: cargandoSug ? .5 : 1, transition:'opacity .15s' }}>
+            {sugeridos.map(n => (
+              <button key={n} type="button" className={`b4-sug claro${enCarrito(n) ? ' on' : ''}`} onClick={() => alternar(n)} aria-pressed={enCarrito(n)}>{enCarrito(n) ? '✓ ' : ''}{n}</button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign:'center', padding:'18px 8px', fontSize:'.84rem', color:`${DARK}88` }}>
+            {cargandoSug ? 'Buscando números libres…' : termina ? `No quedan números libres que terminen en ${termina}. Prueba con otra terminación.` : 'No quedan números libres en esta rifa.'}
           </div>
         )}
       </div>
@@ -2214,9 +2310,10 @@ function BuscadorNumeros4({ rifa, onComprar }) {
                 )}
                 <div style={{ fontSize:'1.2rem', color: ofertaInfo ? VERDE : '#fff', fontWeight:900 }}>{fmt(totalReal)}</div>
               </div>
-              <button className="pub-btn" onClick={() => onComprar(sel)}
+              <button className="pub-btn" onClick={() => onComprar(sel)} disabled={faltanMin > 0}
+                title={faltanMin > 0 ? `La venta mínima es de ${minimo} números` : undefined}
                 style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
-                🎟 {sel.length > 1 ? `Comprar ${sel.length} números` : 'Comprar número'}
+                {faltanMin > 0 ? `Elige ${faltanMin} más (mínimo ${minimo})` : `🎟 ${sel.length > 1 ? `Comprar ${sel.length} números` : 'Comprar número'}`}
               </button>
             </div>
           </div>
@@ -2669,9 +2766,12 @@ function GridNumeros({ rifa, onComprar }) {
               </div>
 
               {/* Botón */}
-              <button className="pub-btn" onClick={() => onComprar(selArr)}
+              <button className="pub-btn" onClick={() => onComprar(selArr)} disabled={selArr.length < (Number(rifa.venta_minima) || 1)}
+                title={selArr.length < (Number(rifa.venta_minima) || 1) ? `La venta mínima es de ${rifa.venta_minima} números` : undefined}
                 style={{ flexShrink:0, borderRadius:14, padding:'12px 22px', fontSize:'.9rem', boxShadow:`0 8px 24px ${TURQ}55` }}>
-                🎟 {selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}
+                {selArr.length < (Number(rifa.venta_minima) || 1)
+                  ? `Elige ${(Number(rifa.venta_minima) || 1) - selArr.length} más (mínimo ${rifa.venta_minima})`
+                  : `🎟 ${selArr.length > 1 ? `Comprar ${selArr.length} números` : 'Comprar número'}`}
               </button>
             </div>
           </div>
@@ -3031,6 +3131,7 @@ export default function ClientePublico() {
                 <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
                   <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>🏆 {rifaSel.premio}</span>
                   <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>💰 {fmt(rifaSel.precio)} / número</span>
+                  {Number(rifaSel.venta_minima) > 1 && <span style={{ fontSize:'.85rem', color:NARANJA, fontWeight:700 }}>🎟 Mínimo {rifaSel.venta_minima} números por compra</span>}
                   <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>📅 {fmtF(rifaSel.fecha_sorteo)}</span>
                 </div>
                 {rifaSel.pago_diferido && (
