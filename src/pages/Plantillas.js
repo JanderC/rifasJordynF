@@ -33,7 +33,7 @@ const DEMO_RIFA = {
 function MiniaturaPlantilla({ design }) {
   const caja = useRef(null);
   const [ancho, setAncho] = useState(0);
-  const D = design?.modelo === 'cuatro' ? design : { ...DEFAULT_DESIGN, ...(design || {}) };
+  const D = { ...DEFAULT_DESIGN, ...(design || {}) };
   const W = Number(D.ticketWidth) || 780;
   const H = Number(D.ticketHeight) || 340;
   useEffect(() => {
@@ -51,7 +51,7 @@ function MiniaturaPlantilla({ design }) {
       {escala > 0 && (
         <div style={{ position:'absolute', top:10, left:'50%', width:W, height:H, marginLeft:-(W / 2),
           transform:`scale(${escala * 0.96})`, transformOrigin:'top center', pointerEvents:'none' }}>
-          <TicketEditable r={DEMO_RIFA} numero={D.modelo === 'cuatro' ? '0457' : '023'} design={D} printMode={true} />
+          <TicketEditable r={DEMO_RIFA} numero="023" design={D} printMode={true} />
         </div>
       )}
     </div>
@@ -74,10 +74,8 @@ export default function Plantillas() {
 
   useEffect(() => { cargar(); }, []);
 
-  const esCuatro = (p) => p?.design?.modelo === 'cuatro';
   const handleNueva = () => nav('/plantillas/nueva');
-  const handleNueva4 = () => nav('/boleto-4-cifras/nueva');
-  const handleEditar = (p) => nav(esCuatro(p) ? `/boleto-4-cifras/${p.id}` : `/plantillas/${p.id}`);
+  const handleEditar = (id) => nav(`/plantillas/${id}`);
 
   const handleDuplicar = async (p) => {
     if (busy) return;
@@ -127,18 +125,12 @@ export default function Plantillas() {
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div style={{ fontSize:'.85rem', color:'var(--jordyn-muted)' }}>
           <i className="bi bi-collection-fill me-1" style={{ color:'var(--jordyn-primary)' }}></i>
-          Crea distintos diseños de boletos y asígnalos a cada rifa. Las rifas de 4 cifras usan su propio boleto.
+          Crea distintos diseños de boletos y asígnalos a cada rifa.
           {' '}<b style={{ color:'var(--jordyn-text)' }}>{plantillas.length}</b> {plantillas.length === 1 ? 'plantilla' : 'plantillas'}.
         </div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button className="btn-jordyn-outline" onClick={handleNueva4} title="Boleto para las rifas de cuatro cifras (0000–9999)"
-            style={{ borderColor:'rgba(124,58,237,.5)', color:'#7c3aed' }}>
-            <i className="bi bi-123 me-1"></i>Nuevo boleto 4 cifras
-          </button>
-          <button className="btn-jordyn" onClick={handleNueva}>
-            <i className="bi bi-plus-lg me-1"></i>Nueva plantilla
-          </button>
-        </div>
+        <button className="btn-jordyn" onClick={handleNueva}>
+          <i className="bi bi-plus-lg me-1"></i>Nueva plantilla
+        </button>
       </div>
 
       {loading ? (
@@ -171,11 +163,6 @@ export default function Plantillas() {
                     <h3 style={{ margin:0, fontSize:'1rem', fontWeight:800, color:'var(--jordyn-text)' }}>
                       {p.nombre}
                     </h3>
-                    {esCuatro(p) && (
-                      <span style={{ fontSize:'.6rem', fontWeight:800, background:'rgba(124,58,237,.12)', color:'#7c3aed', border:'1px solid rgba(124,58,237,.35)', padding:'2px 8px', borderRadius:20, letterSpacing:.5 }}>
-                        <i className="bi bi-123"></i> 4 CIFRAS
-                      </span>
-                    )}
                     {p.is_default && (
                       <span style={{
                         fontSize:'.6rem', fontWeight:800,
@@ -204,7 +191,7 @@ export default function Plantillas() {
               {/* Acciones */}
               <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                 <button className="btn-jordyn"
-                  onClick={() => handleEditar(p)}
+                  onClick={() => handleEditar(p.id)}
                   style={{ flex:1, fontSize:'.8rem', padding:'7px 10px', minWidth:90 }}>
                   <i className="bi bi-pencil-fill me-1"></i>Editar
                 </button>
@@ -214,7 +201,7 @@ export default function Plantillas() {
                   style={{ fontSize:'.8rem', padding:'7px 10px' }}>
                   <i className="bi bi-files me-1"></i>Duplicar
                 </button>
-                {!p.is_default && !esCuatro(p) && (
+                {!p.is_default && (
                   <button className="btn-jordyn-outline"
                     onClick={() => handleHacerDefault(p)}
                     disabled={busy === p.id}

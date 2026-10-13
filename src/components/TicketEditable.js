@@ -13,7 +13,6 @@
 //   ▸ Por texto: textStroke (contorno/margen), textGlow, sombra 3D,
 //                gradiente de letra
 // ════════════════════════════════════════════════════════════════
-import Ticket4Cifras, { esBoleto4 } from './Ticket4Cifras';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   DEFAULT_DESIGN,
@@ -2523,7 +2522,7 @@ function PresetsPanel({ onApply, onClose }) {
 /* ════════════════════════════════════════════════════════════
    <TicketEditable> — Componente principal
 ═════════════════════════════════════════════════════════════ */
-function TicketEditableClasico({ r, numero, design, onUpdate, printMode = false }) {
+export default function TicketEditable({ r, numero, design, onUpdate, printMode = false }) {
   if (!onUpdate) onUpdate = () => {};
 
   const globalSizeFactor = design?.globalSizeFactor || 1.0;
@@ -2975,8 +2974,9 @@ function TicketEditableClasico({ r, numero, design, onUpdate, printMode = false 
         <span style={{ fontWeight: 600, color: '#333' }}>N° boleto:</span>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
-            { value: 'auto',     label: 'Normal (000)',   title: 'Como viene de la rifa: 000, 0000 o 00' },
+            { value: 'auto',     label: 'Normal (000)',   title: '3 cifras (000–999). Muestra el número como viene de la rifa' },
             { value: 'terminal', label: 'Terminal (00)',  title: 'Siempre 2 cifras (00–99)' },
+            { value: 'cuatro',   label: '4 cifras (0000)', title: 'Siempre 4 cifras (0000–9999), para las rifas de cuatro cifras' },
           ].map(o => {
             const activo = (D.formatoNumero || 'auto') === o.value;
             return (
@@ -3421,14 +3421,4 @@ function TicketEditableClasico({ r, numero, design, onUpdate, printMode = false 
       </div>
     </div>
   );
-}
-
-// ══════════════════════════════════════════════════════════════
-//   Punto de entrada: las rifas de 4 cifras usan su propio boleto
-//   (Ticket4Cifras), que no comparte nada con el diseño clásico.
-// ══════════════════════════════════════════════════════════════
-export default function TicketEditable(props) {
-  return esBoleto4(props.r, props.numero, props.design)
-    ? <Ticket4Cifras r={props.r} numero={props.numero} design={props.design} />
-    : <TicketEditableClasico {...props} />;
 }

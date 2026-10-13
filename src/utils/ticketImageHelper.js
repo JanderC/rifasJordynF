@@ -4,7 +4,6 @@ import html2canvas from 'html2canvas';
 import API from '../services/api';
 import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN } from '../components/Ticket';
-import { disenoCuatro } from '../components/Ticket4Cifras';
 
 // Cache de plantillas para no repetir GET en cada generación
 let _plantillasCache = null;
@@ -43,31 +42,16 @@ export function invalidarCachePlantillas() {
  *   4. DEFAULT_DESIGN (fallback)
  */
 export async function resolverPlantillaParaRifa(rifa) {
-  return elegirPlantilla(rifa, await cargarPlantillas());
-}
+  const todas = await cargarPlantillas();
 
-// ¿La plantilla es del boleto de 4 cifras? (modelo aparte del clásico)
-export const esPlantillaCuatro = (p) => extraerDesign(p)?.modelo === 'cuatro';
+  let tpl = null;
+  if (rifa?.ticket_template_id) {
+    tpl = todas.find(p => String(p.id) === String(rifa.ticket_template_id));
+  }
+  if (!tpl) tpl = todas.find(p => p.es_default || p.is_default);
+  if (!tpl && todas.length > 0) tpl = todas[0];
 
-/**
- * Qué plantilla le toca a una rifa. Los dos modelos no se mezclan:
- *  - Rifa de 4 cifras: la plantilla de 4 cifras que tenga asignada; si no tiene,
- *    null (se usa el boleto de 4 cifras por defecto).
- *  - Las demás: la asignada, la marcada por defecto o la primera, siempre del modelo clásico.
- */
-export function elegirPlantilla(rifa, todas = []) {
-  const asignada = rifa?.ticket_template_id ? todas.find(p => String(p.id) === String(rifa.ticket_template_id)) : null;
-  if (Number(rifa?.cifras) === 4) return asignada && esPlantillaCuatro(asignada) ? asignada : null;
-  const clasicas = todas.filter(p => !esPlantillaCuatro(p));
-  if (asignada && !esPlantillaCuatro(asignada)) return asignada;
-  return clasicas.find(p => p.es_default || p.is_default) || clasicas[0] || null;
-}
-
-/** Diseño listo para dibujar el boleto de una rifa con su plantilla (o sin ella) */
-export function disenoParaRifa(rifa, plantilla) {
-  const extraido = extraerDesign(plantilla);
-  if (Number(rifa?.cifras) === 4) return disenoCuatro(extraido);
-  return extraido ? { ...DEFAULT_DESIGN, ...extraido } : { ...DEFAULT_DESIGN };
+  return tpl;
 }
 
 /**
@@ -128,7 +112,10 @@ export async function generarImagenTicketTemplate({
     design = { ...DEFAULT_DESIGN, ...designOverride };
   } else {
     const tpl = plantilla || await resolverPlantillaParaRifa(rifa);
-    design = disenoParaRifa(rifa, tpl);
+    const extraido = extraerDesign(tpl);
+    design = extraido
+      ? { ...DEFAULT_DESIGN, ...extraido }
+      : { ...DEFAULT_DESIGN };
   }
 
   // Aseguramos que numBoleto vaya con el número correcto

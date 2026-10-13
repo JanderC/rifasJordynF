@@ -123,7 +123,9 @@ function TicketCard({ rifa, vendedor, numero, design }) {
           }}>
             {Number(rifa?.cifras) === 2 || d.formatoNumero === 'terminal'
               ? String(numero).slice(-2).padStart(2, '0')
-              : String(numero).padStart(3, '0')}
+              : Number(rifa?.cifras) === 4 || d.formatoNumero === 'cuatro'
+                ? String(numero).slice(-4).padStart(4, '0')
+                : String(numero).padStart(3, '0')}
           </div>
           <div style={{
             fontSize: 5, fontWeight: 700, color: 'rgba(255,255,255,0.25)',

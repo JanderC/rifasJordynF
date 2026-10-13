@@ -21,7 +21,6 @@ import jsPDF from 'jspdf';
 import API from '../services/api';
 import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN, formatNumBoleto } from '../components/Ticket';
-import { elegirPlantilla, disenoParaRifa } from '../utils/ticketImageHelper';
 import {
   PAPELES,
   calcularLayout,
@@ -407,8 +406,14 @@ export default function ImprimirBoletos() {
         console.log('[ImprimirBoletos] Rifa:', rifaData.nombre, 'ticket_template_id:', rifaData.ticket_template_id);
         console.log('[ImprimirBoletos] Plantillas disponibles:', todas.map(p => ({ id: p.id, nombre: p.nombre, is_default: p.is_default || p.es_default })));
 
-        // Las rifas de 4 cifras solo usan plantillas del boleto de 4 cifras (o su diseño por defecto)
-        setPlantilla(elegirPlantilla(rifaData, todas));
+        let tpl = null;
+        if (rifaData.ticket_template_id) {
+          tpl = todas.find(p => String(p.id) === String(rifaData.ticket_template_id));
+          if (!tpl) console.warn('[ImprimirBoletos] La rifa tiene ticket_template_id', rifaData.ticket_template_id, 'pero NO se encontró esa plantilla');
+        }
+        if (!tpl) tpl = todas.find(p => p.es_default || p.is_default);
+        if (!tpl && todas.length > 0) tpl = todas[0];
+        setPlantilla(tpl);
       } catch (err) {
         console.error(err);
         setError('Error cargando datos: ' + (err.response?.data?.error || err.message));
@@ -436,7 +441,6 @@ export default function ImprimirBoletos() {
   // globalSizeFactor — TODO el contenido de la plantilla.
   const design = useMemo(() => {
     const extraido = extraerDesign(plantilla);
-    if (Number(rifa?.cifras) === 4) return disenoParaRifa(rifa, plantilla);   // boleto de 4 cifras: modelo aparte
     if (!extraido) return { ...DEFAULT_DESIGN };
     // Log en consola para debugging
     console.log('[ImprimirBoletos] Plantilla cargada:', plantilla?.nombre);
@@ -445,7 +449,7 @@ export default function ImprimirBoletos() {
     console.log('[ImprimirBoletos] Tiene customTexts:', !!extraido.customTexts, extraido.customTexts?.length);
     console.log('[ImprimirBoletos] Tiene hiddenFields:', extraido.hiddenFields?.length);
     return { ...DEFAULT_DESIGN, ...extraido };
-  }, [plantilla, rifa]);
+  }, [plantilla]);
 
   // ── Tamaño real del DISEÑO (px del lienzo → cm a 96 dpi) ──
   // Esta es la proporción que hay que respetar: si el rectángulo del
