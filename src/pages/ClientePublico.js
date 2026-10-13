@@ -2869,10 +2869,6 @@ export default function ClientePublico() {
     API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [] })).catch(() => {});
   }, [refreshKey]);
 
-  /* ── Tasa para mostrar en la tarjeta pública de Pago Móvil ── */
-const tasasHoy = useTasasHoy();
-const tasaBs   = tasasHoy?.bsdUsd ?? 0;
-
   useEffect(() => { injectStyles(); }, []);
 
   useEffect(() => {
@@ -3139,15 +3135,6 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
                     <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700, overflowWrap:'anywhere' }}>{valor}</div>
                   </div>
                 ))}
-                {nombre === 'Pago Móvil' && tasaBs > 0 && (
-                  <div style={{ marginTop:10, background:`${TURQ}12`, border:`1px solid ${TURQ}35`, borderRadius:10, padding:'9px 13px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <div>
-                      <div style={{ fontSize:'.55rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:2 }}>Tasa hoy</div>
-                      <div style={{ fontSize:'.9rem', color:TURQ_DK, fontWeight:800 }}>1 USD = Bs. {new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs)}</div>
-                    </div>
-                    <span style={{ background:`${TURQ}22`, border:`1px solid ${TURQ}44`, color:TURQ_DK, borderRadius:20, padding:'3px 9px', fontSize:'.55rem', fontWeight:800, letterSpacing:'1px' }}>✅ MANUAL</span>
-                  </div>
-                )}
                 {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
               </div>
             ))}
