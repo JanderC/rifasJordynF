@@ -23,7 +23,7 @@ const LOTERIAS = [
     'Pijao de Oro','Cafeterito','Super Astro Sol','Super Astro Luna',
   ]},
   { grupo: 'Venezuela', items: [
-    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia',
+    'Lotería del Táchira','Lotería de Mérida','Lotería del Zulia', 'Supergana',
   ]},
   { grupo: 'Otra', items: ['Otra lotería / referencia propia'] },
 ];
