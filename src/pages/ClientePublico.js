@@ -174,7 +174,8 @@ function useMetodosPagoServidor() {
 
 /* ─────────────────────────────────────────────────────────────
    Hook único: ambas tasas desde /api/tasas/hoy
-   Fórmula Bs = precio_COP / COP_POR_USD * BSD_POR_USD
+   Zelle:  USD = precio_COP / COP_POR_USD
+   Bs:     regla de tres con su propia tasa → precio_COP / COP_POR_USD_BS * BSD_POR_USD
 ───────────────────────────────────────────────────────────── */
 let _tasasHoyCache = null;
 let _tasasHoyTs    = 0;
@@ -191,7 +192,8 @@ function useTasasHoy() {
         .then(r => r.json())
         .then(data => {
           const t = {
-            copUsd: data?.COP_POR_USD?.valor || 4200,
+            copUsd: data?.COP_POR_USD?.valor || 4200,                                  // solo Zelle
+            copUsdBs: data?.COP_POR_USD_BS?.valor || data?.COP_POR_USD?.valor || 4200,   // solo para pasar pesos a Bs
             bsdUsd: data?.BSD_POR_USD?.valor || 0,
           };
         _tasasHoyCache = t;
@@ -213,7 +215,7 @@ const METODO_MONEDA = {
 };
 
 // DESPUÉS
-function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
+function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200, copUsdBs = copUsd) {
   const moneda = METODO_MONEDA[metodo];
   if (!moneda || moneda === 'COP') return null;
   const usd = precioCOP / copUsd;
@@ -223,7 +225,7 @@ function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200) {
     if (!tasaBsUSD || tasaBsUSD <= 0) {
       return { valor: 0, texto: 'Cargando Bs...', moneda: 'VES', icono: '🇻🇪', cargando: true };
     }
-    const bs = usd * tasaBsUSD;
+    const bs = (precioCOP / (copUsdBs || copUsd)) * tasaBsUSD;
     return { valor: bs, texto: `Bs. ${new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(bs)}`, moneda: 'VES', icono: '🇻🇪' };
   }
   return null;
@@ -1280,6 +1282,7 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
 const tasasHoy = useTasasHoy();
 const copUsd   = tasasHoy?.copUsd ?? 4200;
 const tasaBs   = tasasHoy?.bsdUsd ?? 0;
+const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
 
   const upd          = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const telefonoFull = form.codPais + form.telefono.replace(/\D/g,'');
@@ -1357,8 +1360,8 @@ const tasaBs   = tasasHoy?.bsdUsd ?? 0;
   };
 
   /* ── Calcular precio en moneda del método ── */
-  const convTotal    = calcularPrecioMetodo(totalReal,   form.metodo_pago, tasaBs, copUsd);
-  const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd);
+  const convTotal    = calcularPrecioMetodo(totalReal,   form.metodo_pago, tasaBs, copUsd, copUsdBs);
+  const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd, copUsdBs);
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
@@ -1809,7 +1812,7 @@ function ModalMisApartados({ onClose, onPagado }) {
     finally { setCargando(false); }
   };
 
-  const conv = sel && metodo && montoPago > 0 ? calcularPrecioMetodo(montoPago, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200) : null;
+  const conv = sel && metodo && montoPago > 0 ? calcularPrecioMetodo(montoPago, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200, tasasHoy?.copUsdBs) : null;
   const MORADO = '#7c3aed';
 
   return (

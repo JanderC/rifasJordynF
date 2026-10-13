@@ -424,7 +424,7 @@ export default function ConfigBot() {
                   ))}
                 </div>
                 <div className="wcb-ayuda">
-                  Tasas de hoy: 1 USD = {Number(pagos.tasas.copUsd).toLocaleString('es-CO')} pesos · 1 USD = Bs. {Number(pagos.tasas.bsdUsd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}.
+                  Tasas de hoy: Zelle 1 USD = {Number(pagos.tasas.copUsd).toLocaleString('es-CO')} pesos · Bolívares: 1 USD = {Number(pagos.tasas.copUsdBs || pagos.tasas.copUsd).toLocaleString('es-CO')} pesos = Bs. {Number(pagos.tasas.bsdUsd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}.
                   Se cambian en <b>Tasas</b>.
                 </div>
               </>

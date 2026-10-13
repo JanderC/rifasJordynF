@@ -28,8 +28,8 @@ const fmtFecha = f =>
 /* ─── Config visual de cada tasa ─── */
 const TASAS_CONFIG = {
   COP_POR_USD: {
-    label:       'Tasa COP / USD',
-    descripcion: 'Pesos colombianos equivalentes a 1 dólar. Se usa para Zelle y conversiones generales.',
+    label:       'Tasa COP / USD — solo Zelle',
+    descripcion: 'Pesos colombianos por 1 dólar. Solo se usa para cobrar por Zelle. No afecta lo que se cobra en bolívares.',
     icono:       '🇨🇴',
     monedaBase:  'COP',
     monedaRef:   'USD',
@@ -40,16 +40,29 @@ const TASAS_CONFIG = {
     accentColor: 'var(--jordyn-primary)',
     accentAlpha: 'rgba(10,191,188,',
   },
+  COP_POR_USD_BS: {
+    label:       'Tasa COP / USD — solo para bolívares',
+    descripcion: 'Pesos colombianos por 1 dólar, usada únicamente para pasar el precio a bolívares (Pago Móvil y Banco de Venezuela). Es independiente de la de Zelle.',
+    icono:       '🔁',
+    monedaBase:  'COP',
+    monedaRef:   'USD',
+    placeholder: '3000',
+    step:        '1',
+    hint:    v => `Regla de tres: pesos ÷ ${new Intl.NumberFormat('es-CO').format(v)} × Bs por dólar`,
+    ejemplo: v => `Si sube, se cobran menos bolívares; si baja, más. Un boleto de ${fmtCOP(60000)} = $${(60000 / v).toFixed(2)} × la tasa BsD/USD`,
+    accentColor: '#7c3aed',
+    accentAlpha: 'rgba(124,58,237,',
+  },
   BSD_POR_USD: {
     label:       'Tasa BsD / USD',
-    descripcion: 'Bolívares digitales equivalentes a 1 dólar. Referencia para Pago Móvil.',
+    descripcion: 'Bolívares por 1 dólar (paralelo o BCV). Solo se usa para los pagos en bolívares.',
     icono:       '🇻🇪',
     monedaBase:  'BsD',
     monedaRef:   'USD',
     placeholder: '45.00',
     step:        '0.01',
     hint:    v => `1 USD = ${fmtBs(v)} · 1 BsD = $${(1 / v).toFixed(6)} USD`,
-    ejemplo: v => `Un boleto de ${fmtCOP(10000)} a COP/USD 4.200 → $2.38 USD → ${fmtBs(2.38 * v)}`,
+    ejemplo: v => `Por cada dólar del precio se cobran ${fmtBs(v)}`,
     accentColor: 'var(--jordyn-gold)',
     accentAlpha: 'rgba(240,165,0,',
   },
@@ -62,6 +75,9 @@ const FUENTES_UI = {
     { id: 'paralelo', nombre: 'Dólar paralelo', sub: 'Promedio del mercado',        icono: '📈', fmt: v => fmtBs(v) },
   ],
   COP_POR_USD: [
+    { id: 'oficial',  nombre: 'Dólar oficial en Colombia', sub: 'Promedio compra / venta', icono: '🇨🇴', fmt: v => fmtCOP(v) },
+  ],
+  COP_POR_USD_BS: [
     { id: 'oficial',  nombre: 'Dólar oficial en Colombia', sub: 'Promedio compra / venta', icono: '🇨🇴', fmt: v => fmtCOP(v) },
   ],
 };
@@ -93,7 +109,8 @@ function Calculadora({ tasas }) {
   const [resultado, setRes]     = useState(null);
   const paralelo = useDolarParalelo();
 
-  const copUsd   = parseFloat(tasas?.COP_POR_USD?.valor || 4200);
+  // Bolívares ↔ pesos: con la tasa de pesos propia de los bolívares (no la de Zelle)
+  const copUsd   = parseFloat(tasas?.COP_POR_USD_BS?.valor || tasas?.COP_POR_USD?.valor || 4200);
   const bsdUsd   = parseFloat(tasas?.BSD_POR_USD?.valor || 0);
   const tasaActiva = bsdUsd > 0 ? bsdUsd : (paralelo.tasa || 0);
 
@@ -310,7 +327,7 @@ export default function Tasas() {
   };
 
   // Orden fijo: COP primero, BSD segundo
-  const ORDER  = ['COP_POR_USD', 'BSD_POR_USD'];
+  const ORDER  = ['COP_POR_USD', 'BSD_POR_USD', 'COP_POR_USD_BS'];
   const allKeys = { ...TASAS_CONFIG, ...tasas };
   const claves = [
     ...ORDER.filter(k => k in allKeys),
@@ -325,8 +342,9 @@ export default function Tasas() {
         <p style={{ fontSize:'.82rem', color:'var(--jordyn-muted)', margin:0, lineHeight:1.6 }}>
           <i className="bi bi-info-circle me-1"></i>
           Configura aquí las tasas del sistema.
-          <strong> COP/USD</strong> se aplica en Zelle y conversiones generales.
-          <strong> BsD/USD</strong> es la que se usa para Pago Móvil.
+          <strong> COP/USD</strong> es solo para Zelle.
+          Los bolívares (Pago Móvil) se calculan con su regla de tres aparte: precio en pesos ÷ <strong>COP/USD para bolívares</strong> × <strong>BsD/USD</strong>.
+          Cambiar la de Zelle no mueve lo que se cobra en bolívares.
           Puedes escribirlas a mano o tomarlas del <strong>BCV</strong>, del paralelo o del dólar oficial de Colombia:
           una sola vez, o dejarlas en automático para que se actualicen solas.
           El cliente nunca ve la tasa, solo el monto convertido.
