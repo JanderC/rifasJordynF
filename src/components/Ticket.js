@@ -1,3 +1,4 @@
+import Ticket4Cifras, { esBoleto4 } from './Ticket4Cifras';
 import React, { useState, useEffect } from 'react';
 import API from '../services/api';
 
@@ -1291,7 +1292,15 @@ export function getPaperBgStyle(D) {
 // ════════════════════════════════════════════════════════════
 //   TicketPreview — versión React inline (con capas)
 // ════════════════════════════════════════════════════════════
-export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dProp }) {
+// Las rifas de 4 cifras tienen su propio boleto; el resto usa el clásico
+export function TicketPreview(props) {
+  const rifaData = props.r || props.rifa || {};
+  return esBoleto4(rifaData, props.numero, props.design)
+    ? <Ticket4Cifras r={rifaData} numero={props.numero} design={props.design} />
+    : <TicketPreviewClasico {...props} />;
+}
+
+function TicketPreviewClasico({ r, rifa, numero, comprador, vendedor, design: dProp }) {
   const rifaData = r || rifa || {};
   const D        = { ...DEFAULT_DESIGN, ...(dProp || {}) };
 
@@ -1545,9 +1554,36 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
 
 
 // ════════════════════════════════════════════════════════════
+//   printTickets4 — impresión del boleto de 4 cifras (2 copias por rifa)
+// ════════════════════════════════════════════════════════════
+async function printTickets4(rifasArr, numero, design) {
+  // La ventana se abre ya (dentro del clic) para que el navegador no la bloquee
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) return;
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const html = rifasArr.flatMap(r => [1, 2].map(() =>
+    renderToStaticMarkup(<Ticket4Cifras r={r} numero={numero} design={design} />)
+  )).join('\n');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <title>Boleto #${numero}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Poppins:ital,wght@0,400;0,600;0,700;0,800;1,700&display=swap" rel="stylesheet">
+    <style>
+      *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      body{margin:0;background:#e8e8e0;display:flex;flex-direction:column;align-items:center;gap:18px;padding:18px;}
+      @media print{ body{background:#fff;padding:4px;gap:10px;} @page{size:landscape;margin:5mm;} }
+    </style>
+  </head><body>${html}
+    <script>window.onload=()=>{setTimeout(()=>{window.print();window.close();},900);};<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+// ════════════════════════════════════════════════════════════
 //   printTickets — abre ventana de impresión
 // ════════════════════════════════════════════════════════════
 export function printTickets(rifasArr, numero, comprador, vendedor, design) {
+  if (rifasArr.some(r => esBoleto4(r, numero, design))) return printTickets4(rifasArr, numero, design);
   const d = { ...DEFAULT_DESIGN, ...(design || {}) };
 
   const STYLE = `

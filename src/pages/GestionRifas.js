@@ -2847,7 +2847,11 @@ export default function GestionRifas() {
         tipo:                  form.tipo,
         cifras:                Number(form.cifras) || 3,
         imagen_url:            form.imagen_base64 || null,
-        ticket_template_id:    form.ticket_template_id || null,
+        // la plantilla tiene que ser del modelo de la rifa (4 cifras con 4 cifras)
+        ticket_template_id:    (() => {
+          const tpl = plantillas.find(p => String(p.id) === String(form.ticket_template_id));
+          return tpl && (tpl.design?.modelo === 'cuatro') === (Number(form.cifras) === 4) ? tpl.id : null;
+        })(),
         ofertas:               form.ofertas || [],
         vendedores_categorias: vendedoresSeleccionados,
         categoria_id:          form.categoria_seleccionada_id || null,
@@ -3569,7 +3573,7 @@ export default function GestionRifas() {
                     </div>
                   ) : (
                     <MiniaturasPlantillas
-                      plantillas={plantillas}
+                      plantillas={plantillas.filter(p => (p.design?.modelo === 'cuatro') === (Number(form.cifras) === 4))}
                       seleccionadaId={form.ticket_template_id}
                       onSelect={id => setForm(p => ({ ...p, ticket_template_id: id }))}
                     />

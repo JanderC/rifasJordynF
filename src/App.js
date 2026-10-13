@@ -14,6 +14,7 @@ import NumeroGrid        from './pages/NumeroGrid';
 import Historial         from './pages/Historial';
 import Caja              from './pages/Caja';
 import DisenoTicket         from './pages/DisenoTicket';
+import DisenoTicket4        from './pages/DisenoTicket4';
 import Plantillas            from './pages/Plantillas';
 import GeneradorPDFTickets  from './pages/GeneradorPDFTickets';
 import ImprimirBoletos     from './pages/ImprimirBoletos';
@@ -82,6 +83,9 @@ function AppRoutes() {
       <Route path="/plantillas"        element={<PrivateRoute rol="dueno"><Plantillas /></PrivateRoute>} />
       <Route path="/plantillas/nueva"  element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
       <Route path="/plantillas/:id"    element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
+      {/* Boleto de 4 cifras: modelo y editor aparte */}
+      <Route path="/boleto-4-cifras/nueva" element={<PrivateRoute rol="dueno"><DisenoTicket4 /></PrivateRoute>} />
+      <Route path="/boleto-4-cifras/:id"   element={<PrivateRoute rol="dueno"><DisenoTicket4 /></PrivateRoute>} />
 
       {/* Compatibilidad: /diseno-ticket redirige a /plantillas */}
       <Route path="/diseno-ticket" element={<Navigate to="/plantillas" replace />} />

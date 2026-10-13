@@ -13,6 +13,7 @@
 //   ▸ Por texto: textStroke (contorno/margen), textGlow, sombra 3D,
 //                gradiente de letra
 // ════════════════════════════════════════════════════════════════
+import Ticket4Cifras, { esBoleto4 } from './Ticket4Cifras';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   DEFAULT_DESIGN,
@@ -2522,7 +2523,7 @@ function PresetsPanel({ onApply, onClose }) {
 /* ════════════════════════════════════════════════════════════
    <TicketEditable> — Componente principal
 ═════════════════════════════════════════════════════════════ */
-export default function TicketEditable({ r, numero, design, onUpdate, printMode = false }) {
+function TicketEditableClasico({ r, numero, design, onUpdate, printMode = false }) {
   if (!onUpdate) onUpdate = () => {};
 
   const globalSizeFactor = design?.globalSizeFactor || 1.0;
@@ -3420,4 +3421,14 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+//   Punto de entrada: las rifas de 4 cifras usan su propio boleto
+//   (Ticket4Cifras), que no comparte nada con el diseño clásico.
+// ══════════════════════════════════════════════════════════════
+export default function TicketEditable(props) {
+  return esBoleto4(props.r, props.numero, props.design)
+    ? <Ticket4Cifras r={props.r} numero={props.numero} design={props.design} />
+    : <TicketEditableClasico {...props} />;
 }
