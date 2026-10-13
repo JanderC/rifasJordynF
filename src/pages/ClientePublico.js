@@ -692,6 +692,75 @@ const injectStyles = () => {
       .pub-cifra, .pub-paso, .pago-card { transition:none; }
     }
 
+    /* ══════════ Efectos de entrada (solo visuales) ══════════ */
+    /* Cinta en movimiento con los datos de la rifa principal */
+    .pub-cinta { background:linear-gradient(90deg,${DARK},#0d3f3c 50%,${DARK}); color:#fff; overflow:hidden; white-space:nowrap; border-bottom:1px solid ${TURQ}55; }
+    .pub-cinta-pista { display:inline-flex; padding:9px 0; animation:cintaMove 34s linear infinite; will-change:transform; }
+    .pub-cinta:hover .pub-cinta-pista { animation-play-state:paused; }
+    .pub-cinta span { display:inline-flex; align-items:center; font-size:.78rem; font-weight:700; letter-spacing:.3px; padding:0 20px; }
+    .pub-cinta span b { color:#ffd166; margin-left:6px; }
+    .pub-cinta span::after { content:'✦'; color:${TURQ2}; margin-left:40px; font-size:.7rem; }
+    @keyframes cintaMove { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+
+    /* Bolitas de lotería flotando a los lados del título */
+    .pub-intro { position:relative; }
+    .pub-intro > *:not(.pub-bolas) { position:relative; z-index:1; }
+    .pub-bolas { position:absolute; inset:0 -9vw; pointer-events:none; z-index:0; }
+    .pub-bolas i { position:absolute; display:flex; align-items:center; justify-content:center; border-radius:50%; font-style:normal;
+      font-weight:900; color:${DARK}; font-size:.95rem; width:46px; height:46px;
+      background:radial-gradient(circle at 32% 28%, #ffffff 0%, #f3fbfb 45%, #cfeeed 100%); border:2.5px solid ${TURQ};
+      box-shadow:0 10px 22px rgba(10,150,150,.22), inset 0 -4px 8px rgba(10,150,150,.12);
+      animation:bolaFlota 6s ease-in-out infinite alternate, bolaEntra .8s cubic-bezier(.2,.9,.3,1.3) both; }
+    .pub-bolas i:nth-child(1) { left:1%;  top:18%; animation-delay:0s, .15s; }
+    .pub-bolas i:nth-child(2) { left:9%;  top:62%; width:36px; height:36px; font-size:.78rem; border-color:#f5a623; animation-duration:7.5s, .8s; animation-delay:.6s, .3s; }
+    .pub-bolas i:nth-child(3) { left:15%; top:8%;  width:30px; height:30px; font-size:.8rem; border-color:${NARANJA}; animation-duration:5s, .8s; animation-delay:1.1s, .45s; }
+    .pub-bolas i:nth-child(4) { right:1%; top:14%; border-color:#f5a623; animation-duration:7s, .8s; animation-delay:.3s, .2s; }
+    .pub-bolas i:nth-child(5) { right:10%; top:60%; width:38px; height:38px; font-size:.82rem; animation-duration:5.5s, .8s; animation-delay:.9s, .35s; }
+    .pub-bolas i:nth-child(6) { right:16%; top:8%; width:30px; height:30px; font-size:.8rem; border-color:#7c3aed; animation-duration:8s, .8s; animation-delay:1.4s, .5s; }
+    @keyframes bolaFlota { from { transform:translateY(0) rotate(-8deg); } to { transform:translateY(-22px) rotate(10deg); } }
+    @keyframes bolaEntra { from { opacity:0; scale:.2; } to { opacity:1; scale:1; } }
+
+    /* El título: el degradado se mueve y cada parte entra en su turno */
+    .pub-intro h1 span { background:linear-gradient(100deg,${TURQ_DK},${TURQ2} 28%,#f5a623 50%,${TURQ2} 72%,${TURQ_DK}); background-size:220% auto;
+      -webkit-background-clip:text; background-clip:text; color:transparent; animation:tituloBrillo 5s linear infinite; }
+    @keyframes tituloBrillo { from { background-position:0% center; } to { background-position:220% center; } }
+    .pub-intro { animation:none; }
+    .pub-intro > .pub-intro-chip, .pub-intro > h1, .pub-intro > p, .pub-intro > .pub-sellos { animation:fadeUp .6s cubic-bezier(.2,.8,.2,1) both; }
+    .pub-intro > h1 { animation-delay:.08s; } .pub-intro > p { animation-delay:.18s; } .pub-intro > .pub-sellos { animation-delay:.28s; }
+
+    /* La tarjeta principal: marco de luz que se mueve y entrada con rebote */
+    .pub-hero-marco { position:relative; border-radius:31px; padding:3px;
+      background:linear-gradient(120deg,${TURQ},#ffd166,${NARANJA},${TURQ2},#7c3aed,${TURQ}); background-size:300% 300%;
+      box-shadow:0 26px 70px rgba(10,191,188,.30);
+      animation:marcoLuz 7s ease infinite, heroEntra .75s cubic-bezier(.2,.8,.2,1) .15s both; }
+    .pub-hero-marco > .hero-feat-card { box-shadow:none !important; }
+    @keyframes marcoLuz { 0% { background-position:0% 50%; } 50% { background-position:100% 50%; } 100% { background-position:0% 50%; } }
+    @keyframes heroEntra { from { opacity:0; transform:translateY(30px) scale(.965); } to { opacity:1; transform:none; } }
+    /* Destello que cruza la foto de la rifa cada tanto */
+    .pub-hero-marco .hero-img-caja::after { content:''; position:absolute; top:0; bottom:0; left:-60%; width:42%; z-index:2; pointer-events:none;
+      background:linear-gradient(100deg,transparent,rgba(255,255,255,.30),transparent); transform:skewX(-18deg); animation:fotoDestello 6s ease-in-out 1.3s infinite; }
+    @keyframes fotoDestello { 0% { left:-60%; } 26% { left:135%; } 100% { left:135%; } }
+    /* Aviso de urgencia sobre la foto */
+    .hero-urgente { position:absolute; top:14px; left:14px; z-index:4; pointer-events:none; color:#fff; font-weight:800; font-size:.8rem; letter-spacing:.3px;
+      padding:8px 15px; border-radius:40px; background:linear-gradient(135deg,#ff3d3d,${NARANJA}); box-shadow:0 8px 22px rgba(255,61,61,.45);
+      transform:rotate(-3deg); animation:urgeLatido 1.5s ease-in-out infinite; }
+    @keyframes urgeLatido { 0%,100% { transform:rotate(-3deg) scale(1); } 50% { transform:rotate(-3deg) scale(1.07); } }
+
+    @media (max-width:760px) {
+      .pub-bolas { inset:0 0; }
+      .pub-bolas i:nth-child(2), .pub-bolas i:nth-child(5) { display:none; }
+      .pub-bolas i { opacity:.9; width:34px; height:34px; font-size:.74rem; }
+      .pub-bolas i:nth-child(1) { left:2%; top:6%; } .pub-bolas i:nth-child(3) { left:15%; top:2%; }
+      .pub-bolas i:nth-child(4) { right:2%; top:5%; } .pub-bolas i:nth-child(6) { right:15%; top:1%; }
+      .pub-cinta span { font-size:.72rem; padding:0 14px; }
+      .pub-hero-marco { border-radius:27px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pub-cinta-pista, .pub-bolas i, .pub-intro h1 span, .pub-hero-marco, .hero-urgente,
+      .pub-intro > .pub-intro-chip, .pub-intro > h1, .pub-intro > p, .pub-intro > .pub-sellos { animation:none !important; }
+      .pub-hero-marco .hero-img-caja::after { display:none; }
+    }
+
     /* ── Barra flotante de selección ── */
     .carrito-bar {
       position:sticky; bottom:14px; z-index:50;
@@ -1001,6 +1070,9 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
   return (
     <div style={{ borderRadius:28, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.18)', display:'grid', gridTemplateColumns:'1fr 1fr', minHeight:520, background:DARK }} className="hero-feat-card">
       <div className={`hero-img-caja${tieneImagen ? ' con-imagen' : ''}${gal.fotos.length > 1 ? ' galeria' : ''}`} {...gal.gestos} style={{ position:'relative', overflow:'hidden', height:'100%', minHeight:520, background:'#0d1e1e' }}>
+        {!rifa.cerrada && !cd.expired && (progreso.pct >= 90 || cd.dias < 3) && (
+          <div className="hero-urgente">{progreso.pct >= 90 ? '🔥 ¡Últimos números!' : '⏰ ¡Se juega pronto!'}</div>
+        )}
         {tieneImagen ? (
           <>
             {/* Fondo borroso por si quedan franjas (efecto cinema) */}
@@ -3163,8 +3235,28 @@ export default function ClientePublico() {
         </div>
       </nav>
 
+      {/* Cinta en movimiento con lo principal de la rifa (decorativa: lo mismo está más abajo) */}
+      {!loading && rifaHero && (() => {
+        const datos = [
+          ['🏆 Premio', rifaHero.premio],
+          rifaHero.fecha_sorteo ? ['📅 Se juega el', fmtF(rifaHero.fecha_sorteo)] : null,
+          ['🎟 Números desde', fmt(rifaHero.precio)],
+          rifaHero.ofertas?.length ? ['🎁 Promos', `${rifaHero.ofertas.length} activa${rifaHero.ofertas.length > 1 ? 's' : ''}`] : null,
+          hayApartados ? ['🔖 Aparta hoy', 'y paga después'] : null,
+          ['📲 Tu ticket', 'llega por WhatsApp'],
+        ].filter(Boolean);
+        return (
+          <div className="pub-cinta" aria-hidden="true">
+            <div className="pub-cinta-pista">
+              {[0, 1, 2, 3].flatMap(v => datos.map(([t, d], i) => <span key={`${v}-${i}`}>{t}<b>{d}</b></span>))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Presentación */}
       <header className="pub-intro">
+        <div className="pub-bolas" aria-hidden="true">{['7', '21', '★', '13', '88', '🍀'].map((t, i) => <i key={i}>{t}</i>)}</div>
         <span className="pub-intro-chip"><b></b> {rifasActivasOrdenadas.length > 1 ? `${rifasActivasOrdenadas.length} rifas activas ahora` : 'Sorteos todas las semanas'}</span>
         <h1>Tu número de la suerte <span>te está esperando</span></h1>
         <p>Elige tu número, paga fácil desde tu teléfono y recibe tu ticket por WhatsApp. Así de simple.</p>
@@ -3182,7 +3274,9 @@ export default function ClientePublico() {
         </div>
       ) : rifaHero ? (
         <section id="hero-sec" style={{ padding:'32px 5vw 0', maxWidth:1100, margin:'0 auto', scrollMarginTop:64 }}>
-          <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} refreshKey={refreshKey} />
+          <div className="pub-hero-marco">
+            <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} refreshKey={refreshKey} />
+          </div>
         </section>
       ) : (
         <section style={{ padding:'40px 5vw 0', maxWidth:700, margin:'0 auto', textAlign:'center' }}>
