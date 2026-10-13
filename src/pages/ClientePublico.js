@@ -2023,6 +2023,13 @@ function BuscadorNumeros4({ rifa, onComprar }) {
   const [parecidos,   setParecidos]   = useState([]);
   // Venta mínima de la rifa (números por compra)
   const minimo = Math.max(1, Number(rifa.venta_minima) || 1);
+  // Selección aleatoria: el sistema elige N números libres
+  const MAX_AZAR = 20;
+  const [azCant,     setAzCant]     = useState(String(minimo));
+  const [azOtro,     setAzOtro]     = useState('');
+  const [azCargando, setAzCargando] = useState(false);
+  const [azUltimos,  setAzUltimos]  = useState([]);   // la última tanda elegida al azar
+  const [azAviso,    setAzAviso]    = useState('');
 
   const numNorm  = valor.replace(/\D/g, '').slice(0, cifras);
   const completo = numNorm.length === cifras;
@@ -2067,6 +2074,31 @@ function BuscadorNumeros4({ rifa, onComprar }) {
     ? prev.filter(s => s.numero !== numero)
     : [...prev, { numero, idx: idxRef.current++ }]));
   const enCarrito = (numero) => sel.some(s => s.numero === numero);
+  // Elige al azar `azCant` números libres y los agrega. cambiar = reemplaza la tanda anterior.
+  const elegirAlAzar = async (cambiar = false) => {
+    const n = Math.min(MAX_AZAR, parseInt(azCant, 10) || 0);
+    if (n < 1 || azCargando) return;
+    setAzCargando(true); setAzAviso('');
+    try {
+      const base = cambiar ? sel.filter(x => !azUltimos.includes(x.numero)) : sel;
+      const yaTiene = new Set(base.map(x => x.numero));
+      const nuevos = [];
+      // Hasta 3 consultas por si alguno de los sorteados ya estaba en el carrito
+      for (let intento = 0; intento < 3 && nuevos.length < n; intento++) {
+        const { data } = await API.get(`/publico/rifas/${rifa.id}/sugerencias`, { params: { cantidad: MAX_AZAR, ...(termina ? { termina } : {}) } });
+        for (const num of data.numeros || []) {
+          if (nuevos.length >= n) break;
+          if (!yaTiene.has(num)) { yaTiene.add(num); nuevos.push(num); }
+        }
+        if ((data.numeros || []).length < MAX_AZAR) break;   // no hay más libres que esos
+      }
+      if (!nuevos.length) { setAzAviso(termina ? `No quedan números libres que terminen en ${termina}.` : 'No quedan números libres en esta rifa.'); return; }
+      if (nuevos.length < n) setAzAviso(`Solo ${nuevos.length === 1 ? 'quedaba 1 libre' : `quedaban ${nuevos.length} libres`}${termina ? ` con terminación ${termina}` : ''}.`);
+      setSel([...base, ...nuevos.map(numero => ({ numero, idx: idxRef.current++ }))]);
+      setAzUltimos(nuevos);
+    } catch { setAzAviso('No se pudieron elegir los números. Intenta de nuevo.'); }
+    finally { setAzCargando(false); }
+  };
   const faltanMin = Math.max(0, minimo - sel.length);
   // Con las cifras completas se consulta solo, sin tener que tocar la lupa
   useEffect(() => {
@@ -2205,6 +2237,88 @@ function BuscadorNumeros4({ rifa, onComprar }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Selección aleatoria: el sistema elige los números (igual que en las rifas de 3 cifras) ── */}
+      <div style={{ background:'linear-gradient(135deg,#0d2e1a,#0a1f12)', border:`1.5px solid ${VERDE}33`, borderRadius:18, padding:'20px 22px', marginBottom:20,
+        boxShadow:'0 8px 32px rgba(34,197,94,.12)', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-30, right:-30, width:100, height:100, borderRadius:'50%', background:`${VERDE}0a`, pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-20, left:-20, width:70, height:70, borderRadius:'50%', background:`${TURQ}0a`, pointerEvents:'none' }}/>
+
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, position:'relative' }}>
+          <div style={{ width:38, height:38, borderRadius:10, flexShrink:0, background:`linear-gradient(135deg,${VERDE}33,${VERDE}18)`, border:`1px solid ${VERDE}44`,
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.2rem' }}>🎲</div>
+          <div>
+            <div style={{ fontSize:'.86rem', color:'#fff', fontWeight:800, letterSpacing:'.5px' }}>Selección Aleatoria</div>
+            <div style={{ fontSize:'.72rem', color:'rgba(255,255,255,.6)', marginTop:1 }}>
+              El sistema elige tus números al azar{termina ? ` · que terminen en ${termina}` : ''}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:14, position:'relative' }}>
+          <div style={{ fontSize:'.66rem', color:'rgba(255,255,255,.55)', fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', marginBottom:8 }}>Elige cuántos números:</div>
+          <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+            {[...new Set([minimo, 1, 2, 3, 5, 10, 20])].filter(n => n >= minimo && n <= MAX_AZAR).sort((a, b) => a - b).map(n => {
+              const activo = parseInt(azCant, 10) === n && azOtro === '';
+              return (
+                <button key={n} type="button" aria-pressed={activo} onClick={() => { setAzCant(String(n)); setAzOtro(''); }}
+                  style={{ background: activo ? `linear-gradient(135deg,${VERDE},#16a34a)` : 'rgba(255,255,255,.07)',
+                    border: activo ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)', color: activo ? '#fff' : 'rgba(255,255,255,.75)',
+                    borderRadius:10, padding:'9px 16px', fontFamily:"'Poppins',sans-serif", fontWeight:800, fontSize:'.88rem', cursor:'pointer',
+                    transition:'all .15s', boxShadow: activo ? `0 4px 16px ${VERDE}44` : 'none' }}>
+                  ×{n}
+                </button>
+              );
+            })}
+            <input type="number" min={minimo} max={MAX_AZAR} value={azOtro} placeholder="Otro nro..." aria-label="Otra cantidad de números"
+              onChange={e => {
+                const v = e.target.value.replace(/\D/g, '');
+                setAzOtro(v);
+                setAzCant(v === '' ? '' : String(Math.min(MAX_AZAR, parseInt(v, 10) || 0)));
+              }}
+              style={{ width:100, padding:'9px 12px', background: azOtro !== '' ? 'rgba(34,197,94,.15)' : 'rgba(255,255,255,.07)',
+                border: azOtro !== '' ? `1.5px solid ${VERDE}88` : '1.5px solid rgba(255,255,255,.12)', borderRadius:10, color:'#fff',
+                fontFamily:"'Poppins',sans-serif", fontSize:'.88rem', fontWeight:700, outline:'none', textAlign:'center' }} />
+          </div>
+          {azOtro !== '' && parseInt(azOtro, 10) > MAX_AZAR && (
+            <div style={{ fontSize:'.72rem', color:'#ffd9a8', marginTop:6 }}>Se eligen hasta {MAX_AZAR} por vez; puedes tocar el botón otra vez para sumar más.</div>
+          )}
+        </div>
+
+        <button type="button" onClick={() => elegirAlAzar(false)} disabled={!(parseInt(azCant, 10) > 0) || azCargando}
+          style={{ width:'100%', background: azCargando ? 'rgba(255,255,255,.08)' : `linear-gradient(135deg,${VERDE},#16a34a)`,
+            border:`1.5px solid ${azCargando ? 'rgba(255,255,255,.1)' : `${VERDE}66`}`, color:'#fff', borderRadius:12, padding:'14px 20px',
+            cursor: azCargando ? 'not-allowed' : 'pointer', fontFamily:"'Poppins',sans-serif", fontWeight:800, fontSize:'1rem',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:10, transition:'all .25s', position:'relative',
+            boxShadow: azCargando ? 'none' : `0 6px 24px ${VERDE}44`, letterSpacing:'.5px', opacity: parseInt(azCant, 10) > 0 ? 1 : .55 }}>
+          <span style={{ fontSize:'1.2rem' }}>🎰</span>
+          <span>
+            {azCargando ? 'Eligiendo...'
+              : parseInt(azCant, 10) > 0
+                ? `¡Quiero ${parseInt(azCant, 10)} número${parseInt(azCant, 10) > 1 ? 's' : ''} aleatorio${parseInt(azCant, 10) > 1 ? 's' : ''}!`
+                : '¡Elige mis números!'}
+          </span>
+        </button>
+
+        {azAviso && <div style={{ marginTop:10, fontSize:'.78rem', color:'#ffd9a8', fontWeight:600, textAlign:'center', position:'relative' }}>{azAviso}</div>}
+
+        {azUltimos.length > 0 && !azCargando && (
+          <div style={{ marginTop:16, position:'relative' }}>
+            <div style={{ fontSize:'.66rem', color:`${VERDE}`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', marginBottom:10 }}>✨ Números elegidos para ti:</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
+              {azUltimos.map(n => (
+                <button key={n} type="button" className={`b4-sug${enCarrito(n) ? ' on' : ''}`} onClick={() => alternar(n)} aria-pressed={enCarrito(n)}
+                  title={enCarrito(n) ? 'Tocar para quitarlo' : 'Tocar para agregarlo de nuevo'}>{enCarrito(n) ? '✓ ' : ''}{n}</button>
+              ))}
+            </div>
+            <button type="button" onClick={() => elegirAlAzar(true)}
+              style={{ background:'rgba(255,255,255,.08)', border:'1.5px solid rgba(255,255,255,.2)', color:'#fff', borderRadius:10, padding:'8px 14px',
+                fontFamily:"'Poppins',sans-serif", fontWeight:700, fontSize:'.8rem', cursor:'pointer' }}>
+              🔄 No me convencen, cámbialos
+            </button>
           </div>
         )}
       </div>
