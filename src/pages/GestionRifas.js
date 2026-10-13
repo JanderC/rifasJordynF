@@ -223,6 +223,7 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
    6. El monto pendiente se calcula en tiempo real con el precio de la rifa
 ════════════════════════════════════════════════════════════ */
 function SelectorCategoria({
+  cifras = 3,
   precioRifa,
   categoriaId,
   onCategoriaChange,
@@ -283,6 +284,9 @@ function SelectorCategoria({
     }
   };
 
+  // Solo las categorías de las mismas cifras que la rifa (en terminales no se copian números: van todas)
+  const categoriasDeLaRifa = Number(cifras) === 2 ? categorias
+    : categorias.filter(c => (Number(c.cifras) === 4 ? 4 : 3) === (Number(cifras) === 4 ? 4 : 3) || String(c.id) === String(categoriaId));
   const catActual  = categorias.find(c => String(c.id) === String(categoriaId));
   const esSim      = catActual?.tipo === 'simultanea';
   const todosSelec = vendedoresCargados.length > 0 && selectedVendedorIds.length === vendedoresCargados.length;
@@ -302,12 +306,18 @@ function SelectorCategoria({
         style={{ marginBottom: 12 }}
       >
         <option value="">— Seleccionar categoría —</option>
-        {categorias.map(c => (
+        {categoriasDeLaRifa.map(c => (
           <option key={c.id} value={c.id}>
-            {c.nombre} · {c.tipo === 'simultanea' ? '⚡ Simultánea' : '🎯 Parcial'}
+            {c.nombre} · {c.tipo === 'simultanea' ? '⚡ Simultánea' : '🎯 Parcial'} · {Number(c.cifras) === 4 ? 4 : 3} cifras
           </option>
         ))}
       </select>
+      {Number(cifras) !== 2 && categorias.length > 0 && categoriasDeLaRifa.length === 0 && (
+        <div style={{ fontSize:'.74rem', color:'#b45309', background:'rgba(240,165,0,.08)', border:'1px solid rgba(240,165,0,.3)', borderRadius:8, padding:'8px 11px', marginBottom:12 }}>
+          <i className="bi bi-exclamation-triangle-fill me-1"></i>
+          No hay categorías de {Number(cifras)} cifras. Créala en <strong>Números Fijos → Nueva categoría</strong> eligiendo «{Number(cifras)} cifras».
+        </div>
+      )}
 
       {/* Badge tipo + spinner */}
       {catActual && (
@@ -807,8 +817,8 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
    MODAL BOLETERÍA — Gestión de números por vendedor en una rifa
 ════════════════════════════════════════════════════════════ */
 // Cifras con que se muestran/validan los números de una rifa.
-// Terminal (2 cifras) usa 00–99; las demás rifas mantienen el formato de 3.
-const digitosRifa = (rifa) => (Number(rifa?.cifras) === 2 ? 2 : 3);
+// Cifras de los números de la rifa: terminal 00–99, normal 000–999, cuatro cifras 0000–9999.
+const digitosRifa = (rifa) => ([2, 4].includes(Number(rifa?.cifras)) ? Number(rifa.cifras) : 3);
 
 function ModalBoleteria({ rifa, onClose }) {
   const [data,          setData]          = useState(null);
@@ -2051,7 +2061,7 @@ function BuscadorGanador({ rifa, vends, colorVend, onAbrirVendedor }) {
           maxLength={dig}
           value={busqueda}
           onChange={e => handleChange(e.target.value)}
-          placeholder={dig === 2 ? 'Ej: 07' : 'Ej: 007'}
+          placeholder={dig === 2 ? 'Ej: 07' : dig === 4 ? 'Ej: 0007' : 'Ej: 007'}
           style={{
             width: '100%', padding: '8px 32px 8px 36px',
             border: '1.5px solid rgba(124,58,237,0.25)',
@@ -2594,7 +2604,7 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                     rows={3}
                     value={inputNums}
                     onChange={e => setInputNums(e.target.value)}
-                    placeholder={dig === 2 ? 'Ej: 01, 45, 99 o uno por línea' : 'Ej: 001, 045, 123 o uno por línea'}
+                    placeholder={dig === 2 ? 'Ej: 01, 45, 99 o uno por línea' : dig === 4 ? 'Ej: 0001, 0450, 1234 o uno por línea' : 'Ej: 001, 045, 123 o uno por línea'}
                     style={{ resize: 'vertical', fontFamily: 'monospace', letterSpacing: 2, fontSize: '.9rem', fontWeight: 700 }}
                   />
                   {numerosParsed.length > 0 && (
@@ -3732,6 +3742,7 @@ export default function GestionRifas() {
                     {' '}y se crearán lotes en <strong>Caja</strong> con el monto pendiente por cada vendedor.
                   </p>
                   <SelectorCategoria
+                    cifras={form.cifras}
                     precioRifa={form.precio}
                     categoriaId={form.categoria_seleccionada_id}
                     onCategoriaChange={catId => {

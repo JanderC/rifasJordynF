@@ -11,8 +11,12 @@ import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
 
+// Formato por defecto (3 cifras). Dentro de cada modal de una categoría se redefinen
+// según sus cifras (3 → 000–999, 4 → 0000–9999).
 const pad3  = n => String(n).padStart(3, '0');
-const NUM_RE = /^\d{3}$/;
+const NUM_RE = /^\d{3,4}$/;
+const cifrasCat = c => (Number(c?.cifras) === 4 ? 4 : 3);
+const MAX_RANGO = 1000;   // números por cada "Agregar rango" (las de 4 cifras tienen 10.000)
 
 function generarCredenciales(nombre) {
   const base = nombre.toLowerCase()
@@ -198,7 +202,7 @@ function useBuscarNumero(categoriaId, numero, activo) {
 // ── ModalCrearCategoria ──────────────────────────────────────────
 function ModalCrearCategoria({ categoria, onClose, onSaved }) {
   const esEditar = !!categoria;
-  const [form,setForm] = useState({nombre:categoria?.nombre||'',tipo:categoria?.tipo||'parcial',monto:categoria?.monto||'',descripcion:categoria?.descripcion||''});
+  const [form,setForm] = useState({nombre:categoria?.nombre||'',tipo:categoria?.tipo||'parcial',cifras:cifrasCat(categoria),monto:categoria?.monto||'',descripcion:categoria?.descripcion||''});
   const [saving,setSaving] = useState(false);
   const guardar = async () => {
     if (!form.nombre.trim()) return toast.error('El nombre es requerido');
@@ -220,6 +224,18 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
         <div style={S.body}>
           <div style={{marginBottom:'1rem'}}><label className="jd-label">NOMBRE *</label><input className="jd-input" value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Premio $1000" autoFocus /></div>
           <div style={{marginBottom:'1rem'}}><label className="jd-label">MONTO</label><input className="jd-input" value={form.monto} onChange={e=>setForm(p=>({...p,monto:e.target.value}))} placeholder="Ej: $1,000" /></div>
+          <div style={{marginBottom:'1rem'}}>
+            <label className="jd-label">CIFRAS DE LOS NÚMEROS *</label>
+            <div style={{display:'flex',gap:'1rem',marginTop:'0.5rem'}}>
+              {[{c:3,label:'3 cifras',desc:'000 a 999. Para las rifas normales.'},{c:4,label:'4 cifras',desc:'0000 a 9999. Para las rifas de cuatro cifras.'}].map(({c,label,desc})=>(
+                <div key={c} onClick={()=>!esEditar&&setForm(p=>({...p,cifras:c}))} style={{flex:1,padding:'0.8rem 1rem',borderRadius:12,cursor:esEditar?'default':'pointer',border:`2px solid ${form.cifras===c?'#7c3aed':'var(--jordyn-border)'}`,background:form.cifras===c?'rgba(124,58,237,.08)':'var(--jordyn-bg2)',transition:'all .15s',opacity:esEditar&&form.cifras!==c?0.45:1}}>
+                  <div style={{fontWeight:800,fontSize:'0.88rem',marginBottom:3,color:form.cifras===c?'#7c3aed':'var(--jordyn-text)'}}>{label}</div>
+                  <div style={{fontSize:'0.72rem',color:'var(--jordyn-muted)',lineHeight:1.5}}>{desc}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:'0.68rem',color:'var(--jordyn-muted)',marginTop:6}}>{esEditar?'Las cifras no se cambian después de crear la categoría.':'Una rifa solo puede usar categorías de sus mismas cifras.'}</div>
+          </div>
           <div style={{marginBottom:'1rem'}}>
             <label className="jd-label">TIPO *</label>
             <div style={{display:'flex',gap:'1rem',marginTop:'0.5rem'}}>
@@ -295,6 +311,10 @@ function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
 // • Los botones individuales de basura siguen funcionando en modo normal (sin selección activa)
 
 function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
+  const C = cifrasCat(categoria);
+  const pad3 = n => String(n).padStart(C, '0');
+  const NUM_RE = new RegExp(`^\\d{${C}}$`);
+  const RANGO_NUM = C === 4 ? '0000-9999' : '000-999';
   const huboCambiosRef = useRef(false);
   const [numeros,setNumeros]       = useState([]);
   const [numInput,setNumInput]     = useState('');
@@ -470,7 +490,8 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
 
   const agregarRango = () => {
     const ini=parseInt(rangoIni),fin=parseInt(rangoFin);
-    if (isNaN(ini)||isNaN(fin)||ini>fin||ini<0||fin>999) { toast.error('Rango inválido'); return; }
+    if (isNaN(ini)||isNaN(fin)||ini>fin||ini<0||fin>10**C-1) { toast.error(`Rango inválido: va de ${pad3(0)} a ${10**C-1}`); return; }
+    if (fin-ini+1>MAX_RANGO) { toast.error(`Máximo ${MAX_RANGO} números por rango. Agrégalo en varias partes.`); return; }
     const nums=[];
     for(let i=ini;i<=fin;i++) nums.push(pad3(i));
     agregarAlPool(nums);
@@ -536,7 +557,7 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
               <span>POOL</span><span>{total} — {conSerie.length} asignados — {sinSerie.length} pendientes</span>
             </div>
             <div style={{height:8,borderRadius:8,background:'var(--jordyn-border)',overflow:'hidden'}}>
-              <div style={{height:'100%',borderRadius:8,background:`linear-gradient(90deg,${accent},${accent}88)`,width:`${(total/1000)*100}%`,transition:'width 0.4s'}} />
+              <div style={{height:'100%',borderRadius:8,background:`linear-gradient(90deg,${accent},${accent}88)`,width:`${Math.min((total/10**C)*100,100)}%`,transition:'width 0.4s'}} />
             </div>
           </div>
 
@@ -553,14 +574,14 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
                   <div style={{display:'flex',gap:'0.5rem',alignItems:'flex-start',flexWrap:'wrap'}}>
                     <div>
                       <input className="jd-input" value={numInput}
-                        onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
+                        onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,C))}
                         onKeyDown={e=>e.key==='Enter'&&agregarManual()}
-                        placeholder="000-999"
+                        placeholder={RANGO_NUM}
                         style={{maxWidth:110,textAlign:'center',fontWeight:700,letterSpacing:2,fontSize:'1rem',borderColor:infoInput?(infoInput.disponible?accent:'#ffaaaa'):undefined}}
-                        maxLength={3} />
+                        maxLength={C} />
                       <div style={{marginTop:5,minHeight:42}}>
                         {validando?<span className="jd-spinner" style={{width:12,height:12}}></span>
-                          :numInput.length===3&&infoInput?<SerieBadge info={infoInput} />:null}
+                          :numInput.length===C&&infoInput?<SerieBadge info={infoInput} />:null}
                       </div>
                     </div>
                     <button className="btn-jordyn" onClick={agregarManual} disabled={saving||(infoInput&&!infoInput.disponible)}
@@ -572,9 +593,9 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
               )}
               {tab==='rango'&&(
                 <div style={{display:'flex',gap:'0.5rem',alignItems:'center',marginBottom:'1rem',flexWrap:'wrap'}}>
-                  <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:90}} maxLength={3} />
+                  <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:90}} maxLength={C} />
                   <span style={{color:'var(--jordyn-muted)'}}>—</span>
-                  <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:90}} maxLength={3} />
+                  <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:90}} maxLength={C} />
                   <button className="btn-jordyn" onClick={agregarRango} disabled={saving} style={{background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
                     <i className="bi bi-plus-lg me-1"></i>Agregar rango
                   </button>
@@ -813,6 +834,10 @@ function ModalNumerosEnCategoria({ categoria, vendedor, onClose, onSaved }) {
   );
 }
 function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClose, onSaved }) {
+  const C = cifrasCat(categoria);
+  const pad3 = n => String(n).padStart(C, '0');
+  const NUM_RE = new RegExp(`^\\d{${C}}$`);
+  const RANGO_NUM = C === 4 ? '0000-9999' : '000-999';
   const esSim  = categoria.tipo === 'simultanea';
   const accent = esSim ? '#e91e8c' : '#4361ee';
 
@@ -833,7 +858,7 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
   const { info:infoExistente, validando:validandoExistente } = useValidarNumero(categoria.id, vendedorIdParaValidar, numInput);
 
   // Para modo nuevo: buscar estado global sin vendedor_id
-  const { info:infoBuscar, buscando } = useBuscarNumero(categoria.id, numInput, modo==='nuevo' && numInput.length===3);
+  const { info:infoBuscar, buscando } = useBuscarNumero(categoria.id, numInput, modo==='nuevo' && numInput.length===C);
 
   // Cuantas veces aparece el numero en la lista actual
   const conteoEnLista = numeros.reduce((acc,n)=>{ acc[n]=(acc[n]||0)+1; return acc; },{});
@@ -888,7 +913,8 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
 
   const agregarRango = () => {
     const ini=parseInt(rangoIni),fin=parseInt(rangoFin);
-    if (isNaN(ini)||isNaN(fin)||ini>fin||ini<0||fin>999) { toast.error('Rango inválido'); return; }
+    if (isNaN(ini)||isNaN(fin)||ini>fin||ini<0||fin>10**C-1) { toast.error(`Rango inválido: va de ${pad3(0)} a ${10**C-1}`); return; }
+    if (fin-ini+1>MAX_RANGO) { toast.error(`Máximo ${MAX_RANGO} números por rango. Agrégalo en varias partes.`); return; }
     const nuevos=[];
     for (let i=ini;i<=fin;i++) {
       const num=pad3(i);
@@ -1030,21 +1056,21 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
               <div style={{display:'flex',gap:'0.5rem',alignItems:'flex-start',flexWrap:'wrap',marginBottom:'0.5rem'}}>
                 <div>
                   <input className="jd-input" value={numInput}
-                    onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,3))}
+                    onChange={e=>setNumInput(e.target.value.replace(/\D/g,'').slice(0,C))}
                     onKeyDown={e=>e.key==='Enter'&&agregarNumeroManual()}
-                    placeholder="000-999"
+                    placeholder={RANGO_NUM}
                     style={{maxWidth:110,textAlign:'center',fontWeight:700,letterSpacing:2,
-                      borderColor:numInput.length===3
+                      borderColor:numInput.length===C
                         ?(modo==='existente'
                           ?(infoExistente?(infoExistente.disponible?accent:'#ffaaaa'):undefined)
                           :(infoBuscar?(infoBuscar.hay_espacio?accent:(vecesEnLista<2?'#f0a500':'#ffaaaa')):'undefined'))
                         :undefined}}
-                    maxLength={3} />
+                    maxLength={C} />
                   {/* Indicador en tiempo real */}
                   <div style={{marginTop:5,minHeight:52}}>
                     {(validandoExistente||buscando)
                       ?<span className="jd-spinner" style={{width:12,height:12}}></span>
-                      :numInput.length===3
+                      :numInput.length===C
                         ?(modo==='existente'&&infoExistente
                           ?<SerieBadge info={infoExistente} />
                           :modo==='nuevo'&&infoBuscar
@@ -1076,9 +1102,9 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
 
             {tab==='rango'&&(
               <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap'}}>
-                <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:80}} maxLength={3} />
+                <input className="jd-input" value={rangoIni} onChange={e=>setRangoIni(e.target.value)} placeholder="Desde" style={{maxWidth:80}} maxLength={C} />
                 <span style={{color:'var(--jordyn-muted)'}}>—</span>
-                <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:80}} maxLength={3} />
+                <input className="jd-input" value={rangoFin} onChange={e=>setRangoFin(e.target.value)} placeholder="Hasta" style={{maxWidth:80}} maxLength={C} />
                 <button className="btn-jordyn" onClick={agregarRango} style={{background:`linear-gradient(135deg,${accent},${accent}cc)`}}>
                   <i className="bi bi-plus-lg me-1"></i>Agregar rango
                 </button>
@@ -1377,6 +1403,7 @@ function CategoriaCard({ cat, onEdit, onDelete, onSaved }) {
               <div style={{fontWeight:800,fontSize:'0.95rem',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cat.nombre}</div>
               {cat.monto&&<div style={{fontSize:'0.72rem',color:'var(--jordyn-muted)',marginBottom:4}}>{cat.monto}</div>}
               <span style={S.tipoBadge(cat.tipo)}>{esSim?'Simultánea':'Parcial'}</span>
+              <span style={{marginLeft:6,padding:'2px 9px',borderRadius:20,fontSize:'0.66rem',fontWeight:800,background:cifrasCat(cat)===4?'rgba(124,58,237,.12)':'var(--jordyn-bg2)',color:cifrasCat(cat)===4?'#7c3aed':'var(--jordyn-muted)',border:`1px solid ${cifrasCat(cat)===4?'rgba(124,58,237,.35)':'var(--jordyn-border)'}`}}>{cifrasCat(cat)} cifras</span>
             </div>
             <div style={{display:'flex',gap:5,flexShrink:0}}>
               <button onClick={()=>onEdit(cat)} style={{background:'var(--jordyn-bg2)',border:'1px solid var(--jordyn-border)',borderRadius:8,padding:'5px 9px',cursor:'pointer',fontSize:'0.78rem',color:'var(--jordyn-muted)'}}><i className="bi bi-pencil-fill"></i></button>
@@ -1392,10 +1419,10 @@ function CategoriaCard({ cat, onEdit, onDelete, onSaved }) {
               {[{label:'A',val:cat.numeros_serie_a||0,color:'#4361ee'},{label:'B',val:cat.numeros_serie_b||0,color:'#e91e8c'}].map(({label,val,color})=>(
                 <div key={label} style={{marginBottom:4}}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.62rem',color:'var(--jordyn-muted)',marginBottom:2}}>
-                    <span style={{fontWeight:700,color}}>Serie {label}</span><span>{val}/1000</span>
+                    <span style={{fontWeight:700,color}}>Serie {label}</span><span>{val}/{10**cifrasCat(cat)}</span>
                   </div>
                   <div style={{height:5,borderRadius:4,background:'var(--jordyn-border)',overflow:'hidden'}}>
-                    <div style={{height:'100%',borderRadius:4,background:color,width:`${Math.min((val/1000)*100,100)}%`,transition:'width 0.4s'}} />
+                    <div style={{height:'100%',borderRadius:4,background:color,width:`${Math.min((val/10**cifrasCat(cat))*100,100)}%`,transition:'width 0.4s'}} />
                   </div>
                 </div>
               ))}
