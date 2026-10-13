@@ -2924,11 +2924,47 @@ export default function GestionRifas() {
 
   const rifasActivas = rifas.filter(r => r.activa);
 
+  /* ── Vista de la lista: resumen, buscador, filtros y vendedores plegados ── */
+  const VEND_VISIBLES = 12;
+  const [vendAbiertos, setVendAbiertos] = useState({});      // rifa.id → lista completa de vendedores a la vista
+  const [busqRifa,     setBusqRifa]     = useState('');
+  const [filtroRifas,  setFiltroRifas]  = useState('todas'); // todas | activas | inactivas | publicadas | ocultas
+  // Días que faltan para el sorteo (hora de Venezuela); null si no tiene fecha
+  const diasParaSorteo = (r) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(r.fecha_sorteo || ''));
+    if (!m) return null;
+    const hoy = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Caracas' }));
+    return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())) / 86400000);
+  };
+  const FILTROS_RIFAS = [
+    ['todas',      'Todas',          () => true],
+    ['activas',    'Activas',        r => r.activa],
+    ['inactivas',  'Inactivas',      r => !r.activa],
+    ['publicadas', 'En la página',   r => r.activa && r.publicada !== false],
+    ['ocultas',    'Ocultas',        r => r.publicada === false],
+  ];
+  const textoBusq = busqRifa.trim().toLowerCase();
+  const rifasVista = rifas
+    .filter((FILTROS_RIFAS.find(f => f[0] === filtroRifas) || FILTROS_RIFAS[0])[2])
+    .filter(r => !textoBusq || [r.nombre, r.premio, r.loteria_ref].some(v => String(v || '').toLowerCase().includes(textoBusq)));
+  const resumenRifas = {
+    activas:    rifasActivas.length,
+    publicadas: rifasActivas.filter(r => r.publicada !== false).length,
+    vendedores: new Set(rifasActivas.flatMap(r => (r.vendedores || []).map(v => v.id))).size,
+    ventas:     rifasActivas.reduce((t, r) => t + (Number(r.total_ventas) || 0), 0),
+    ingresos:   rifasActivas.reduce((t, r) => t + (Number(r.ingresos_totales) || 0), 0),
+    proxima:    rifasActivas.map(r => ({ r, d: diasParaSorteo(r) })).filter(x => x.d != null && x.d >= 0).sort((a, b) => a.d - b.d)[0] || null,
+  };
+
   /* ── Tarjeta de rifa ── */
   const RifaCard = ({ r, archivada = false }) => {
     const ofertas   = Array.isArray(r.ofertas) ? r.ofertas : [];
     const vends     = Array.isArray(r.vendedores) ? r.vendedores : [];
     const totalNums = vends.reduce((acc, v) => acc + (v.numeros_count || 0), 0);
+    // Con muchos vendedores la tarjeta se hace eterna: se muestran los primeros y el resto se despliega
+    const vendAbierto = !!vendAbiertos[r.id];
+    const vendsVista  = vendAbierto ? vends : vends.slice(0, VEND_VISIBLES);
+    const diasSorteo  = diasParaSorteo(r);
 
     // Color del avatar por vendedor (estable: hash simple por nombre)
     const colorVend = (nombre = '') => {
@@ -3090,6 +3126,13 @@ export default function GestionRifas() {
                   🕐 {fmtHoraSorteo(r.hora_sorteo)}
                 </div>
               )}
+              {diasSorteo != null && !archivada && (
+                <span style={{ display:'inline-block', marginTop:5, borderRadius:20, padding:'2px 9px', fontSize:'.66rem', fontWeight:800,
+                  background: diasSorteo < 0 ? 'var(--jordyn-bg2)' : diasSorteo <= 1 ? 'rgba(230,57,70,.12)' : diasSorteo <= 3 ? 'rgba(240,165,0,.14)' : 'rgba(10,191,188,.1)',
+                  color: diasSorteo < 0 ? 'var(--jordyn-muted)' : diasSorteo <= 1 ? '#c62e3a' : diasSorteo <= 3 ? '#b37700' : 'var(--jordyn-primary)' }}>
+                  {diasSorteo < 0 ? `Se jugó hace ${-diasSorteo} día${diasSorteo === -1 ? '' : 's'}` : diasSorteo === 0 ? '¡Se juega hoy!' : diasSorteo === 1 ? 'Se juega mañana' : `Faltan ${diasSorteo} días`}
+                </span>
+              )}
             </div>
             <div className="col-3">
               <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>🎟 VENTAS</div>
@@ -3140,7 +3183,7 @@ export default function GestionRifas() {
               </div>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {vends.map(v => {
+                {vendsVista.map(v => {
                   const c = colorVend(v.nombre || '');
                   const extras = v.extras_count || 0;
                   const fijos  = v.fijos_count  || 0;
@@ -3207,6 +3250,14 @@ export default function GestionRifas() {
                   );
                 })}
               </div>
+              {vends.length > VEND_VISIBLES && (
+                <button type="button" onClick={() => setVendAbiertos(p => ({ ...p, [r.id]: !p[r.id] }))} aria-expanded={vendAbierto}
+                  style={{ marginTop: 9, width: '100%', border: '1.5px dashed rgba(124,58,237,0.38)', background: 'rgba(124,58,237,0.05)', color: '#7c3aed',
+                    borderRadius: 9, padding: '7px 10px', cursor: 'pointer', fontSize: '.74rem', fontWeight: 700 }}>
+                  <i className={`bi ${vendAbierto ? 'bi-chevron-up' : 'bi-chevron-down'} me-1`}></i>
+                  {vendAbierto ? 'Ver menos' : `Ver los ${vends.length} vendedores (${vends.length - VEND_VISIBLES} más)`}
+                </button>
+              )}
 
               {/* ─── BUSCADOR DE NÚMERO GANADOR ─── */}
               <BuscadorGanador
@@ -3301,10 +3352,52 @@ export default function GestionRifas() {
   return (
     <Layout title="GESTIÓN DE RIFAS">
 
+      {/* Resumen de las rifas activas */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:10, marginBottom:14 }}>
+        {[
+          { ico:'bi-trophy-fill',   color:'#0abfbc', valor: resumenRifas.activas,    rotulo:`Rifa${resumenRifas.activas === 1 ? '' : 's'} activa${resumenRifas.activas === 1 ? '' : 's'}`, nota:`${resumenRifas.publicadas} en la página del cliente` },
+          { ico:'bi-people-fill',   color:'#7c3aed', valor: resumenRifas.vendedores, rotulo:'Vendedores', nota:'con números en rifas activas' },
+          { ico:'bi-ticket-perforated-fill', color:'#f0a500', valor: resumenRifas.ventas.toLocaleString('es-CO'), rotulo:'Ventas registradas', nota: fmtCOP(resumenRifas.ingresos) },
+          { ico:'bi-calendar-event-fill', color:'#e63946',
+            valor: resumenRifas.proxima ? (resumenRifas.proxima.d === 0 ? 'Hoy' : resumenRifas.proxima.d === 1 ? 'Mañana' : `${resumenRifas.proxima.d} días`) : '—',
+            rotulo:'Próximo sorteo', nota: resumenRifas.proxima ? resumenRifas.proxima.r.nombre : 'Sin fecha cargada' },
+        ].map(t => (
+          <div key={t.rotulo} className="jd-card" style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:12, borderLeft:`3px solid ${t.color}` }}>
+            <div style={{ width:40, height:40, borderRadius:11, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${t.color}18`, color:t.color, fontSize:'1.15rem' }}>
+              <i className={`bi ${t.ico}`}></i>
+            </div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:'1.25rem', fontWeight:900, lineHeight:1.1, color:'var(--jordyn-text)' }}>{t.valor}</div>
+              <div style={{ fontSize:'.7rem', fontWeight:700, color:'var(--jordyn-muted)', textTransform:'uppercase', letterSpacing:'.5px' }}>{t.rotulo}</div>
+              <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.nota}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Buscador, filtros y nueva rifa */}
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <p style={{ fontFamily: 'var(--jordyn-font)', fontSize: '0.8rem', color: 'var(--jordyn-muted)', margin: 0 }}>
-          <i className="bi bi-info-circle me-1"></i>{rifasActivas.length} rifa{rifasActivas.length !== 1 ? 's' : ''} activa{rifasActivas.length !== 1 ? 's' : ''}
-        </p>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', flex:'1 1 320px' }}>
+          <div style={{ position:'relative', flex:'1 1 220px', maxWidth:340 }}>
+            <i className="bi bi-search" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
+            <input className="jd-input" value={busqRifa} onChange={e => setBusqRifa(e.target.value)} placeholder="Buscar rifa, premio o lotería…" aria-label="Buscar rifa" style={{ paddingLeft:34 }} />
+          </div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {FILTROS_RIFAS.map(([clave, etiqueta, prueba]) => {
+              const n = rifas.filter(prueba).length;
+              const sel = filtroRifas === clave;
+              if (clave !== 'todas' && n === 0) return null;
+              return (
+                <button key={clave} type="button" aria-pressed={sel} onClick={() => setFiltroRifas(clave)}
+                  style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20, cursor:'pointer', fontSize:'.76rem', fontWeight:700,
+                    border:`1.5px solid ${sel ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`, background: sel ? 'rgba(10,191,188,.1)' : '#fff', color: sel ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)' }}>
+                  {etiqueta}
+                  <span style={{ background: sel ? 'var(--jordyn-primary)' : 'var(--jordyn-bg2)', color: sel ? '#fff' : 'var(--jordyn-muted)', borderRadius:20, padding:'0 7px', fontSize:'.68rem', fontWeight:800 }}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <button className="btn-jordyn" onClick={handleNueva}><i className="bi bi-plus-lg me-1"></i>NUEVA RIFA</button>
       </div>
 
@@ -3813,7 +3906,17 @@ export default function GestionRifas() {
             {rifas.length === 0 && (
               <div className="col-12"><div className="jd-alert jd-alert-warning"><i className="bi bi-exclamation-triangle-fill"></i>No hay rifas creadas. ¡Crea la primera!</div></div>
             )}
-            {rifas.map(r => <div key={r.id} className="col-12 col-md-6"><RifaCard r={r} /></div>)}
+            {rifas.length > 0 && rifasVista.length === 0 && (
+              <div className="col-12">
+                <div className="jd-card" style={{ textAlign:'center', padding:'2rem 1rem', color:'var(--jordyn-muted)' }}>
+                  <div style={{ fontSize:'2rem' }}>🔎</div>
+                  <div style={{ fontWeight:800, color:'var(--jordyn-text)', marginTop:4 }}>Ninguna rifa coincide</div>
+                  <button type="button" onClick={() => { setBusqRifa(''); setFiltroRifas('todas'); }}
+                    style={{ marginTop:8, border:'none', background:'none', color:'var(--jordyn-primary)', fontWeight:700, cursor:'pointer' }}>Ver todas las rifas</button>
+                </div>
+              </div>
+            )}
+            {rifasVista.map(r => <div key={r.id} className="col-12 col-md-6"><RifaCard r={r} /></div>)}
           </div>
 
           {rifasArchivadas.length > 0 && (
