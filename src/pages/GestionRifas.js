@@ -1266,6 +1266,33 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
   );
 }
 
+/* ── Reparto aleatorio "surtido" ──────────────────────────────
+   Elige `cant` números al azar pero repartidos por todas las centenas
+   (000–099, 100–199 … 900–999; en 4 cifras por millares, en 2 por decenas):
+   cada número va a la centena donde el vendedor tiene MENOS números (contando los
+   que ya tenía), así un vendedor de 10 queda con uno por centena y uno de 15 con
+   uno por centena más 5 repartidos. Si una centena se agotó, se sigue con las demás. */
+export function repartirPorCentenas(disponibles, cant, dig, yaTiene = []) {
+  const tam = 10 ** dig / 10;                                   // tamaño de cada grupo (centena)
+  const grupo = (n) => Math.min(9, Math.floor(Number(n) / tam));
+  const libres = Array.from({ length: 10 }, () => []);
+  for (const n of disponibles) libres[grupo(n)].push(String(n).padStart(dig, '0'));
+  const tiene = Array(10).fill(0);
+  for (const n of yaTiene) tiene[grupo(n)]++;
+  const elegidos = [];
+  while (elegidos.length < cant) {
+    const conLibres = libres.map((l, g) => g).filter(g => libres[g].length);
+    if (!conLibres.length) break;
+    const minimo = Math.min(...conLibres.map(g => tiene[g]));
+    const empatados = conLibres.filter(g => tiene[g] === minimo);
+    const g = empatados[Math.floor(Math.random() * empatados.length)];   // entre empatados, al azar
+    const i = Math.floor(Math.random() * libres[g].length);
+    elegidos.push(libres[g].splice(i, 1)[0]);
+    tiene[g]++;
+  }
+  return elegidos;
+}
+
 /* ── Sub-componente: panel de un vendedor en boletería ──
    Muestra fijos + extras mezclados, con badge azul "EXTRA" para
    los números que solo aplican a esta rifa (no afectan categorías). */
@@ -1338,12 +1365,8 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
     const cant = parseInt(cantAleatorio);
     if (!cant || cant < 1) { toast.error('Ingresa una cantidad válida'); return; }
     if (cant > disponiblesActivos.length) { toast.error(`Solo hay ${disponiblesActivos.length} disponibles`); return; }
-    const arr = [...disponiblesActivos];
-    for (let i = 0; i < cant; i++) {
-      const j = i + Math.floor(Math.random() * (arr.length - i));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    const picks = arr.slice(0, cant).map(n => String(n).padStart(dig, '0'));
+    // Al azar pero surtidos: repartidos por centenas, teniendo en cuenta los que ya tiene en esa serie
+    const picks = repartirPorCentenas(disponiblesActivos, cant, dig, tabSerie === 'A' ? numsA : numsB);
     await onAsignar(picks, tabSerie);
     setCantAleatorio('');
   };
@@ -1599,6 +1622,9 @@ function PanelVendedorBoleteria({ vendedor, rifa, esSimultanea, disponiblesA, di
                     value={cantAleatorio} onChange={e => setCantAleatorio(e.target.value)}
                     placeholder={`1 – ${disponiblesActivos.length}`}
                     style={{ fontWeight:700, fontSize:'1rem', textAlign:'center' }} />
+                  <div style={{ fontSize:'.62rem', color:'var(--jordyn-muted)', marginTop:4 }}>
+                    Surtidos: se reparten entre {dig === 2 ? 'las decenas (00, 10, 20…)' : dig === 4 ? 'los millares (0000, 1000, 2000…)' : 'las centenas (000, 100, 200…)'}
+                  </div>
                 </div>
                 <button onClick={handleAgregarAleatorio} disabled={saving || !cantAleatorio}
                   style={{ background:'linear-gradient(135deg,#059669,#047857)', border:'none', color:'#fff', borderRadius:9, padding:'10px 20px', cursor:saving?'wait':'pointer', fontWeight:700, fontSize:'.85rem', opacity:saving||!cantAleatorio?0.6:1, display:'flex', alignItems:'center', gap:6, height:44 }}>
