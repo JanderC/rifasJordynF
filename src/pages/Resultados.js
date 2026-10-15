@@ -220,9 +220,9 @@ export default function Resultados() {
       <div style={{ marginBottom:24 }}>
         <p style={{ fontSize:'.82rem', color:'var(--jordyn-muted)', margin:0, lineHeight:1.6 }}>
           <i className="bi bi-info-circle me-1"></i>
-          Publica aquí la <strong>imagen del resultado</strong> de cada sorteo. Sale en la página del cliente, en la sección Resultados,
-          y el bot la envía al <strong>grupo de WhatsApp</strong>. El número ganador que el bot usa para responder "¿qué cayó?"
-          se sigue cargando en <Link to="/whatsapp" style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>WhatsApp → Resultados</Link>.
+          Publica aquí el <strong>resultado</strong> de cada sorteo: sale en la página del cliente, el bot lo envía al <strong>grupo de WhatsApp</strong>
+          y es lo que <strong>el bot le manda a quien pregunte</strong> "¿qué cayó?". Con el sorteo y el número elegidos, ese número queda como resultado oficial
+          del sorteo (también en <Link to="/whatsapp" style={{ color:'var(--jordyn-primary)', fontWeight:700 }}>WhatsApp → Resultados</Link>), así que no hace falta cargarlo dos veces.
         </p>
       </div>
 
@@ -361,7 +361,7 @@ export default function Resultados() {
               <div className="col-12" style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>
                   <input type="checkbox" checked={form.visible} onChange={(e) => set('visible', e.target.checked)} style={{ width:18, height:18, accentColor:'var(--jordyn-primary)' }} />
-                  Mostrar en la página del cliente
+                  Mostrar en la página del cliente <span style={{ fontWeight:500, color:'var(--jordyn-muted)', fontSize:'.74rem' }}>(el bot lo usa igual para responder)</span>
                 </label>
                 {!editando && (
                   <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:'.82rem', fontWeight:600, cursor:'pointer' }}>
