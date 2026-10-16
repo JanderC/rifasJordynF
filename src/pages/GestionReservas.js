@@ -193,7 +193,7 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
       )}
       {actual.datos?.monto_esperado && (
         <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', marginBottom:8, fontSize:'.76rem', background:'rgba(37,211,102,.08)', border:'1px solid rgba(37,211,102,.25)', borderRadius:10, padding:'7px 10px' }}>
-          <span style={{ fontWeight:700, color:'#128c7e' }}><i className="bi bi-whatsapp me-1"></i>Se le pidió pagar:</span>
+          <span style={{ fontWeight:700, color:'#128c7e' }}><i className="bi bi-cash-coin me-1"></i>Se le pidió pagar:</span>
           <span style={{ fontWeight:900, color:'var(--jordyn-text)' }}>{actual.datos.monto_esperado}</span>
           {actual.datos.metodo && <span style={{ color:'var(--jordyn-muted)' }}>por {actual.datos.metodo}</span>}
           <span style={{ color:'var(--jordyn-muted)' }}>· revisa que la captura coincida</span>
@@ -201,6 +201,12 @@ function ComprobantePaginado({ reserva, hermanas = [] }) {
       )}
       {/* Datos leídos con IA (se leen al abrir si no se habían leído) y aviso de referencia repetida */}
       <LecturaComprobante key={`lectura-${actual.id}`} tipo="reserva" id={actual.id} datos={actual.datos} />
+      {actual.datos?.referencia_cliente && (
+        <div style={{ fontSize:'.74rem', marginBottom:8, color:'var(--jordyn-text)' }}>
+          <i className="bi bi-hash me-1" style={{ color:'var(--jordyn-primary)' }}></i>
+          Referencia que escribió el cliente: <b style={{ letterSpacing:1 }}>…{actual.datos.referencia_cliente}</b>
+        </div>
+      )}
       <ComprobanteVisor key={`visor-${pagina}`} src={actual.src} />
     </div>
   );

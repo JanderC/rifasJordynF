@@ -692,6 +692,44 @@ const injectStyles = () => {
       .pub-cifra, .pub-paso, .pago-card { transition:none; }
     }
 
+    /* ══════════ Formulario de compra por pasos ══════════ */
+    .compra-resumen { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; background:linear-gradient(135deg,${TURQ}12,${TURQ2}18);
+      border:1.5px solid ${TURQ}33; border-radius:14px; padding:12px 16px; }
+    .compra-mini { font-size:.6rem; font-weight:800; color:${TURQ_DK}; text-transform:uppercase; letter-spacing:.1em; }
+    .compra-num { background:linear-gradient(135deg,${TURQ},${TURQ2}); color:#fff; border-radius:10px; padding:4px 11px; font-weight:900; font-size:1.05rem; letter-spacing:2px; }
+    .compra-volver { display:inline-flex; align-items:center; gap:4px; border:1px solid ${TURQ}33; background:#fff; color:${TURQ_DK}; border-radius:20px;
+      padding:6px 14px; font-family:'Poppins',sans-serif; font-weight:700; font-size:.78rem; cursor:pointer; margin:12px 0 4px; }
+    .compra-titulo { display:flex; align-items:center; justify-content:center; gap:8px; font-size:1.15rem; font-weight:900; color:${DARK}; margin:16px 0 12px; letter-spacing:.3px; }
+    .compra-caja { background:#f7fbfb; border:1.5px solid ${TURQ}22; border-radius:18px; padding:16px; }
+    .compra-metodos { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .compra-metodo { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; padding:16px 10px 14px; border-radius:16px; cursor:pointer;
+      border:2px solid #e4eeee; background:#fff; font-family:'Poppins',sans-serif; transition:all .15s; text-align:center; }
+    .compra-metodo:hover { transform:translateY(-2px); }
+    .compra-metodo b { font-size:.8rem; color:${DARK}; text-transform:uppercase; letter-spacing:.3px; line-height:1.2; }
+    .compra-metodo small { font-size:.62rem; color:${DARK}77; }
+    .compra-metodo-ico { width:44px; height:44px; border-radius:12px; background:#f2f6f6; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .compra-metodo-ico img { width:100%; height:100%; object-fit:contain; }
+    .compra-check { position:absolute; top:8px; right:8px; width:20px; height:20px; border-radius:50%; color:#fff; font-size:.7rem; font-weight:900;
+      display:flex; align-items:center; justify-content:center; }
+    .compra-pago { margin-top:14px; }
+    .compra-monto { position:relative; text-align:center; background:linear-gradient(135deg,${DARK},#0d3b39); border-radius:18px; padding:20px 16px 18px; color:#fff; }
+    .compra-moneda { position:absolute; top:12px; right:12px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); border-radius:20px;
+      padding:2px 10px; font-size:.66rem; font-weight:800; }
+    .compra-monto-valor { font-size:clamp(1.9rem,8vw,2.5rem); font-weight:900; letter-spacing:-.5px; line-height:1.15; margin-top:6px; }
+    .compra-datos { margin-top:12px; }
+    .compra-datos .pago-inline-card { margin-top:0 !important; }
+    .compra-copiar-todo { border:1px solid ${TURQ}44; background:#fff; color:${TURQ_DK}; border-radius:20px; padding:4px 11px; font-size:.7rem; font-weight:800; cursor:pointer; font-family:'Poppins',sans-serif; }
+    .compra-ref { display:flex; align-items:center; gap:8px; border:1.5px solid #d9e8e8; border-radius:14px; padding:6px 6px 6px 14px; background:#fff; }
+    .compra-ref span { color:${DARK}66; font-weight:800; }
+    .compra-ref input { flex:1; min-width:0; border:none; outline:none; font-family:'Poppins',sans-serif; font-size:1rem; font-weight:800; letter-spacing:3px; color:${DARK}; background:transparent; }
+    .compra-ref button { border:none; background:${DARK}; color:#fff; border-radius:10px; padding:8px 12px; font-size:.7rem; font-weight:800; cursor:pointer; font-family:'Poppins',sans-serif; }
+    .compra-subir { border:2px dashed #c0dede; border-radius:16px; padding:18px 14px; text-align:center; cursor:pointer; background:#f8fdfd; transition:all .15s; }
+    .compra-subir.listo { border-color:${TURQ}; background:${TURQ}08; }
+    .compra-subir.falta { border-color:#ff6b6b; background:#fff5f5; }
+    .compra-acciones { display:flex; gap:10px; margin-top:16px; }
+    .compra-atras { flex:0 0 56px; border:1.5px solid ${TURQ}44; background:#fff; color:${TURQ_DK}; border-radius:14px; font-size:1.4rem; font-weight:800; cursor:pointer; }
+    @media (max-width:380px) { .compra-metodos { grid-template-columns:1fr; } }
+
     /* ══════════ Efectos de entrada (solo visuales) ══════════ */
     /* Cinta en movimiento con los datos de la rifa principal */
     .pub-cinta { background:linear-gradient(90deg,${DARK},#0d3f3c 50%,${DARK}); color:#fff; overflow:hidden; white-space:nowrap; border-bottom:1px solid ${TURQ}55; }
@@ -1328,7 +1366,9 @@ function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
   const numeros = numerosObjs.map(n => n.numero);
 
   const [step,       setStep]     = useState(1);
-  const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'', pagador:'' });
+  const [paso,       setPaso]     = useState('datos');   // dentro del paso 1: 'datos' → 'pago'
+  const [form,       setForm]     = useState({ nombre:'', cedula:'', correo:'', codPais:'+58', telefono:'', metodo_pago:'', pagador:'', referencia:'' });
+  const [copiadoTodo, setCopiadoTodo] = useState(false);
   const [imagen,     setImagen]   = useState(null);
   const [imgB64,     setImgB64]   = useState('');
   const [imgNombre,  setImgN]     = useState('');
@@ -1377,11 +1417,32 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
     reader.readAsDataURL(f);
   };
 
+  // Paso "Tus datos" → "Método de pago"
+  const validarDatos = () => {
+    if (form.nombre.trim().length < 3) { setError('Escribe tu nombre y apellido'); return false; }
+    if (form.cedula.trim().length < 5) { setError('Escribe tu cédula'); return false; }
+    if (form.telefono.replace(/\D/g,'').length < 7) { setError('Escribe tu WhatsApp: por ahí te llega tu ticket'); return false; }
+    if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) { setError('El correo electrónico no tiene un formato válido'); return false; }
+    setError(''); return true;
+  };
+  const irAPago = () => { if (validarDatos()) { setPaso('pago'); setTimeout(() => document.getElementById('compra-arriba')?.scrollIntoView({ behavior:'smooth', block:'start' }), 50); } };
+  const copiarTodo = async () => {
+    const info = METODOS_PAGO[form.metodo_pago];
+    if (!info) return;
+    const texto = [`${form.metodo_pago}`, ...info.campos.map(c => `${c.label}: ${c.valor}`), `Monto: ${convTotal?.texto || fmt(totalReal)}`].join('\n');
+    try { await navigator.clipboard.writeText(texto); setCopiadoTodo(true); setTimeout(() => setCopiadoTodo(false), 2000); } catch {}
+  };
+  const pegarReferencia = async () => {
+    try { const t = await navigator.clipboard.readText(); upd('referencia', String(t || '').replace(/\D/g, '').slice(-6)); }
+    catch { setError('Tu navegador no deja pegar automáticamente: escribe los dígitos a mano'); }
+  };
+
   const handleEnviar = async () => {
     if (!form.nombre.trim()) { setError('Ingresa tu nombre completo'); return; }
     if (!form.cedula.trim()) { setError('La cédula es obligatoria'); return; }
     if (apartar && form.telefono.replace(/\D/g,'').length < 7) { setError('Escribe tu WhatsApp: por ahí te recordamos el pago y te llega tu ticket'); return; }
     if (!apartar && METODOS_PAGO[form.metodo_pago]?.pedir_titular && form.pagador.trim().length < 3) { setError(`Escribe el nombre de la persona que envió el pago por ${form.metodo_pago}`); return; }
+    if (!apartar && !form.metodo_pago) { setError('Elige con qué vas a pagar'); return; }
     if (!apartar && !imgB64) { setError('El comprobante de pago es obligatorio'); return; }
     // Validar correo solo si fue ingresado
     if (form.correo.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo.trim())) {
@@ -1399,7 +1460,8 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
         telefono:           telefonoFull,
         ...(apartar
           ? { apartar: true }
-          : { metodo_pago: form.metodo_pago, comprobante_base64: imgB64, comprobante_nombre: imgNombre, pagador: form.pagador.trim() || undefined }),
+          : { metodo_pago: form.metodo_pago, comprobante_base64: imgB64, comprobante_nombre: imgNombre, pagador: form.pagador.trim() || undefined,
+              referencia: form.referencia || undefined, monto_texto: convTotal?.texto || fmt(totalReal) }),
       });
       const ids = (r.data.reservas || [r.data.reserva]).map(rv => rv?.id).filter(Boolean);
       setApartado(r.data.apartado ? r.data : null);
@@ -1459,48 +1521,46 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
               : fmt(rifa.precio)
             }
           </div>
-          <div style={{ display:'flex', gap:6, marginTop:14 }}>
-            {[1,2].map(s => <div key={s} style={{ flex:1, height:3, borderRadius:2, background: s <= step ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.25)', transition:'background .3s' }}></div>)}
-          </div>
+          {(() => {
+            const etapas = apartar ? ['Tus datos', 'Listo'] : ['Tus datos', 'Pago', 'Listo'];
+            const actual = step === 2 ? etapas.length - 1 : paso === 'pago' ? 1 : 0;
+            return (
+              <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                {etapas.map((t, i) => (
+                  <div key={t} style={{ flex:1 }}>
+                    <div style={{ height:4, borderRadius:3, background: i <= actual ? '#fff' : 'rgba(255,255,255,.28)', transition:'background .3s' }}></div>
+                    <div style={{ fontSize:'.6rem', fontWeight:800, letterSpacing:'.5px', marginTop:5, color: i <= actual ? '#fff' : 'rgba(255,255,255,.6)', textTransform:'uppercase' }}>{i + 1}. {t}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         <div style={{ padding:'22px 26px 28px' }}>
 
-          {/* ── STEP 1 ── */}
+          {/* ── PASO 1: Tus datos → Método de pago ── */}
           {step === 1 && (
-            <div style={{ animation:'fadeUp .25s ease' }}>
+            <div id="compra-arriba" style={{ animation:'fadeUp .25s ease', scrollMarginTop:20 }}>
 
-              {/* Bloque de oferta aplicada */}
-              {ofertaInfo && (
-                <BloqueOfertaAplicada
-                  ofertaInfo={ofertaInfo}
-                  cantidad={numeros.length}
-                  precioUnitario={rifa.precio}
-                />
-              )}
+              {paso === 'datos' && (<>
+              {ofertaInfo && <BloqueOfertaAplicada ofertaInfo={ofertaInfo} cantidad={numeros.length} precioUnitario={rifa.precio} />}
 
-              {/* Resumen de números */}
-              <div style={{ background:`linear-gradient(135deg,${TURQ}12,${TURQ2}18)`, border:`1.5px solid ${TURQ}33`, borderRadius:14, padding:'12px 16px', marginBottom:20 }}>
-                <div style={{ fontSize:'.62rem', color:TURQ_DK, fontWeight:600, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:8 }}>
-                  🎟 {numeros.length > 1 ? `Tus ${numeros.length} números` : 'Número seleccionado'}
-                </div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: numeros.length > 1 ? 10 : 0 }}>
-                  {numerosObjs.map((n, i) => (
-                    <span key={`${n.idx}-${i}`} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, color:'#fff', borderRadius:10, padding:'5px 12px', fontFamily:"'Poppins',sans-serif", fontWeight:900, fontSize:'1.1rem', letterSpacing:2 }}>{n.numero}</span>
-                  ))}
-                </div>
-                {numeros.length > 1 && (
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:8, borderTop:`1px solid ${TURQ}22` }}>
-                    <span style={{ fontSize:'.7rem', color:`${DARK}66` }}>{fmt(rifa.precio)} × {numeros.length} números</span>
-                    <div style={{ textAlign:'right' }}>
-                      {ofertaInfo && (
-                        <div style={{ fontSize:'.7rem', color:`${DARK}55`, textDecoration:'line-through' }}>{fmt(totalNormal)}</div>
-                      )}
-                      <span style={{ fontSize:'1.2rem', color: ofertaInfo ? VERDE : TURQ_DK, fontWeight:900 }}>= {fmt(totalReal)}</span>
-                    </div>
+              {/* Resumen: números y total */}
+              <div className="compra-resumen">
+                <div>
+                  <div className="compra-mini">🎟 {numeros.length > 1 ? `Tus ${numeros.length} números` : 'Tu número'}</div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:6 }}>
+                    {numerosObjs.map((n, i) => <span key={`${n.idx}-${i}`} className="compra-num">{n.numero}</span>)}
                   </div>
-                )}
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <div className="compra-mini">Total</div>
+                  {ofertaInfo && <div style={{ fontSize:'.72rem', color:`${DARK}55`, textDecoration:'line-through' }}>{fmt(totalNormal)}</div>}
+                  <div style={{ fontSize:'1.35rem', fontWeight:900, color: ofertaInfo ? VERDE : TURQ_DK, lineHeight:1.1 }}>{fmt(totalReal)}</div>
+                </div>
               </div>
+              <button type="button" className="compra-volver" onClick={onClose}>‹ Cambiar números</button>
 
               {/* Pagar ahora o apartar (solo en rifas con pago diferido) */}
               {puedeApartar && (
@@ -1516,194 +1576,174 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
                 </div>
               )}
 
-              {/* ① Datos */}
-              <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>① Tus datos</div>
-              <div style={{ marginBottom:14 }}>
-                <label className="pub-label">Nombre completo *</label>
-                <input className="pub-input" value={form.nombre} onChange={e => upd('nombre', e.target.value)} placeholder="¿Cómo te llamas?" autoFocus />
-              </div>
+              <div className="compra-titulo"><span>👤</span> Tus datos</div>
+              <div className="compra-caja">
+                <label className="pub-label">Nombre y apellido *</label>
+                <input className="pub-input" value={form.nombre} onChange={e => upd('nombre', e.target.value)} placeholder="Ej: Juan Pérez" autoComplete="name" autoFocus />
 
-              {/* NUEVO: Cédula (obligatoria) + Correo (opcional) en la misma fila */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
-                <div>
-                  <label className="pub-label">
-                    Cédula  *
-                    <span style={{ marginLeft:5, background:'#ff6b6b', color:'#fff', fontSize:'.48rem', padding:'1px 5px', borderRadius:3, fontWeight:700, verticalAlign:'middle' }}>OBLIGATORIO</span>
-                  </label>
-                  <input
-                    className="pub-input"
-                    value={form.cedula}
-                    onChange={e => upd('cedula', e.target.value.replace(/\D/g,'').slice(0,15))}
-                    placeholder="Ej: 12345678"
-                    type="tel"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div>
-                  <label className="pub-label">Correo electrónico <span style={{ fontSize:'.6rem', color:'#aaa', fontWeight:500, textTransform:'none' }}>(opcional)</span></label>
-                  <input
-                    className="pub-input"
-                    value={form.correo}
-                    onChange={e => upd('correo', e.target.value.trim())}
-                    placeholder="tucorreo@email.com"
-                    type="email"
-                    inputMode="email"
-                    autoCapitalize="none"
-                  />
-                </div>
-              </div>
-              <div style={{ marginBottom:20 }}>
-                <label className="pub-label">WhatsApp / Teléfono{apartar && ' *'}</label>
+                <label className="pub-label" style={{ marginTop:14 }}>Cédula *</label>
+                <input className="pub-input" value={form.cedula} onChange={e => upd('cedula', e.target.value.replace(/\D/g,'').slice(0,15))}
+                  placeholder="Ej: 12345678" type="tel" inputMode="numeric" />
+
+                <label className="pub-label" style={{ marginTop:14 }}>WhatsApp *</label>
                 <div className="phone-row">
-                  <select className="phone-select" value={form.codPais} onChange={e => upd('codPais', e.target.value)}>
+                  <select className="phone-select" value={form.codPais} onChange={e => upd('codPais', e.target.value)} aria-label="Código de país">
                     {PAISES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
                   </select>
                   <input className="pub-input" style={{ borderRadius:12 }} value={form.telefono}
                     onChange={e => upd('telefono', e.target.value.replace(/\D/g,'').slice(0,12))}
-                    placeholder="Número sin código" type="tel" />
+                    placeholder="4121234567" type="tel" autoComplete="tel-national" />
                 </div>
-                {form.telefono && (
-                  <div style={{ fontSize:'.7rem', color:TURQ_DK, marginTop:5, fontWeight:600 }}>📱 Número completo: <strong>{telefonoFull}</strong></div>
-                )}
+                <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:5 }}>Por aquí te llega tu ticket{apartar ? ' y te recordamos el pago' : ''}.</div>
+
+                <label className="pub-label" style={{ marginTop:14 }}>Correo electrónico <span style={{ fontSize:'.6rem', color:'#aaa', fontWeight:500, textTransform:'none' }}>(opcional)</span></label>
+                <input className="pub-input" value={form.correo} onChange={e => upd('correo', e.target.value.trim())}
+                  placeholder="ejemplo@correo.com" type="email" inputMode="email" autoCapitalize="none" autoComplete="email" />
               </div>
 
               {apartar && (
-                <div style={{ background:'rgba(124,58,237,.06)', border:'1.5px solid rgba(124,58,237,.25)', borderRadius:14, padding:'14px 16px', marginBottom:4, fontSize:'.84rem', color:DARK, lineHeight:1.6 }}>
+                <div style={{ background:'rgba(124,58,237,.06)', border:'1.5px solid rgba(124,58,237,.25)', borderRadius:14, padding:'14px 16px', marginTop:16, fontSize:'.84rem', color:DARK, lineHeight:1.6 }}>
                   <div style={{ fontWeight:800, color:'#6d28d9', marginBottom:4 }}>🔖 Así funciona el apartado</div>
                   Tu{numeros.length > 1 ? 's números quedan guardados' : ' número queda guardado'} a tu nombre sin pagar todavía.
                   Tienes hasta el <strong>{rifa.pago_hasta_texto || 'día del sorteo'}</strong> para pagar <strong>{fmt(totalReal)}</strong>.
                   Te lo recordamos por WhatsApp. Si no pagas a tiempo, {numeros.length > 1 ? 'se liberan' : 'se libera'}.
                 </div>
               )}
+              </>)}
 
-              {!apartar && (<>
-              {/* ② Método de pago */}
-              <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:12 }}>② Método de pago</div>
-              <div>
-                <label className="pub-label">¿Cómo vas a pagar?</label>
-                <select className="pub-input" value={form.metodo_pago} onChange={e => upd('metodo_pago', e.target.value)} style={{ cursor:'pointer' }}>
-                  <option value="">Selecciona un método...</option>
-                  {Object.keys(METODOS_PAGO).map(m => <option key={m}>{m}</option>)}
-                </select>
+              {/* ── Método de pago ── */}
+              {paso === 'pago' && !apartar && (<>
+              <button type="button" className="compra-volver" onClick={() => { setPaso('datos'); setError(''); }}>‹ Volver a mis datos</button>
+              <div className="compra-titulo" style={{ marginTop:4 }}><span>💳</span> Método de pago</div>
+              <div style={{ fontSize:'.8rem', color:`${DARK}88`, marginTop:-6, marginBottom:12 }}>Elige con qué vas a pagar: te mostramos el monto exacto y los datos.</div>
+
+              <div className="compra-metodos" role="radiogroup" aria-label="Método de pago">
+                {Object.keys(METODOS_PAGO).filter(m => !METODOS_PAGO[m].presencial).map(m => {
+                  const info = METODOS_PAGO[m];
+                  const sel = form.metodo_pago === m;
+                  return (
+                    <button key={m} type="button" role="radio" aria-checked={sel} className={`compra-metodo${sel ? ' on' : ''}`}
+                      onClick={() => { upd('metodo_pago', m); setError(''); }} style={sel ? { borderColor: info.colorHex, boxShadow:`0 6px 18px ${info.colorHex}33` } : undefined}>
+                      {sel && <span className="compra-check" style={{ background: info.colorHex }}>✓</span>}
+                      <span className="compra-metodo-ico">
+                        {info.imagen ? <img src={info.imagen} alt="" /> : <span style={{ fontSize:'1.5rem' }}>{info.icono}</span>}
+                      </span>
+                      <b>{m}</b>
+                      <small>{info.pais}</small>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Banner precio en moneda local */}
               {form.metodo_pago && (() => {
                 const info = METODOS_PAGO[form.metodo_pago];
-                if (!convTotal) return (
-                  <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:`linear-gradient(135deg,${info.bg},${info.bg})`, border:`2px solid ${info.border}`, animation:'fadeUp .2s ease' }}>
-                    <div style={{ fontSize:'.6rem', fontWeight:700, color:`${info.colorHex}99`, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>{info.icono} Valor a pagar</div>
-                    <div style={{ fontSize:'1.6rem', fontWeight:900, color: ofertaInfo ? VERDE : info.colorHex, lineHeight:1 }}>{fmt(totalReal)}</div>
-                    {ofertaInfo && <div style={{ fontSize:'.65rem', color:'#22c55e', fontWeight:700, marginTop:3 }}>🎁 Ahorraste {fmt(ofertaInfo.ahorro)}</div>}
-                    {numeros.length > 1 && !ofertaInfo && <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>{fmt(rifa.precio)} × {numeros.length} números · Pesos colombianos</div>}
-                  </div>
-                );
-                const isVes = convTotal?.moneda === 'VES';
+                const moneda = convTotal?.moneda || 'COP';
                 return (
-                  <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background: isVes ? 'linear-gradient(135deg,#f0fff8,#e8fdf5)' : 'linear-gradient(135deg,#f0f4ff,#e8eeff)', border:`2px solid ${isVes ? TURQ+'55' : '#c5d3ff'}`, animation:'fadeUp .2s ease' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                      <div>
-                        <div style={{ fontSize:'.58rem', fontWeight:700, color: isVes ? TURQ_DK : '#4a5bbf', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
-                          {convTotal.icono} Debes pagar exactamente
-                        </div>
-                        <div style={{ fontSize:'1.9rem', fontWeight:900, color: isVes ? TURQ_DK : '#3a4abf', lineHeight:1, letterSpacing:'-0.5px' }}>
-                          {convTotal.texto}
-                        </div>
-                        {ofertaInfo && (
-                          <div style={{ fontSize:'.65rem', color:VERDE, fontWeight:700, marginTop:3 }}>
-                            🎁 Precio con oferta ({fmt(totalReal)} COP)
-                          </div>
-                        )}
-                        {!ofertaInfo && numeros.length > 1 && (
-                          <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:3 }}>
-                            {convUnitario?.texto} × {numeros.length} números
-                          </div>
-                        )}
+                  <div className="compra-pago" style={{ animation:'fadeUp .2s ease' }}>
+                    {/* Monto en la moneda del método */}
+                    <div className="compra-monto">
+                      <span className="compra-moneda">{moneda === 'VES' ? 'Bs' : moneda === 'USD' ? '$ USD' : '$ COP'}</span>
+                      <div className="compra-mini" style={{ color:'rgba(255,255,255,.6)', letterSpacing:'3px' }}>Monto a transferir</div>
+                      <div className="compra-monto-valor">{convTotal ? convTotal.texto : fmt(totalReal)}</div>
+                      <div style={{ fontSize:'.72rem', color:'rgba(255,255,255,.65)', marginTop:4 }}>
+                        {numeros.length > 1 ? `${numeros.length} números` : '1 número'} · {fmt(totalReal)}{ofertaInfo ? ` (ahorras ${fmt(ofertaInfo.ahorro)})` : ''}
                       </div>
-                      <div style={{ background: isVes ? `${TURQ}18` : 'rgba(74,91,191,.1)', border:`1px solid ${isVes ? TURQ+'33' : 'rgba(74,91,191,.2)'}`, borderRadius:10, padding:'6px 10px', textAlign:'center' }}>
-                        <div style={{ fontSize:'1.4rem' }}>{convTotal.icono}</div>
-                        <div style={{ fontSize:'.5rem', fontWeight:700, color:`${DARK}55`, marginTop:2 }}>{convTotal.moneda}</div>
+                      <div style={{ fontSize:'.7rem', color:'#b3ffd4', fontWeight:700, marginTop:6 }}>Paga exactamente este monto</div>
+                    </div>
+
+                    {/* Datos para transferir, con copiar */}
+                    <div className="compra-datos">
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                        <div className="compra-mini" style={{ color:TURQ_DK }}>🏦 Datos de transferencia</div>
+                        <button type="button" className="compra-copiar-todo" onClick={copiarTodo}>{copiadoTodo ? '✅ Copiado' : '📋 Copiar todo'}</button>
                       </div>
+                      <PagoInlineCard metodo={form.metodo_pago} />
                     </div>
-                    <div style={{ background:'rgba(255,255,255,.65)', borderRadius:8, padding:'7px 12px', fontSize:'.7rem', color:`${DARK}66`, display:'flex', alignItems:'center', gap:6 }}>
-                      <span>≈ {fmt(totalReal)} · </span>
-                      <span style={{ fontWeight:600 }}>
-                        {convTotal.moneda === 'VES'
-                          ? `1 USD = Bs. ${tasaBs ? new Intl.NumberFormat('es-VE',{minimumFractionDigits:2}).format(tasaBs) : '…'}`
-                          : `1 USD = COP ${copUsd.toLocaleString('es-CO')}`}
-                      </span>
+
+                    {info?.pedir_titular && (
+                      <div style={{ marginTop:14 }}>
+                        <label className="pub-label">¿Quién envió el pago por {form.metodo_pago}? *</label>
+                        <input className="pub-input" value={form.pagador} onChange={e => upd('pagador', e.target.value)} placeholder="Nombre y apellido del titular que hizo el envío" maxLength={120} />
+                        <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:5 }}>Así ubicamos tu pago más rápido, sobre todo si lo envió otra persona.</div>
+                      </div>
+                    )}
+
+                    {/* Referencia (opcional) */}
+                    <label className="pub-label" style={{ marginTop:14 }}>Referencia del pago <span style={{ fontSize:'.6rem', color:'#aaa', fontWeight:500, textTransform:'none' }}>(últimos 6 dígitos · opcional)</span></label>
+                    <div className="compra-ref">
+                      <span>#</span>
+                      <input value={form.referencia} onChange={e => upd('referencia', e.target.value.replace(/\D/g,'').slice(0,6))}
+                        placeholder="Últimos 6 dígitos" inputMode="numeric" aria-label="Últimos 6 dígitos de la referencia" />
+                      <button type="button" onClick={pegarReferencia}>PEGAR</button>
                     </div>
+
+                    {/* Comprobante */}
+                    <label className="pub-label" style={{ marginTop:14 }}>Comprobante de pago <span style={{ color:'#e63946' }}>* (obligatorio)</span></label>
+                    <div onClick={() => fileRef.current?.click()} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && fileRef.current?.click()}
+                      className={`compra-subir${imgB64 ? ' listo' : ''}${error && !imgB64 ? ' falta' : ''}`}>
+                      {imagen ? (
+                        <div style={{ width:'100%' }}>
+                          <img src={imagen} alt="Comprobante" style={{ maxWidth:'100%', maxHeight:180, objectFit:'contain', borderRadius:10, display:'block', margin:'0 auto 8px' }} />
+                          <div style={{ fontSize:'.74rem', color:TURQ_DK, fontWeight:700 }}>✓ {imgNombre}</div>
+                          <div style={{ fontSize:'.66rem', color:`${DARK}55`, marginTop:2 }}>Toca para cambiarlo</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize:'1.8rem', marginBottom:4 }}>☁️</div>
+                          <div style={{ fontSize:'.84rem', color:`${DARK}99`, fontWeight:800, letterSpacing:'.5px' }}>ADJUNTAR COMPROBANTE</div>
+                          <div style={{ fontSize:'.7rem', color:'#999', marginTop:3 }}>Captura del pago · JPG, PNG o WEBP · máx 8 MB</div>
+                        </>
+                      )}
+                      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFile} style={{ display:'none' }} />
+                    </div>
+                    {numeros.length > 1 && <div style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700, marginTop:6 }}>Un solo comprobante para todos tus números.</div>}
                   </div>
                 );
               })()}
-
-              {form.metodo_pago && <PagoInlineCard metodo={form.metodo_pago} />}
-              {METODOS_PAGO[form.metodo_pago]?.pedir_titular && (
-                <div style={{ marginTop:14 }}>
-                  <label className="pub-label">¿Quién envió el pago por {form.metodo_pago}? *</label>
-                  <input className="pub-input" value={form.pagador} onChange={e => upd('pagador', e.target.value)} placeholder="Nombre y apellido del titular que hizo el envío" maxLength={120} />
-                  <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:5 }}>Así ubicamos tu pago más rápido, sobre todo si lo envió otra persona.</div>
-                </div>
-              )}
-              <div style={{ height:20 }}></div>
-
-              {/* ③ Comprobante */}
-              <div style={{ fontSize:'.78rem', color:TURQ_DK, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-                ③ Comprobante de pago
-                <span style={{ background:'#ff6b6b', color:'#fff', fontSize:'.52rem', padding:'2px 7px', borderRadius:4, fontWeight:700 }}>OBLIGATORIO</span>
-              </div>
-              <div style={{ fontSize:'.82rem', color:`${DARK}66`, marginBottom:12, lineHeight:1.5 }}>
-                Realiza el pago de <strong style={{ color: ofertaInfo ? VERDE : TURQ_DK }}>{fmt(totalReal)}</strong> y sube la captura.
-                {ofertaInfo && <span style={{ color:VERDE, fontWeight:700 }}> (precio con oferta)</span>}
-                {numeros.length > 1 && !ofertaInfo && <strong style={{ color:TURQ_DK }}> Un solo comprobante para todos los números.</strong>}
-              </div>
-
-              <div onClick={() => fileRef.current?.click()}
-                style={{ border:`2px dashed ${imgB64 ? TURQ : error ? '#ff6b6b' : '#c0dede'}`, borderRadius:16, padding:'18px 14px', textAlign:'center', cursor:'pointer', background: imgB64 ? `${TURQ}08` : error ? '#fff5f5' : '#f8fdfd', transition:'all .2s', minHeight:100, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column' }}>
-                {imagen ? (
-                  <div style={{ width:'100%' }}>
-                    <img src={imagen} alt="Comprobante" style={{ maxWidth:'100%', maxHeight:180, objectFit:'contain', borderRadius:10, display:'block', margin:'0 auto 8px' }} />
-                    <div style={{ fontSize:'.72rem', color:TURQ, fontWeight:600 }}>✓ {imgNombre}</div>
-                    <div style={{ fontSize:'.65rem', color:`${DARK}55`, marginTop:2 }}>Toca para cambiar</div>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ fontSize:'2rem', marginBottom:6, opacity:.6 }}>📸</div>
-                    <div style={{ fontSize:'.88rem', color:`${DARK}77`, fontWeight:600 }}>Toca aquí para subir el comprobante</div>
-                    <div style={{ fontSize:'.7rem', color:'#aaa', marginTop:4 }}>JPG · PNG · WEBP · máx 8 MB</div>
-                  </>
-                )}
-                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" onChange={handleFile} style={{ display:'none' }} />
-              </div>
               </>)}
 
-              <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:16, cursor:'pointer', fontSize:'.78rem', color:`${DARK}aa`, lineHeight:1.5 }}>
-                <input type="checkbox" checked={acepta} onChange={e => setAcepta(e.target.checked)}
-                  style={{ marginTop:3, width:16, height:16, accentColor:TURQ_DK, flexShrink:0 }} />
-                <span>
-                  Soy mayor de 18 años y acepto los{' '}
-                  <Link to="/terminos" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Términos y Condiciones</Link>{' '}y la{' '}
-                  <Link to="/privacidad" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Política de Privacidad</Link>,
-                  incluido el tratamiento de mis datos para gestionar mi compra.
-                </span>
-              </label>
+              {/* Términos: al final de cada camino (apartar en el paso de datos, pagar en el de pago) */}
+              {(apartar || paso === 'pago') && (
+                <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:16, cursor:'pointer', fontSize:'.78rem', color:`${DARK}aa`, lineHeight:1.5 }}>
+                  <input type="checkbox" checked={acepta} onChange={e => setAcepta(e.target.checked)}
+                    style={{ marginTop:3, width:16, height:16, accentColor:TURQ_DK, flexShrink:0 }} />
+                  <span>
+                    Soy mayor de 18 años y acepto los{' '}
+                    <Link to="/terminos" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Términos y Condiciones</Link>{' '}y la{' '}
+                    <Link to="/privacidad" target="_blank" style={{ color:TURQ_DK, fontWeight:600 }}>Política de Privacidad</Link>,
+                    incluido el tratamiento de mis datos para gestionar mi compra.
+                  </span>
+                </label>
+              )}
 
               {error && (
                 <div style={{ background:'#fff0f0', border:'1px solid #ffcccc', borderRadius:8, padding:'8px 12px', marginTop:10, fontSize:'.78rem', color:'#c0392b', fontWeight:500 }}>⚠️ {error}</div>
               )}
 
-              <div style={{ marginTop:16 }}>
-                <button className="pub-btn" onClick={handleEnviar} disabled={sending}
-                  style={{ width:'100%', justifyContent:'center', fontSize:'1rem', padding:'16px', borderRadius:14 }}>
-                  {sending
-                    ? <><span style={{ display:'inline-block', animation:'spin .8s linear infinite' }}>⏳</span> Enviando...</>
-                    : apartar
-                      ? `🔖 Apartar ${numeros.length > 1 ? `${numeros.length} números` : 'mi número'} · pagar después`
-                    : numeros.length > 1
-                      ? `🎟 Confirmar ${numeros.length} números · ${fmt(totalReal)}`
-                      : '🎟 Confirmar reserva y bloquear número'}
-                </button>
+              <div className="compra-acciones">
+                {paso === 'pago' && !apartar && (
+                  <button type="button" className="compra-atras" onClick={() => { setPaso('datos'); setError(''); }} aria-label="Volver a mis datos">‹</button>
+                )}
+                {paso === 'datos' && !apartar ? (
+                  <button className="pub-btn" onClick={irAPago} style={{ flex:1, justifyContent:'center', fontSize:'1rem', padding:'16px', borderRadius:14 }}>
+                    Continuar <span style={{ fontSize:'1.1rem' }}>→</span>
+                  </button>
+                ) : (
+                  <button className="pub-btn" onClick={() => { if (apartar && !validarDatos()) return; handleEnviar(); }} disabled={sending || (!apartar && (!form.metodo_pago || !imgB64))}
+                    style={{ flex:1, justifyContent:'center', fontSize:'1rem', padding:'16px', borderRadius:14 }}>
+                    {sending
+                      ? <><span style={{ display:'inline-block', animation:'spin .8s linear infinite' }}>⏳</span> Enviando...</>
+                      : apartar
+                        ? `🔖 Apartar ${numeros.length > 1 ? `${numeros.length} números` : 'mi número'} · pagar después`
+                        : `Confirmar ${numeros.length > 1 ? `${numeros.length} números` : 'compra'} →`}
+                  </button>
+                )}
               </div>
+              {paso === 'pago' && !apartar && (!form.metodo_pago || !imgB64) && (
+                <div style={{ fontSize:'.7rem', color:`${DARK}66`, textAlign:'center', marginTop:6 }}>
+                  {!form.metodo_pago ? 'Elige un método de pago para continuar.' : 'Adjunta la captura del pago para confirmar.'}
+                </div>
+              )}
             </div>
           )}
 
