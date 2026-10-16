@@ -36,17 +36,49 @@ const hora12 = (h) => {
   const hh = +m[1];
   return `${((hh + 11) % 12) + 1}:${m[2]} ${hh < 12 ? 'am' : 'pm'}`;
 };
-function mensajeResultado({ titulo, rifa, fecha, loteria, numero, premio, vendido_por: vendidoPor, descripcion }) {
-  const l = [`🎉 *${String(titulo || 'Resultado').toUpperCase()}* 🎉`, ''];
-  if (rifa) l.push(`🎟️ Sorteo: *${rifa}*`);
-  if (fecha) l.push(`📅 ${fecha}`);
-  if (loteria) l.push(`🎰 Lotería: ${loteria}`);
-  if (numero) l.push('', `🔢 Número ganador: *${numero}*`);
-  if (premio) l.push(`🏆 Premio: ${premio}`);
-  if (vendidoPor) l.push(`🤝 Vendido por: *${vendidoPor}*`);
-  if (descripcion) l.push('', descripcion);
-  l.push('', '¡Felicidades al ganador y gracias a todos por participar! 🍀');
-  return l.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+// Variables de las plantillas (las mismas del servidor: services/publicacionesResultado.js)
+const VARIABLES = [
+  ['titulo', 'Título del resultado', 'Resultado Miércoles de Resuelve'], ['sorteo', 'Nombre de la rifa', 'MIERCOLES DE RESUELVE'],
+  ['fecha', 'Fecha del sorteo', 'miércoles 14 de octubre de 2026'], ['hora', 'Hora del sorteo', '10:10 pm'],
+  ['loteria', 'Lotería', 'Lotería del Táchira'], ['numero', 'Número ganador', '085'], ['premio', 'Premio', '1,000 DOLARES'],
+  ['vendido_por', 'Quién lo vendió', 'YESENIA OSMAN'], ['descripcion', 'Descripción', 'Jugó con la Lotería del Táchira.'],
+];
+const VARS_EJEMPLO = Object.fromEntries(VARIABLES.map(([k, , e]) => [k, e]));
+// {variable} tal cual, {VARIABLE} en mayúsculas; una línea con una variable vacía no se envía
+function renderPlantilla(plantilla, vars) {
+  const claves = VARIABLES.map(([k]) => k);
+  const valor = (k) => String(vars[k.toLowerCase()] ?? '').trim();
+  const lineas = [];
+  for (const linea of String(plantilla || '').split('\n')) {
+    const usadas = [...linea.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((k) => claves.includes(k.toLowerCase()));
+    if (usadas.some((k) => !valor(k))) continue;
+    lineas.push(linea.replace(/\{(\w+)\}/g, (todo, k) => {
+      if (!claves.includes(k.toLowerCase())) return todo;
+      const v = valor(k);
+      return k === k.toUpperCase() && k !== k.toLowerCase() ? v.toUpperCase() : v;
+    }));
+  }
+  return lineas.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Burbuja de WhatsApp con imagen y texto (vista previa)
+function BurbujaWhatsApp({ imagen, texto, titulo }) {
+  return (
+    <div style={{ borderRadius:14, padding:'14px 12px', background:'#e5ddd5', backgroundImage:'radial-gradient(rgba(0,0,0,.04) 1px, transparent 1px)', backgroundSize:'14px 14px', border:'1px solid #d6cec4' }}>
+      <div style={{ fontSize:'.62rem', fontWeight:800, color:'#54656f', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8, textAlign:'center' }}>{titulo}</div>
+      <div style={{ background:'#fff', borderRadius:'10px 10px 10px 2px', padding:4, maxWidth:330, boxShadow:'0 1px 1px rgba(0,0,0,.13)' }}>
+        {imagen
+          ? <img src={imagen} alt="" style={{ display:'block', width:'100%', maxHeight:240, objectFit:'cover', borderRadius:8 }} />
+          : <div style={{ height:110, borderRadius:8, background:'#f0f2f5', display:'flex', alignItems:'center', justifyContent:'center', color:'#8696a0', fontSize:'.74rem' }}>Aquí va la imagen del resultado</div>}
+        <div style={{ padding:'7px 7px 2px', fontSize:'.82rem', color:'#111b21', lineHeight:1.45, wordBreak:'break-word' }}>
+          <TextoWhatsApp texto={texto} />
+        </div>
+        <div style={{ textAlign:'right', fontSize:'.6rem', color:'#8696a0', padding:'0 6px 3px' }}>
+          {new Date().toLocaleTimeString('es-VE', { hour:'numeric', minute:'2-digit', hour12:true })}
+        </div>
+      </div>
+    </div>
+  );
 }
 // Texto con el formato de WhatsApp (*negrita*, _cursiva_) para la vista previa
 function TextoWhatsApp({ texto }) {
@@ -79,6 +111,13 @@ export default function Resultados() {
   const [vendidoTocado, setVendidoTocado] = useState(false);
   const [sugerencia,    setSugerencia]    = useState(null);   // { numero, vendido_por, opciones, comprador, libre }
   const [buscandoQuien, setBuscandoQuien] = useState(false);
+  // Plantillas del mensaje (grupo y respuesta privada del bot)
+  const [plantillas,  setPlantillas]  = useState(null);      // { grupo, privado, defecto }
+  const [borrador,    setBorrador]    = useState({ grupo:'', privado:'' });
+  const [plTab,       setPlTab]       = useState('grupo');
+  const [plAbierta,   setPlAbierta]   = useState(false);
+  const [plGuardando, setPlGuardando] = useState(false);
+  const plRef = useRef(null);
   const fileRef = useRef();
   const formRef = useRef();
 
@@ -88,6 +127,9 @@ export default function Resultados() {
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    API.get('/resultados/plantillas').then((r) => { setPlantillas(r.data); setBorrador({ grupo: r.data.grupo, privado: r.data.privado }); }).catch(() => {});
+  }, []);
   useEffect(() => {
     API.get('/wa-chat/resultados', { params: { dias: 60 } }).then((r) => setSorteos(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, []);
@@ -100,11 +142,27 @@ export default function Resultados() {
   // El número con las cifras de la rifa ("5" → "005")
   const cifrasSel = Number(sorteoSel?.cifras) || 0;
   const numeroFmt = form.numero && cifrasSel ? String(form.numero).padStart(cifrasSel, '0').slice(-cifrasSel) : form.numero;
-  const mensajeAuto = mensajeResultado({
-    titulo: form.titulo, rifa: sorteoSel?.nombre, fecha: fechaLarga(form.fecha),
-    loteria: sorteoSel?.loteria_ref ? `${sorteoSel.loteria_ref}${hora12(sorteoSel.hora_sorteo) ? ` · ${hora12(sorteoSel.hora_sorteo)}` : ''}` : null,
-    numero: numeroFmt, premio: sorteoSel?.premio, vendido_por: form.vendido_por, descripcion: form.descripcion,
-  });
+  const varsForm = {
+    titulo: form.titulo, sorteo: sorteoSel?.nombre, fecha: fechaLarga(form.fecha), hora: hora12(sorteoSel?.hora_sorteo),
+    loteria: sorteoSel?.loteria_ref, numero: numeroFmt, premio: sorteoSel?.premio, vendido_por: form.vendido_por, descripcion: form.descripcion,
+  };
+  const mensajeAuto = renderPlantilla(plantillas?.grupo || '', varsForm);
+  const plCambiada = plantillas && (borrador.grupo !== plantillas.grupo || borrador.privado !== plantillas.privado);
+  const insertarVariable = (k) => {
+    const el = plRef.current, actual = borrador[plTab] || '';
+    const a = el?.selectionStart ?? actual.length, b = el?.selectionEnd ?? actual.length;
+    setBorrador((p) => ({ ...p, [plTab]: `${actual.slice(0, a)}{${k}}${actual.slice(b)}` }));
+    setTimeout(() => { el?.focus(); el?.setSelectionRange(a + k.length + 2, a + k.length + 2); }, 0);
+  };
+  const guardarPlantillas = async () => {
+    setPlGuardando(true);
+    try {
+      const r = await API.put('/resultados/plantillas', borrador);
+      setPlantillas(r.data); setBorrador({ grupo: r.data.grupo, privado: r.data.privado });
+      toast.success('✅ Plantillas guardadas: los próximos mensajes salen así');
+    } catch (err) { toast.error(err.response?.data?.error || 'No se pudieron guardar'); }
+    finally { setPlGuardando(false); }
+  };
   const mensajeFinal = mensajeTocado ? form.mensaje : mensajeAuto;
 
   // Con sorteo y número: quién lo vendió (se propone; se puede cambiar)
@@ -226,6 +284,70 @@ export default function Resultados() {
         </p>
       </div>
 
+      {/* ─── Plantillas del mensaje ─── */}
+      <div className="jd-card fade-in" style={{ marginBottom:20, padding:0, overflow:'hidden' }}>
+        <button type="button" onClick={() => setPlAbierta((v) => !v)} aria-expanded={plAbierta}
+          style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'14px 18px', border:'none', background:'transparent', cursor:'pointer', textAlign:'left' }}>
+          <div style={{ width:42, height:42, borderRadius:11, flexShrink:0, background:'rgba(37,211,102,.12)', border:'2px solid rgba(37,211,102,.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.25rem' }}>✏️</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:800, fontSize:'.95rem', color:'var(--jordyn-text)' }}>Cómo es el mensaje del resultado</div>
+            <div style={{ fontSize:'.72rem', color:'var(--jordyn-muted)' }}>
+              Dos plantillas: la que se publica en el <b>grupo</b> y la que el bot le manda <b>por privado</b> a quien pregunta (esa no lleva quién lo vendió).
+            </div>
+          </div>
+          <i className={`bi ${plAbierta ? 'bi-chevron-up' : 'bi-chevron-down'}`} style={{ color:'var(--jordyn-muted)' }}></i>
+        </button>
+        {plAbierta && plantillas && (
+          <div style={{ padding:'0 18px 18px' }}>
+            <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
+              {[['grupo', 'bi-people-fill', 'Grupo de WhatsApp'], ['privado', 'bi-chat-dots-fill', 'Respuesta por privado']].map(([k, ico, t]) => (
+                <button key={k} type="button" onClick={() => setPlTab(k)} aria-pressed={plTab === k}
+                  style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:20, cursor:'pointer', fontWeight:700, fontSize:'.8rem',
+                    border:`1.5px solid ${plTab === k ? '#25D366' : 'var(--jordyn-border)'}`, background: plTab === k ? 'rgba(37,211,102,.1)' : '#fff', color: plTab === k ? '#128c7e' : 'var(--jordyn-muted)' }}>
+                  <i className={`bi ${ico}`}></i>{t}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:16 }}>
+              <div>
+                <textarea ref={plRef} className="jd-input" rows={14} value={borrador[plTab]} maxLength={1500}
+                  onChange={(e) => setBorrador((p) => ({ ...p, [plTab]: e.target.value }))}
+                  style={{ resize:'vertical', fontSize:'.84rem', lineHeight:1.5, fontFamily:'inherit' }} />
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8 }}>
+                  {VARIABLES.map(([k, t]) => (
+                    <button key={k} type="button" title={`Insertar: ${t}`} onClick={() => insertarVariable(k)}
+                      style={{ border:'1px solid var(--jordyn-border)', background:'var(--jordyn-bg2)', color:'var(--jordyn-text)', borderRadius:20, padding:'3px 10px', fontSize:'.7rem', fontWeight:700, cursor:'pointer' }}>
+                      {`{${k}}`}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize:'.68rem', color:'var(--jordyn-muted)', marginTop:8, lineHeight:1.5 }}>
+                  Toca una variable para ponerla donde está el cursor; se cambia por el dato de cada resultado. Escríbela en mayúsculas ({'{TITULO}'}) para que salga en mayúsculas.
+                  Si una variable está vacía (por ejemplo, sin lotería), esa línea no se envía. Usa *asteriscos* para negrita.
+                </div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
+                  <button type="button" className="btn-jordyn" onClick={guardarPlantillas} disabled={plGuardando || !plCambiada} style={{ fontSize:'.82rem' }}>
+                    {plGuardando ? 'Guardando…' : <><i className="bi bi-floppy-fill me-1"></i>Guardar plantillas</>}
+                  </button>
+                  {plCambiada && (
+                    <button type="button" className="btn-jordyn-outline" onClick={() => setBorrador({ grupo: plantillas.grupo, privado: plantillas.privado })} style={{ fontSize:'.82rem' }}>Descartar cambios</button>
+                  )}
+                  {borrador[plTab] !== plantillas.defecto?.[plTab] && (
+                    <button type="button" onClick={() => setBorrador((p) => ({ ...p, [plTab]: plantillas.defecto[plTab] }))}
+                      style={{ border:'none', background:'none', color:'var(--jordyn-primary)', fontSize:'.78rem', fontWeight:700, cursor:'pointer' }}>
+                      <i className="bi bi-arrow-counterclockwise me-1"></i>Volver al mensaje original
+                    </button>
+                  )}
+                </div>
+              </div>
+              <BurbujaWhatsApp imagen={preview}
+                texto={renderPlantilla(borrador[plTab], form.rifa_id || form.numero ? varsForm : VARS_EJEMPLO)}
+                titulo={`${plTab === 'grupo' ? 'Así sale en el grupo' : 'Así le llega a quien pregunta'}${form.rifa_id || form.numero ? '' : ' (datos de ejemplo)'}`} />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ─── Formulario ─── */}
       <form ref={formRef} onSubmit={guardar} className="jd-card jd-card-primary fade-in" style={{ marginBottom:24, scrollMarginTop:80 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
@@ -319,7 +441,7 @@ export default function Resultados() {
                   <label className="jd-label" style={{ margin:0 }}>
                     <i className="bi bi-whatsapp me-1" style={{ color:'#25D366' }}></i>MENSAJE PARA EL GRUPO
                     <span style={{ fontWeight:500, textTransform:'none', letterSpacing:0, marginLeft:6 }}>
-                      {mensajeTocado ? '(ajustado a mano)' : '(se arma solo con los datos; puedes cambiarlo)'}
+                      {mensajeTocado ? '(ajustado a mano solo para esta publicación)' : '(sale de la plantilla del grupo; puedes cambiarlo solo para esta)'}
                     </span>
                   </label>
                   {mensajeTocado && (
@@ -339,22 +461,7 @@ export default function Resultados() {
                     </div>
                   </div>
                   {/* Vista previa: así lo ve el grupo */}
-                  <div style={{ borderRadius:14, padding:'14px 12px', background:'#e5ddd5', backgroundImage:'radial-gradient(rgba(0,0,0,.04) 1px, transparent 1px)', backgroundSize:'14px 14px', border:'1px solid #d6cec4' }}>
-                    <div style={{ fontSize:'.62rem', fontWeight:800, color:'#54656f', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8, textAlign:'center' }}>
-                      Así lo verá el grupo
-                    </div>
-                    <div style={{ background:'#fff', borderRadius:'10px 10px 10px 2px', padding:4, maxWidth:330, boxShadow:'0 1px 1px rgba(0,0,0,.13)' }}>
-                      {preview
-                        ? <img src={preview} alt="" style={{ display:'block', width:'100%', maxHeight:260, objectFit:'cover', borderRadius:8 }} />
-                        : <div style={{ height:120, borderRadius:8, background:'#f0f2f5', display:'flex', alignItems:'center', justifyContent:'center', color:'#8696a0', fontSize:'.74rem' }}>Aquí va la imagen del resultado</div>}
-                      <div style={{ padding:'7px 7px 2px', fontSize:'.82rem', color:'#111b21', lineHeight:1.45, wordBreak:'break-word' }}>
-                        <TextoWhatsApp texto={mensajeFinal} />
-                      </div>
-                      <div style={{ textAlign:'right', fontSize:'.6rem', color:'#8696a0', padding:'0 6px 3px' }}>
-                        {new Date().toLocaleTimeString('es-VE', { hour:'numeric', minute:'2-digit', hour12:true })}
-                      </div>
-                    </div>
-                  </div>
+                  <BurbujaWhatsApp imagen={preview} texto={mensajeFinal} titulo="Así lo verá el grupo" />
                 </div>
               </div>
 
