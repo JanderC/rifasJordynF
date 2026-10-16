@@ -692,6 +692,17 @@ const injectStyles = () => {
       .pub-cifra, .pub-paso, .pago-card { transition:none; }
     }
 
+    /* ══════════ Métodos de pago (solo logos) ══════════ */
+    .pagos-logos { display:flex; flex-wrap:wrap; justify-content:center; gap:14px; }
+    .pago-logo { flex:0 1 150px; display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; padding:16px 10px 14px;
+      background:#f8fbfb; border:1.5px solid #e4eeee; border-radius:18px; transition:transform .15s, box-shadow .15s; }
+    .pago-logo:hover { transform:translateY(-3px); box-shadow:0 10px 24px rgba(10,100,100,.1); }
+    .pago-logo-ico { width:58px; height:58px; border-radius:16px; background:#fff; border:1.5px solid; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .pago-logo-ico img { width:100%; height:100%; object-fit:contain; padding:6px; }
+    .pago-logo b { font-size:.86rem; line-height:1.2; color:${DARK}; }
+    .pago-logo small { font-size:.66rem; color:${DARK}77; }
+    @media (max-width:420px) { .pago-logo { flex-basis:calc(50% - 7px); } }
+
     /* ══════════ Formulario de compra por pasos ══════════ */
     .compra-resumen { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; background:linear-gradient(135deg,${TURQ}12,${TURQ2}18);
       border:1.5px solid ${TURQ}33; border-radius:14px; padding:12px 16px; }
@@ -3462,32 +3473,22 @@ export default function ClientePublico() {
         </div>
       </section>
 
-      <section id="pagos-sec" style={{ background:'#fff', padding:'70px 5vw 80px' }}>
-        <div style={{ maxWidth:1100, margin:'0 auto' }}>
+      {/* Métodos de pago: solo los logos. Los datos para transferir salen al momento de pagar */}
+      <section id="pagos-sec" style={{ background:'#fff', padding:'60px 5vw 64px' }}>
+        <div style={{ maxWidth:900, margin:'0 auto' }}>
           <div className="pub-titulo">
-            <span className="kicker">Métodos de pago</span>
-            <h2>Cuentas bancarias</h2>
-            <div className="sub">Paga con el que te quede más fácil</div>
+            <span className="kicker">Pagos verificados</span>
+            <h2>Métodos de pago</h2>
+            <div className="sub">Paga con el que te quede más fácil. Los datos para transferir te aparecen cuando vas a pagar.</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))', gap:20 }}>
+          <div className="pagos-logos">
             {Object.entries(METODOS_PAGO).map(([nombre, d]) => (
-              <div key={nombre} className="pago-card" style={{ background: d.bg, border:`2px solid ${d.border}`, borderRadius:20, padding:'26px 22px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
-                  <div style={{ width:50, height:50, borderRadius:14, background:'rgba(255,255,255,.8)', border:`1px solid ${d.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.6rem', flexShrink:0, overflow:'hidden' }}>
-                    {d.imagen ? <img src={d.imagen} alt="" style={{ width:'100%', height:'100%', objectFit:'contain', padding:4, background:'#fff' }} /> : d.icono}
-                  </div>
-                  <div>
-                    <div style={{ fontSize:'1.1rem', color: d.colorHex, fontWeight:700 }}>{nombre}</div>
-                    <div style={{ fontSize:'.7rem', color:`${DARK}66` }}>{d.pais}</div>
-                  </div>
+              <div key={nombre} className="pago-logo" title={nombre}>
+                <div className="pago-logo-ico" style={{ borderColor: d.border }}>
+                  {d.imagen ? <img src={d.imagen} alt="" /> : <span style={{ fontSize:'1.7rem' }}>{d.icono}</span>}
                 </div>
-                {d.campos.map(({ label, valor }) => (
-                  <div key={label} style={{ background:'rgba(255,255,255,.7)', borderRadius:10, padding:'9px 13px', marginBottom:8 }}>
-                    <div style={{ fontSize:'.6rem', color:`${d.colorHex}88`, fontWeight:600, marginBottom:2, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
-                    <div style={{ fontSize:'.9rem', color:DARK, fontWeight:700, overflowWrap:'anywhere' }}>{valor}</div>
-                  </div>
-                ))}
-                {d.nota && <div style={{ fontSize:'.72rem', color: d.colorHex, fontWeight:600, textAlign:'center', padding:'7px', background:'rgba(255,255,255,.5)', borderRadius:8, marginTop:8 }}>{d.nota}</div>}
+                <b>{nombre}</b>
+                <small>{d.pais}</small>
               </div>
             ))}
           </div>
