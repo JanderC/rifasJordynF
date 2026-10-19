@@ -3339,30 +3339,13 @@ export default function ClientePublico() {
         </section>
       )}
 
-      {/* Cifras rápidas */}
-      {!loading && rifaHero && (
-        <section style={{ padding:'22px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
-          <div className="pub-cifras">
-            <div className="pub-cifra"><span className="pub-cifra-ico">🎟️</span><div><strong>{rifasActivasOrdenadas.length}</strong><span>{rifasActivasOrdenadas.length === 1 ? 'Rifa activa' : 'Rifas activas'}</span></div></div>
-            <div className="pub-cifra"><span className="pub-cifra-ico">💰</span><div><strong>{fmt(Math.min(...rifasActivasOrdenadas.map(r => Number(r.precio) || Infinity)))}</strong><span>Números desde</span></div></div>
-            {ganadores.length > 0 && (
-              <div className="pub-cifra"><span className="pub-cifra-ico">🏆</span><div><strong>{ganadores.length}</strong><span>{ganadores.length === 1 ? 'Ganador feliz' : 'Ganadores felices'}</span></div></div>
-            )}
-            <div className="pub-cifra"><span className="pub-cifra-ico">📲</span><div><strong>WhatsApp</strong><span>Ahí te llega tu ticket</span></div></div>
-          </div>
-        </section>
-      )}
-
       {/* Apartados: pagar lo que se apartó sin pagar */}
       {hayApartados && (
         <section style={{ padding:'22px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
-          <div className="apartado-banner">
-            <span style={{ fontSize:'1.9rem' }}>🔖</span>
-            <div style={{ flex:'1 1 240px', minWidth:0 }}>
-              <div style={{ fontSize:'1rem', fontWeight:800, color:'#5b21b6' }}>Aparta tu número hoy y paga después</div>
-              <div style={{ fontSize:'.82rem', color:`${DARK}99`, lineHeight:1.5 }}>En las rifas marcadas puedes guardar tu número sin pagar todavía. ¿Ya apartaste? Paga aquí antes del sorteo.</div>
-            </div>
-            <button className="pub-nav-btn" style={{ padding:'11px 20px', fontSize:'.84rem' }} onClick={() => setVerApartados(true)}>Pagar mis apartados</button>
+          <div className="apartado-banner" style={{ padding:'12px 16px', alignItems:'center' }}>
+            <span style={{ fontSize:'1.5rem' }}>🔖</span>
+            <div style={{ flex:'1 1 160px', minWidth:0, fontSize:'.95rem', fontWeight:800, color:'#5b21b6' }}>Aparta hoy, paga después</div>
+            <button className="pub-nav-btn" style={{ padding:'10px 18px', fontSize:'.82rem' }} onClick={() => setVerApartados(true)}>Pagar mis apartados</button>
           </div>
         </section>
       )}
