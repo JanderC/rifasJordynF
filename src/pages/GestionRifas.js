@@ -1267,8 +1267,8 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
 }
 
 /* ── Números por vendedor: compartir o imprimir la lista de cada uno ──────────
-   Para que el vendedor reciba sus números ya ordenados (por WhatsApp o en una
-   hoja impresa con espacio para anotar a quién le vendió cada uno). */
+   Para que el vendedor reciba sus números ya ordenados (por WhatsApp) o para
+   imprimir en una misma hoja los números de todos los vendedores, uno tras otro. */
 const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 
 function numerosDeVendedor(v, dig) {
@@ -1294,42 +1294,54 @@ function textoVendedor(rifa, v, dig, esSim) {
   ].join('\n').trim();
 }
 
-// Hoja para imprimir: los números en cuadrícula y una planilla para anotar cada venta
-function hojaVendedorHtml(rifa, v, dig, esSim) {
+// Un solo mensaje con los números de todos los vendedores
+function textoTodosVendedores(rifa, vendedores, dig, esSim) {
+  const hora = fmtHoraSorteo(rifa.hora_sorteo);
+  const filas = (nums) => { const out = []; for (let i = 0; i < nums.length; i += 6) out.push(nums.slice(i, i + 6).join(' · ')); return out.join('\n'); };
+  return [
+    `🎟️ *${rifa.nombre}*`,
+    `📅 Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}${rifa.loteria_ref ? ` · ${rifa.loteria_ref}` : ''}`,
+    '',
+    ...vendedores.flatMap(v => {
+      const grupos = numerosDeVendedor(v, dig);
+      const total = grupos.reduce((t, g) => t + g.numeros.length, 0);
+      return [`👤 *${v.vendedor_nombre}* (${total})`, ...grupos.flatMap(g => [...(esSim ? [`Serie ${g.serie}:`] : []), filas(g.numeros)]), ''];
+    }),
+  ].join('\n').trim();
+}
+
+// Bloque compacto de un vendedor: su nombre y sus números en cuadrícula.
+// Van uno debajo del otro para que quepan varios vendedores en cada hoja.
+function bloqueVendedorHtml(v, dig, esSim) {
   const grupos = numerosDeVendedor(v, dig);
   const total = grupos.reduce((t, g) => t + g.numeros.length, 0);
-  const hora = fmtHoraSorteo(rifa.hora_sorteo);
-  const filas = grupos.flatMap(g => g.numeros.map(n => `<tr><td class="n">${n}${esSim ? `<small>${g.serie}</small>` : ''}</td><td></td><td></td><td class="ok"></td></tr>`)).join('');
-  return `<section class="hoja">
-    <header>
-      <div><h1>${escHtml(rifa.nombre)}</h1>
-        <p>Sorteo: <b>${escHtml(fmtF(rifa.fecha_sorteo))}${hora ? ` · ${hora}` : ''}</b>${rifa.loteria_ref ? ` · ${escHtml(rifa.loteria_ref)}` : ''} · Premio: <b>${escHtml(rifa.premio || '')}</b> · Precio: <b>${escHtml(fmtCOP(rifa.precio))}</b></p></div>
-      <div class="vend"><span>Vendedor</span><b>${escHtml(v.vendedor_nombre)}</b><span>${total} número${total === 1 ? '' : 's'}</span></div>
-    </header>
+  return `<section class="vend">
+    <div class="cab"><b>${escHtml(v.vendedor_nombre)}</b><span>${total} número${total === 1 ? '' : 's'}</span></div>
     ${grupos.map(g => `<div class="grupo">${esSim ? `<h2>Serie ${g.serie} · ${g.numeros.length}</h2>` : ''}<div class="nums">${g.numeros.map(n => `<span>${n}</span>`).join('')}</div></div>`).join('')}
-    <table><thead><tr><th>Número</th><th>Nombre del cliente</th><th>Teléfono</th><th>Pagó</th></tr></thead><tbody>${filas}</tbody></table>
   </section>`;
 }
 
 function imprimirHojas(rifa, vendedores, dig, esSim) {
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) { toast.error('El navegador bloqueó la ventana de impresión'); return; }
+  const hora = fmtHoraSorteo(rifa.hora_sorteo);
+  const totalNums = vendedores.reduce((t, v) => t + numerosDeVendedor(v, dig).reduce((s, g) => s + g.numeros.length, 0), 0);
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Números por vendedor · ${escHtml(rifa.nombre)}</title>
     <style>
       *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:18px}
-      .hoja{page-break-after:always;break-after:page;margin-bottom:24px}
-      .hoja:last-child{page-break-after:auto;break-after:auto}
-      header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
-      h1{font-size:20px;margin:0 0 4px} header p{font-size:11px;margin:0;color:#333}
-      .vend{text-align:right;min-width:150px} .vend span{display:block;font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px} .vend b{font-size:18px}
-      h2{font-size:12px;margin:8px 0 4px;text-transform:uppercase}
-      .nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:4px;margin-bottom:10px}
-      .nums span{border:1.5px solid #111;border-radius:5px;text-align:center;font-weight:bold;font-size:14px;padding:4px 0;letter-spacing:1px}
-      table{width:100%;border-collapse:collapse;font-size:11px} th,td{border:1px solid #999;padding:5px 6px;height:24px} th{background:#eee;text-align:left}
-      td.n{font-weight:bold;font-size:13px;width:70px;letter-spacing:1px} td.n small{margin-left:4px;font-size:9px;color:#666} td.ok{width:44px}
-      @media print{body{padding:0} @page{size:portrait;margin:10mm}}
+      header{border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px}
+      h1{font-size:18px;margin:0 0 3px} header p{font-size:11px;margin:0;color:#333}
+      .vend{break-inside:avoid;page-break-inside:avoid;border-bottom:1px dashed #999;padding:6px 0 7px}
+      .cab{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+      .cab b{font-size:14px;text-transform:uppercase} .cab span{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px}
+      h2{font-size:10px;margin:3px 0 2px;text-transform:uppercase;color:#333}
+      .nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:3px}
+      .nums span{border:1.2px solid #111;border-radius:4px;text-align:center;font-weight:bold;font-size:12px;padding:2px 0;letter-spacing:1px}
+      @media print{body{padding:0} @page{size:portrait;margin:8mm}}
     </style></head><body>
-    ${vendedores.map(v => hojaVendedorHtml(rifa, v, dig, esSim)).join('')}
+    <header><h1>${escHtml(rifa.nombre)}</h1>
+      <p>Sorteo: <b>${escHtml(fmtF(rifa.fecha_sorteo))}${hora ? ` · ${hora}` : ''}</b>${rifa.loteria_ref ? ` · ${escHtml(rifa.loteria_ref)}` : ''} · Premio: <b>${escHtml(rifa.premio || '')}</b> · Precio: <b>${escHtml(fmtCOP(rifa.precio))}</b> · ${vendedores.length} vendedor${vendedores.length === 1 ? '' : 'es'} · ${totalNums} números</p></header>
+    ${vendedores.map(v => bloqueVendedorHtml(v, dig, esSim)).join('')}
     <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
   win.document.close();
 }
@@ -1351,11 +1363,12 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const t = busq.trim().toLowerCase();
   const vista = vendedores.filter(v => !t || String(v.vendedor_nombre).toLowerCase().includes(t));
 
-  const compartir = async (v) => {
-    const texto = textoVendedor(rifa, v, dig, esSim);
-    if (navigator.share) { try { await navigator.share({ title: `${rifa.nombre} · ${v.vendedor_nombre}`, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+  const enviarTexto = async (titulo, texto) => {
+    if (navigator.share) { try { await navigator.share({ title: titulo, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
   };
+  const compartir = (v) => enviarTexto(`${rifa.nombre} · ${v.vendedor_nombre}`, textoVendedor(rifa, v, dig, esSim));
+  const compartirTodos = () => enviarTexto(`${rifa.nombre} · vendedores`, textoTodosVendedores(rifa, vista, dig, esSim));
   const copiar = async (v) => {
     try { await navigator.clipboard.writeText(textoVendedor(rifa, v, dig, esSim)); setCopiado(v.vendedor_id); setTimeout(() => setCopiado(null), 2000); toast.success(`Números de ${v.vendedor_nombre} copiados`); }
     catch { toast.error('No se pudo copiar'); }
@@ -1368,7 +1381,7 @@ function ModalCompartirVendedores({ rifa, onClose }) {
         <div style={{ background:'linear-gradient(135deg,#0a3d62,#0abfbc)', color:'#fff', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
           <div>
             <div style={{ fontWeight:800, fontSize:'1rem' }}><i className="bi bi-share-fill me-2"></i>Números por vendedor</div>
-            <div style={{ fontSize:'.74rem', opacity:.85, marginTop:2 }}>{rifa.nombre} · compártele a cada uno sus números ordenados o imprime su hoja</div>
+            <div style={{ fontSize:'.74rem', opacity:.85, marginTop:2 }}>{rifa.nombre} · comparte los números de cada uno o imprime todos juntos en pocas hojas</div>
           </div>
           <button onClick={onClose} aria-label="Cerrar" style={{ background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer' }}><i className="bi bi-x-lg"></i></button>
         </div>
@@ -1377,8 +1390,12 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             <i className="bi bi-search" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
             <input className="jd-input" value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar vendedor…" aria-label="Buscar vendedor" style={{ paddingLeft:32 }} />
           </div>
-          <button className="btn-jordyn" disabled={!vendedores.length} onClick={() => imprimirHojas(rifa, vista, dig, esSim)} style={{ fontSize:'.78rem' }}>
-            <i className="bi bi-printer-fill me-1"></i>Imprimir {t ? `estos ${vista.length}` : `todas (${vendedores.length})`}
+          <button disabled={!vista.length} onClick={compartirTodos} title="Un solo mensaje con los números de todos"
+            style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'7px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
+            <i className="bi bi-whatsapp me-1"></i>Compartir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
+          </button>
+          <button className="btn-jordyn" disabled={!vista.length} onClick={() => imprimirHojas(rifa, vista, dig, esSim)} title="Todos los vendedores seguidos, varios por hoja" style={{ fontSize:'.78rem' }}>
+            <i className="bi bi-printer-fill me-1"></i>Imprimir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
           </button>
         </div>
         <div style={{ overflowY:'auto', padding:'10px 18px 16px' }}>
