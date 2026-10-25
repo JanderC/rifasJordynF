@@ -1266,6 +1266,165 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
   );
 }
 
+/* ── Números por vendedor: compartir o imprimir la lista de cada uno ──────────
+   Para que el vendedor reciba sus números ya ordenados (por WhatsApp o en una
+   hoja impresa con espacio para anotar a quién le vendió cada uno). */
+const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+function numerosDeVendedor(v, dig) {
+  const lista = (v.numeros_fijos || []).map(n => ({ numero: String(n.numero).padStart(dig, '0'), serie: n.serie || 'A' }));
+  const series = [...new Set(lista.map(n => n.serie))].sort();
+  return series.map(serie => ({ serie, numeros: [...new Set(lista.filter(n => n.serie === serie).map(n => n.numero))].sort() }));
+}
+
+function textoVendedor(rifa, v, dig, esSim) {
+  const grupos = numerosDeVendedor(v, dig);
+  const total = grupos.reduce((t, g) => t + g.numeros.length, 0);
+  const filas = (nums) => { const out = []; for (let i = 0; i < nums.length; i += 6) out.push(nums.slice(i, i + 6).join(' · ')); return out.join('\n'); };
+  const hora = fmtHoraSorteo(rifa.hora_sorteo);
+  return [
+    `🎟️ *${rifa.nombre}*`,
+    `📅 Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}${rifa.loteria_ref ? ` · ${rifa.loteria_ref}` : ''}`,
+    `🏆 Premio: ${rifa.premio || ''}`,
+    `💰 Precio: ${fmtCOP(rifa.precio)} c/u`,
+    '',
+    `👤 Vendedor: *${v.vendedor_nombre}* — ${total} número${total === 1 ? '' : 's'}`,
+    '',
+    ...grupos.flatMap(g => [...(esSim ? [`*Serie ${g.serie}* (${g.numeros.length})`] : []), filas(g.numeros), '']),
+  ].join('\n').trim();
+}
+
+// Hoja para imprimir: los números en cuadrícula y una planilla para anotar cada venta
+function hojaVendedorHtml(rifa, v, dig, esSim) {
+  const grupos = numerosDeVendedor(v, dig);
+  const total = grupos.reduce((t, g) => t + g.numeros.length, 0);
+  const hora = fmtHoraSorteo(rifa.hora_sorteo);
+  const filas = grupos.flatMap(g => g.numeros.map(n => `<tr><td class="n">${n}${esSim ? `<small>${g.serie}</small>` : ''}</td><td></td><td></td><td class="ok"></td></tr>`)).join('');
+  return `<section class="hoja">
+    <header>
+      <div><h1>${escHtml(rifa.nombre)}</h1>
+        <p>Sorteo: <b>${escHtml(fmtF(rifa.fecha_sorteo))}${hora ? ` · ${hora}` : ''}</b>${rifa.loteria_ref ? ` · ${escHtml(rifa.loteria_ref)}` : ''} · Premio: <b>${escHtml(rifa.premio || '')}</b> · Precio: <b>${escHtml(fmtCOP(rifa.precio))}</b></p></div>
+      <div class="vend"><span>Vendedor</span><b>${escHtml(v.vendedor_nombre)}</b><span>${total} número${total === 1 ? '' : 's'}</span></div>
+    </header>
+    ${grupos.map(g => `<div class="grupo">${esSim ? `<h2>Serie ${g.serie} · ${g.numeros.length}</h2>` : ''}<div class="nums">${g.numeros.map(n => `<span>${n}</span>`).join('')}</div></div>`).join('')}
+    <table><thead><tr><th>Número</th><th>Nombre del cliente</th><th>Teléfono</th><th>Pagó</th></tr></thead><tbody>${filas}</tbody></table>
+  </section>`;
+}
+
+function imprimirHojas(rifa, vendedores, dig, esSim) {
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) { toast.error('El navegador bloqueó la ventana de impresión'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Números por vendedor · ${escHtml(rifa.nombre)}</title>
+    <style>
+      *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:18px}
+      .hoja{page-break-after:always;break-after:page;margin-bottom:24px}
+      .hoja:last-child{page-break-after:auto;break-after:auto}
+      header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:10px}
+      h1{font-size:20px;margin:0 0 4px} header p{font-size:11px;margin:0;color:#333}
+      .vend{text-align:right;min-width:150px} .vend span{display:block;font-size:10px;color:#555;text-transform:uppercase;letter-spacing:1px} .vend b{font-size:18px}
+      h2{font-size:12px;margin:8px 0 4px;text-transform:uppercase}
+      .nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:4px;margin-bottom:10px}
+      .nums span{border:1.5px solid #111;border-radius:5px;text-align:center;font-weight:bold;font-size:14px;padding:4px 0;letter-spacing:1px}
+      table{width:100%;border-collapse:collapse;font-size:11px} th,td{border:1px solid #999;padding:5px 6px;height:24px} th{background:#eee;text-align:left}
+      td.n{font-weight:bold;font-size:13px;width:70px;letter-spacing:1px} td.n small{margin-left:4px;font-size:9px;color:#666} td.ok{width:44px}
+      @media print{body{padding:0} @page{size:portrait;margin:10mm}}
+    </style></head><body>
+    ${vendedores.map(v => hojaVendedorHtml(rifa, v, dig, esSim)).join('')}
+    <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
+  win.document.close();
+}
+
+function ModalCompartirVendedores({ rifa, onClose }) {
+  const [data, setData]       = useState(null);
+  const [busq, setBusq]       = useState('');
+  const [copiado, setCopiado] = useState(null);
+  const dig = digitosRifa(rifa);
+  useEffect(() => {
+    API.get(`/rifas/${rifa.id}/boleteria-vendedores`)
+      .then(r => setData(r.data))
+      .catch(() => { toast.error('No se pudieron cargar los números de los vendedores'); setData({ vendedores: [] }); });
+  }, [rifa.id]);
+  const esSim = !!data?.es_simultanea;
+  const vendedores = (data?.vendedores || [])
+    .filter(v => (v.numeros_fijos || []).length)
+    .sort((a, b) => String(a.vendedor_nombre).localeCompare(String(b.vendedor_nombre)));
+  const t = busq.trim().toLowerCase();
+  const vista = vendedores.filter(v => !t || String(v.vendedor_nombre).toLowerCase().includes(t));
+
+  const compartir = async (v) => {
+    const texto = textoVendedor(rifa, v, dig, esSim);
+    if (navigator.share) { try { await navigator.share({ title: `${rifa.nombre} · ${v.vendedor_nombre}`, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+  };
+  const copiar = async (v) => {
+    try { await navigator.clipboard.writeText(textoVendedor(rifa, v, dig, esSim)); setCopiado(v.vendedor_id); setTimeout(() => setCopiado(null), 2000); toast.success(`Números de ${v.vendedor_nombre} copiados`); }
+    catch { toast.error('No se pudo copiar'); }
+  };
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed', inset:0, zIndex:10500, background:'rgba(8,22,22,0.75)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:620, maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 24px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ background:'linear-gradient(135deg,#0a3d62,#0abfbc)', color:'#fff', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+          <div>
+            <div style={{ fontWeight:800, fontSize:'1rem' }}><i className="bi bi-share-fill me-2"></i>Números por vendedor</div>
+            <div style={{ fontSize:'.74rem', opacity:.85, marginTop:2 }}>{rifa.nombre} · compártele a cada uno sus números ordenados o imprime su hoja</div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer' }}><i className="bi bi-x-lg"></i></button>
+        </div>
+        <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--jordyn-border)', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <div style={{ position:'relative', flex:'1 1 200px' }}>
+            <i className="bi bi-search" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
+            <input className="jd-input" value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar vendedor…" aria-label="Buscar vendedor" style={{ paddingLeft:32 }} />
+          </div>
+          <button className="btn-jordyn" disabled={!vendedores.length} onClick={() => imprimirHojas(rifa, vista, dig, esSim)} style={{ fontSize:'.78rem' }}>
+            <i className="bi bi-printer-fill me-1"></i>Imprimir {t ? `estos ${vista.length}` : `todas (${vendedores.length})`}
+          </button>
+        </div>
+        <div style={{ overflowY:'auto', padding:'10px 18px 16px' }}>
+          {!data ? (
+            <div style={{ display:'flex', justifyContent:'center', padding:'2rem' }}><div className="jd-spinner" style={{ width:32, height:32 }}></div></div>
+          ) : vista.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'2rem 1rem', color:'var(--jordyn-muted)', fontSize:'.85rem' }}>{vendedores.length ? 'Ningún vendedor coincide' : 'Esta rifa no tiene números asignados a vendedores'}</div>
+          ) : vista.map(v => {
+            const grupos = numerosDeVendedor(v, dig);
+            const total = grupos.reduce((s, g) => s + g.numeros.length, 0);
+            const todos = grupos.flatMap(g => g.numeros);
+            return (
+              <div key={v.vendedor_id} style={{ border:'1px solid var(--jordyn-border)', borderRadius:12, padding:'10px 12px', marginBottom:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <div style={{ minWidth:0 }}>
+                    <b style={{ fontSize:'.9rem' }}>{v.vendedor_nombre}</b>
+                    <span style={{ marginLeft:8, background:'rgba(124,58,237,.12)', color:'#7c3aed', borderRadius:20, padding:'1px 8px', fontSize:'.7rem', fontWeight:800 }}>{total}</span>
+                    {esSim && <span style={{ marginLeft:6, fontSize:'.68rem', color:'var(--jordyn-muted)' }}>{grupos.map(g => `${g.serie}: ${g.numeros.length}`).join(' · ')}</span>}
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => compartir(v)} title="Compartir por WhatsApp"
+                      style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
+                      <i className="bi bi-whatsapp me-1"></i>Compartir
+                    </button>
+                    <button onClick={() => copiar(v)} title="Copiar la lista"
+                      style={{ background:'#fff', border:'1.5px solid var(--jordyn-border)', color:'var(--jordyn-text)', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
+                      <i className={`bi ${copiado === v.vendedor_id ? 'bi-check2' : 'bi-clipboard'} me-1`}></i>{copiado === v.vendedor_id ? 'Copiado' : 'Copiar'}
+                    </button>
+                    <button onClick={() => imprimirHojas(rifa, [v], dig, esSim)} title="Imprimir su hoja"
+                      style={{ background:'rgba(240,165,0,.08)', border:'1.5px solid rgba(240,165,0,.4)', color:'#b37700', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
+                      <i className="bi bi-printer me-1"></i>Hoja
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize:'.74rem', color:'var(--jordyn-muted)', marginTop:6, letterSpacing:.5, lineHeight:1.6, wordBreak:'break-word' }}>
+                  {todos.slice(0, 30).join(' · ')}{todos.length > 30 ? ` … y ${todos.length - 30} más` : ''}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Reparto aleatorio "surtido" ──────────────────────────────
    Elige `cant` números al azar pero repartidos por todas las centenas
    (000–099, 100–199 … 900–999; en 4 cifras por millares, en 2 por decenas):
@@ -2697,6 +2856,7 @@ export default function GestionRifas() {
   const [showForm,        setShowForm]        = useState(false);
   const [showArchivadas,  setShowArchivadas]  = useState(false);
   const [modalNums,       setModalNums]       = useState(null);
+  const [modalCompartir,  setModalCompartir]  = useState(null);   // rifa: números por vendedor para compartir/imprimir
   const [confirmDelete,   setConfirmDelete]   = useState(null);
   const [deletingRifa,    setDeletingRifa]    = useState(false);
   const [tasaValor,       setTasaValor]       = useState('');
@@ -3329,6 +3489,7 @@ export default function GestionRifas() {
             <div className="d-flex flex-wrap gap-2">
               <button className="btn-jordyn-outline" onClick={() => handleEdit(r)} style={{ fontSize: '0.75rem', padding: '4px 10px' }}><i className="bi bi-pencil-fill me-1"></i>Editar</button>
               <button onClick={() => setModalNums(r)} style={{ background: 'rgba(124,58,237,0.08)', border: '1.5px solid rgba(124,58,237,0.3)', color: '#7c3aed', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-ticket-perforated-fill"></i> Administración de tickets</button>
+              <button onClick={() => setModalCompartir(r)} title="Compartir o imprimir los números de cada vendedor" style={{ background: 'rgba(37,211,102,0.08)', border: '1.5px solid rgba(37,211,102,0.4)', color: '#128c7e', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><i className="bi bi-share-fill"></i>Números por vendedor</button>
               <a href={`/imprimir-boletos?rifa=${r.id}`} style={{ background: 'rgba(240,165,0,0.08)', border: '1.5px solid rgba(240,165,0,0.3)', color: 'var(--jordyn-gold)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}><i className="bi bi-ticket-perforated"></i> Boleto</a>
               {r.activa && (
                 <button onClick={() => handlePublicar(r)} title={r.publicada === false ? 'Mostrarla en la página del cliente' : 'Quitarla de la página del cliente (sigue activa para los vendedores)'}
@@ -3953,6 +4114,7 @@ export default function GestionRifas() {
       )}
 
       {modalNums && <ModalBoleteria rifa={modalNums} onClose={() => setModalNums(null)} />}
+      {modalCompartir && <ModalCompartirVendedores rifa={modalCompartir} onClose={() => setModalCompartir(null)} />}
 
       {/* ═══ MODAL: GESTIÓN DE NÚMEROS EXTRAS DEL VENDEDOR ═══ */}
       {modalNumExtras && (
