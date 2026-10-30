@@ -1,6 +1,6 @@
 /* ============================================================
-   imagenVendedor.js — Imagen para WhatsApp con los números de un vendedor:
-   la publicidad de la rifa arriba y sus números en cuadritos debajo.
+   imagenVendedor.js — Imagen para WhatsApp con los números disponibles
+   de un vendedor: solo la publicidad de la rifa y sus números en cuadritos.
    Se dibuja en un canvas (sin ctx.filter ni ctx.roundRect, que fallan
    en los iPhone más viejos). El alto depende de cuántos números tenga.
    ============================================================ */
@@ -10,6 +10,7 @@ const PADDING  = 34;
 const INTERIOR = ANCHO - MARGEN * 2 - PADDING * 2;
 const FOTO_MAX = 720;
 const GAP      = 10;
+const FRANJA   = 84;
 const FUENTE   = 'Arial, Helvetica, sans-serif';
 
 const cargar = (src) => new Promise((resolve) => {
@@ -37,18 +38,6 @@ function trazar(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
-}
-
-function partirLineas(ctx, texto, ancho) {
-  const lineas = [];
-  let actual = '';
-  for (const palabra of String(texto).split(/\s+/).filter(Boolean)) {
-    const prueba = actual ? `${actual} ${palabra}` : palabra;
-    if (actual && ctx.measureText(prueba).width > ancho) { lineas.push(actual); actual = palabra; }
-    else actual = prueba;
-  }
-  if (actual) lineas.push(actual);
-  return lineas;
 }
 
 // Fondo: la misma publicidad muy difuminada (se achica y se amplía) y oscurecida
@@ -89,7 +78,7 @@ function pintarNumero(ctx, numero, x, y, w, h, fuente) {
   ctx.textBaseline = 'middle';
   ctx.fillText(numero, x + w / 2, y + h / 2 + 1);
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
+  ctx.textBaseline = 'top';
 }
 
 const columnasPara = (total, dig) => {
@@ -97,21 +86,15 @@ const columnasPara = (total, dig) => {
   return dig >= 4 ? Math.min(cols, 8) : cols;
 };
 
-/* datos: { titulo, detalles: [texto…], vendedor, total, grupos: [{ serie, numeros }],
-   esSim, dig, imagen, pie }. Devuelve { blob, conFoto }. */
-export async function generarImagenVendedor(datos) {
-  const { titulo, detalles, vendedor, total, grupos, esSim, dig, imagen, pie } = datos;
+/* datos: { grupos: [{ serie, numeros }], esSim, dig, imagen }. Devuelve { blob, conFoto }. */
+export async function generarImagenVendedor({ grupos, esSim, dig, imagen }) {
   const foto = await cargarFoto(imagen);
   const canvas = document.createElement('canvas');
   canvas.width = ANCHO;
   const ctx = canvas.getContext('2d');
 
   // 1) Medir, porque al cambiar el alto del canvas se borra lo pintado
-  ctx.font = `bold 46px ${FUENTE}`;
-  const lineasTitulo = partirLineas(ctx, titulo, INTERIOR);
-  ctx.font = `30px ${FUENTE}`;
-  const lineasDetalle = detalles.filter(Boolean).flatMap(d => partirLineas(ctx, d, INTERIOR));
-
+  const total = grupos.reduce((s, g) => s + g.numeros.length, 0);
   const cols  = columnasPara(total, dig);
   const celda = (INTERIOR - GAP * (cols - 1)) / cols;
   const altoCelda = Math.round(celda * 0.64);
@@ -119,13 +102,10 @@ export async function generarImagenVendedor(datos) {
   const filasDe = (g) => Math.ceil(g.numeros.length / cols);
 
   const altoFoto = foto ? Math.round(foto.height * Math.min((ANCHO - MARGEN * 2) / foto.width, FOTO_MAX / foto.height)) : 0;
-  const altoTarjeta = PADDING
-    + lineasTitulo.length * 54 + 8
-    + lineasDetalle.length * 40 + 20
-    + 84 + 22
+  const altoTarjeta = PADDING + FRANJA + 22
     + grupos.reduce((s, g) => s + (esSim ? 44 : 0) + filasDe(g) * (altoCelda + GAP) + 8, 0)
     + PADDING - GAP - 8;
-  const altoTotal = MARGEN + (foto ? altoFoto + 28 : 0) + altoTarjeta + 84;
+  const altoTotal = MARGEN + (foto ? altoFoto + 28 : 0) + altoTarjeta + MARGEN;
   canvas.height = altoTotal;
 
   // 2) Pintar
@@ -148,58 +128,31 @@ export async function generarImagenVendedor(datos) {
 
   const x0 = MARGEN + PADDING;
   y += PADDING;
-  ctx.fillStyle = '#0d1b1b';
-  ctx.font = `bold 46px ${FUENTE}`;
-  ctx.textBaseline = 'top';
-  lineasTitulo.forEach(l => { ctx.fillText(l, x0, y); y += 54; });
-  y += 8;
-  ctx.fillStyle = '#3c4a4a';
-  ctx.font = `30px ${FUENTE}`;
-  lineasDetalle.forEach(l => { ctx.fillText(l, x0, y); y += 40; });
-  y += 20;
-
-  trazar(ctx, x0, y, INTERIOR, 84, 16);
+  trazar(ctx, x0, y, INTERIOR, FRANJA, 16);
   ctx.fillStyle = '#0a3d62';
   ctx.fill();
   ctx.fillStyle = '#ffffff';
+  ctx.font = `bold 40px ${FUENTE}`;
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const cantidad = `${total} número${total === 1 ? '' : 's'}`;
-  ctx.font = `30px ${FUENTE}`;
-  const anchoCantidad = ctx.measureText(cantidad).width;
-  ctx.textAlign = 'right';
-  ctx.fillText(cantidad, x0 + INTERIOR - 26, y + 43);
+  ctx.fillText('NÚMEROS DISPONIBLES', ANCHO / 2, y + FRANJA / 2 + 2);
   ctx.textAlign = 'left';
-  let nombre = String(vendedor).toUpperCase();
-  ctx.font = `bold 38px ${FUENTE}`;
-  const anchoNombre = INTERIOR - 26 * 2 - anchoCantidad - 24;
-  if (ctx.measureText(nombre).width > anchoNombre) {
-    while (nombre.length > 1 && ctx.measureText(`${nombre}…`).width > anchoNombre) nombre = nombre.slice(0, -1);
-    nombre = `${nombre.trim()}…`;
-  }
-  ctx.fillText(nombre, x0 + 26, y + 43);
   ctx.textBaseline = 'top';
-  y += 84 + 22;
+  y += FRANJA + 22;
 
   grupos.forEach((g) => {
     if (esSim) {
       ctx.fillStyle = '#0a3d62';
       ctx.font = `bold 30px ${FUENTE}`;
-      ctx.fillText(`SERIE ${g.serie} · ${g.numeros.length}`, x0, y);
+      ctx.fillText(`SERIE ${g.serie}`, x0, y);
       y += 44;
     }
     g.numeros.forEach((n, i) => {
       const fila = Math.floor(i / cols);
       pintarNumero(ctx, n, x0 + (i % cols) * (celda + GAP), y + fila * (altoCelda + GAP), celda, altoCelda, fuente);
-      ctx.textBaseline = 'top';
     });
     y += filasDe(g) * (altoCelda + GAP) + 8;
   });
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `bold 30px ${FUENTE}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(pie || '', ANCHO / 2, altoTotal - 42);
 
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo crear la imagen'))), 'image/jpeg', 0.92);

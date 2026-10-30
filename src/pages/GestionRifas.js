@@ -1272,8 +1272,10 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
    imprimir en una misma hoja los números de todos los vendedores, uno tras otro. */
 const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 
-function numerosDeVendedor(v, dig) {
-  const lista = (v.numeros_fijos || []).map(n => ({ numero: String(n.numero).padStart(dig, '0'), serie: n.serie || 'A' }));
+function numerosDeVendedor(v, dig, soloDisponibles = false) {
+  const lista = (v.numeros_fijos || [])
+    .filter(n => !soloDisponibles || n.disponible !== false)
+    .map(n => ({ numero: String(n.numero).padStart(dig, '0'), serie: n.serie || 'A' }));
   const series = [...new Set(lista.map(n => n.serie))].sort();
   return series.map(serie => ({ serie, numeros: [...new Set(lista.filter(n => n.serie === serie).map(n => n.numero))].sort() }));
 }
@@ -1377,28 +1379,17 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     setPrevia(p => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
   };
   const compartir = async (v) => {
+    const grupos = numerosDeVendedor(v, dig, true);
+    const libres = grupos.reduce((s, g) => s + g.numeros.length, 0);
+    if (!libres) { toast.info(`${v.vendedor_nombre} ya no tiene números disponibles`); return; }
+    const asignados = numerosDeVendedor(v, dig).reduce((s, g) => s + g.numeros.length, 0);
     const turno = ++turnoImagen.current;
-    setPrevia({ v, cargando: true });
+    setPrevia({ v, cargando: true, libres, asignados });
     try {
-      const grupos = numerosDeVendedor(v, dig);
-      const hora = fmtHoraSorteo(rifa.hora_sorteo);
-      const { blob, conFoto } = await generarImagenVendedor({
-        titulo: rifa.nombre,
-        detalles: [
-          `Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}`,
-          rifa.loteria_ref,
-          rifa.premio && `Premio: ${rifa.premio}`,
-          `Precio: ${fmtCOP(rifa.precio)} c/u`,
-        ],
-        vendedor: v.vendedor_nombre,
-        total: grupos.reduce((s, g) => s + g.numeros.length, 0),
-        grupos, esSim, dig,
-        imagen: rifa.imagen_url,
-        pie: 'www.resuelvetusemana.com',
-      });
+      const { blob, conFoto } = await generarImagenVendedor({ grupos, esSim, dig, imagen: rifa.imagen_url });
       if (turno !== turnoImagen.current) return;
       const nombre = `Numeros ${rifa.nombre} ${v.vendedor_nombre}.jpg`.replace(/[\\/:*?"<>|]/g, '');
-      setPrevia({ v, url: URL.createObjectURL(blob), archivo: new File([blob], nombre, { type: 'image/jpeg' }), conFoto });
+      setPrevia({ v, libres, asignados, url: URL.createObjectURL(blob), archivo: new File([blob], nombre, { type: 'image/jpeg' }), conFoto });
     } catch {
       if (turno !== turnoImagen.current) return;
       setPrevia(null);
@@ -1484,7 +1475,10 @@ function ModalCompartirVendedores({ rifa, onClose }) {
           style={{ position:'fixed', inset:0, zIndex:10600, background:'rgba(8,22,22,0.88)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:440, maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ padding:'11px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, borderBottom:'1px solid var(--jordyn-border)' }}>
-              <b style={{ fontSize:'.88rem', minWidth:0, overflowWrap:'anywhere' }}>{previa.v.vendedor_nombre}</b>
+              <div style={{ minWidth:0 }}>
+                <b style={{ fontSize:'.88rem', overflowWrap:'anywhere' }}>{previa.v.vendedor_nombre}</b>
+                <div style={{ fontSize:'.7rem', color:'var(--jordyn-muted)' }}>{previa.libres} disponibles de {previa.asignados} asignados</div>
+              </div>
               <button onClick={cerrarPrevia} aria-label="Cerrar" style={{ background:'rgba(0,0,0,.06)', border:'none', width:28, height:28, borderRadius:'50%', cursor:'pointer', flexShrink:0 }}><i className="bi bi-x-lg"></i></button>
             </div>
             <div style={{ overflowY:'auto', flex:1, minHeight:0, background:'#f2f4f4', padding:previa.url ? 10 : 0 }}>
