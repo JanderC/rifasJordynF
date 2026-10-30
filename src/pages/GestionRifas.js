@@ -16,6 +16,7 @@ import { TicketPreview, printTickets } from '../components/Ticket';
 import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN } from '../components/Ticket';
 import { useAuth } from '../context/AuthContext';
+import { generarImagenVendedor } from '../utils/imagenVendedor';
 
 /* ─── Loterías ─── */
 const LOTERIAS = [
@@ -1267,7 +1268,7 @@ function ResultadoBusquedaNumero({ numero, rifa, vendedores, esSimultanea, onAbr
 }
 
 /* ── Números por vendedor: compartir o imprimir la lista de cada uno ──────────
-   Para que el vendedor reciba sus números ya ordenados (por WhatsApp) o para
+   Para que el vendedor reciba sus números ya ordenados (imagen para WhatsApp) o para
    imprimir en una misma hoja los números de todos los vendedores, uno tras otro. */
 const escHtml = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 
@@ -1350,6 +1351,8 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const [data, setData]       = useState(null);
   const [busq, setBusq]       = useState('');
   const [copiado, setCopiado] = useState(null);
+  const [previa, setPrevia]   = useState(null);   // imagen del vendedor lista para compartir
+  const turnoImagen = useRef(0);
   const dig = digitosRifa(rifa);
   useEffect(() => {
     API.get(`/rifas/${rifa.id}/boleteria-vendedores`)
@@ -1367,7 +1370,45 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     if (navigator.share) { try { await navigator.share({ title: titulo, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
   };
-  const compartir = (v) => enviarTexto(`${rifa.nombre} · ${v.vendedor_nombre}`, textoVendedor(rifa, v, dig, esSim));
+  // Compartir abre la imagen ya hecha: el iPhone solo deja compartir archivos justo
+  // después de tocar un botón, y armarla tarda demasiado para hacerlo de una vez.
+  const cerrarPrevia = () => {
+    turnoImagen.current += 1;
+    setPrevia(p => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
+  };
+  const compartir = async (v) => {
+    const turno = ++turnoImagen.current;
+    setPrevia({ v, cargando: true });
+    try {
+      const grupos = numerosDeVendedor(v, dig);
+      const hora = fmtHoraSorteo(rifa.hora_sorteo);
+      const { blob, conFoto } = await generarImagenVendedor({
+        titulo: rifa.nombre,
+        detalles: [
+          `Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}`,
+          rifa.loteria_ref,
+          rifa.premio && `Premio: ${rifa.premio}`,
+          `Precio: ${fmtCOP(rifa.precio)} c/u`,
+        ],
+        vendedor: v.vendedor_nombre,
+        total: grupos.reduce((s, g) => s + g.numeros.length, 0),
+        grupos, esSim, dig,
+        imagen: rifa.imagen_url,
+        pie: 'www.resuelvetusemana.com',
+      });
+      if (turno !== turnoImagen.current) return;
+      const nombre = `Numeros ${rifa.nombre} ${v.vendedor_nombre}.jpg`.replace(/[\\/:*?"<>|]/g, '');
+      setPrevia({ v, url: URL.createObjectURL(blob), archivo: new File([blob], nombre, { type: 'image/jpeg' }), conFoto });
+    } catch {
+      if (turno !== turnoImagen.current) return;
+      setPrevia(null);
+      toast.error('No se pudo crear la imagen');
+    }
+  };
+  const compartirImagen = async () => {
+    try { await navigator.share({ files: [previa.archivo], title: `${rifa.nombre} · ${previa.v.vendedor_nombre}` }); }
+    catch (e) { if (e?.name !== 'AbortError') toast.error('No se pudo compartir. Descarga la imagen y envíala por WhatsApp'); }
+  };
   const compartirTodos = () => enviarTexto(`${rifa.nombre} · vendedores`, textoTodosVendedores(rifa, vista, dig, esSim));
   const copiar = async (v) => {
     try { await navigator.clipboard.writeText(textoVendedor(rifa, v, dig, esSim)); setCopiado(v.vendedor_id); setTimeout(() => setCopiado(null), 2000); toast.success(`Números de ${v.vendedor_nombre} copiados`); }
@@ -1416,11 +1457,11 @@ function ModalCompartirVendedores({ rifa, onClose }) {
                     {esSim && <span style={{ marginLeft:6, fontSize:'.68rem', color:'var(--jordyn-muted)' }}>{grupos.map(g => `${g.serie}: ${g.numeros.length}`).join(' · ')}</span>}
                   </div>
                   <div style={{ display:'flex', gap:6 }}>
-                    <button onClick={() => compartir(v)} title="Compartir por WhatsApp"
+                    <button onClick={() => compartir(v)} title="Crear la imagen con sus números para WhatsApp"
                       style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
-                      <i className="bi bi-whatsapp me-1"></i>Compartir
+                      <i className="bi bi-image me-1"></i>Compartir
                     </button>
-                    <button onClick={() => copiar(v)} title="Copiar la lista"
+                    <button onClick={() => copiar(v)} title="Copiar la lista en texto"
                       style={{ background:'#fff', border:'1.5px solid var(--jordyn-border)', color:'var(--jordyn-text)', borderRadius:8, padding:'5px 10px', cursor:'pointer', fontSize:'.74rem', fontWeight:700 }}>
                       <i className={`bi ${copiado === v.vendedor_id ? 'bi-check2' : 'bi-clipboard'} me-1`}></i>{copiado === v.vendedor_id ? 'Copiado' : 'Copiar'}
                     </button>
@@ -1438,6 +1479,37 @@ function ModalCompartirVendedores({ rifa, onClose }) {
           })}
         </div>
       </div>
+      {previa && (
+        <div onClick={e => e.target === e.currentTarget && cerrarPrevia()}
+          style={{ position:'fixed', inset:0, zIndex:10600, background:'rgba(8,22,22,0.88)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:440, maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ padding:'11px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, borderBottom:'1px solid var(--jordyn-border)' }}>
+              <b style={{ fontSize:'.88rem', minWidth:0, overflowWrap:'anywhere' }}>{previa.v.vendedor_nombre}</b>
+              <button onClick={cerrarPrevia} aria-label="Cerrar" style={{ background:'rgba(0,0,0,.06)', border:'none', width:28, height:28, borderRadius:'50%', cursor:'pointer', flexShrink:0 }}><i className="bi bi-x-lg"></i></button>
+            </div>
+            <div style={{ overflowY:'auto', flex:1, minHeight:0, background:'#f2f4f4', padding:previa.url ? 10 : 0 }}>
+              {previa.url
+                ? <img src={previa.url} alt={`Números de ${previa.v.vendedor_nombre}`} style={{ width:'100%', display:'block', borderRadius:8 }} />
+                : <div style={{ display:'flex', justifyContent:'center', padding:'3rem' }}><div className="jd-spinner" style={{ width:32, height:32 }}></div></div>}
+            </div>
+            {previa.url && (
+              <div style={{ padding:'10px 14px 12px', borderTop:'1px solid var(--jordyn-border)' }}>
+                {!previa.conFoto && <div style={{ fontSize:'.72rem', color:'#b37700', marginBottom:8 }}>{rifa.imagen_url ? 'No se pudo cargar la publicidad de la rifa: la imagen salió sin ella.' : 'Esta rifa no tiene publicidad cargada.'}</div>}
+                <div style={{ display:'flex', gap:8 }}>
+                  {navigator.canShare?.({ files: [previa.archivo] }) && (
+                    <button onClick={compartirImagen} style={{ flex:1, background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'9px 10px', cursor:'pointer', fontSize:'.82rem', fontWeight:700 }}>
+                      <i className="bi bi-whatsapp me-1"></i>Compartir
+                    </button>
+                  )}
+                  <a href={previa.url} download={previa.archivo.name} style={{ flex:1, textAlign:'center', textDecoration:'none', background:'#fff', border:'1.5px solid var(--jordyn-border)', color:'var(--jordyn-text)', borderRadius:8, padding:'8px 10px', fontSize:'.82rem', fontWeight:700 }}>
+                    <i className="bi bi-download me-1"></i>Descargar
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
