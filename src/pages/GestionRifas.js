@@ -1379,14 +1379,16 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     setPrevia(p => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
   };
   const compartir = async (v) => {
-    const grupos = numerosDeVendedor(v, dig, true);
-    const libres = grupos.reduce((s, g) => s + g.numeros.length, 0);
+    // Todos juntos de menor a mayor, sin separar por serie
+    const unicos = (lista) => [...new Set(lista.flatMap(g => g.numeros))].sort();
+    const numeros = unicos(numerosDeVendedor(v, dig, true));
+    const libres = numeros.length;
     if (!libres) { toast.info(`${v.vendedor_nombre} ya no tiene números disponibles`); return; }
-    const asignados = numerosDeVendedor(v, dig).reduce((s, g) => s + g.numeros.length, 0);
+    const asignados = unicos(numerosDeVendedor(v, dig)).length;
     const turno = ++turnoImagen.current;
     setPrevia({ v, cargando: true, libres, asignados });
     try {
-      const { blob, conFoto } = await generarImagenVendedor({ grupos, esSim, dig, imagen: rifa.imagen_url });
+      const { blob, conFoto } = await generarImagenVendedor({ numeros, dig, imagen: rifa.imagen_url });
       if (turno !== turnoImagen.current) return;
       const nombre = `Numeros ${rifa.nombre} ${v.vendedor_nombre}.jpg`.replace(/[\\/:*?"<>|]/g, '');
       setPrevia({ v, libres, asignados, url: URL.createObjectURL(blob), archivo: new File([blob], nombre, { type: 'image/jpeg' }), conFoto });

@@ -86,25 +86,22 @@ const columnasPara = (total, dig) => {
   return dig >= 4 ? Math.min(cols, 8) : cols;
 };
 
-/* datos: { grupos: [{ serie, numeros }], esSim, dig, imagen }. Devuelve { blob, conFoto }. */
-export async function generarImagenVendedor({ grupos, esSim, dig, imagen }) {
+/* numeros: ya ordenados y sin repetir. Devuelve { blob, conFoto }. */
+export async function generarImagenVendedor({ numeros, dig, imagen }) {
   const foto = await cargarFoto(imagen);
   const canvas = document.createElement('canvas');
   canvas.width = ANCHO;
   const ctx = canvas.getContext('2d');
 
   // 1) Medir, porque al cambiar el alto del canvas se borra lo pintado
-  const total = grupos.reduce((s, g) => s + g.numeros.length, 0);
-  const cols  = columnasPara(total, dig);
+  const cols  = columnasPara(numeros.length, dig);
   const celda = (INTERIOR - GAP * (cols - 1)) / cols;
   const altoCelda = Math.round(celda * 0.64);
   const fuente = Math.round(celda * (dig >= 4 ? 0.3 : 0.36));
-  const filasDe = (g) => Math.ceil(g.numeros.length / cols);
+  const filas = Math.ceil(numeros.length / cols);
 
   const altoFoto = foto ? Math.round(foto.height * Math.min((ANCHO - MARGEN * 2) / foto.width, FOTO_MAX / foto.height)) : 0;
-  const altoTarjeta = PADDING + FRANJA + 22
-    + grupos.reduce((s, g) => s + (esSim ? 44 : 0) + filasDe(g) * (altoCelda + GAP) + 8, 0)
-    + PADDING - GAP - 8;
+  const altoTarjeta = PADDING + FRANJA + 22 + filas * (altoCelda + GAP) - GAP + PADDING;
   const altoTotal = MARGEN + (foto ? altoFoto + 28 : 0) + altoTarjeta + MARGEN;
   canvas.height = altoTotal;
 
@@ -140,18 +137,9 @@ export async function generarImagenVendedor({ grupos, esSim, dig, imagen }) {
   ctx.textBaseline = 'top';
   y += FRANJA + 22;
 
-  grupos.forEach((g) => {
-    if (esSim) {
-      ctx.fillStyle = '#0a3d62';
-      ctx.font = `bold 30px ${FUENTE}`;
-      ctx.fillText(`SERIE ${g.serie}`, x0, y);
-      y += 44;
-    }
-    g.numeros.forEach((n, i) => {
-      const fila = Math.floor(i / cols);
-      pintarNumero(ctx, n, x0 + (i % cols) * (celda + GAP), y + fila * (altoCelda + GAP), celda, altoCelda, fuente);
-    });
-    y += filasDe(g) * (altoCelda + GAP) + 8;
+  numeros.forEach((n, i) => {
+    const fila = Math.floor(i / cols);
+    pintarNumero(ctx, n, x0 + (i % cols) * (celda + GAP), y + fila * (altoCelda + GAP), celda, altoCelda, fuente);
   });
 
   const blob = await new Promise((resolve, reject) => {
