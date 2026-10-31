@@ -1354,13 +1354,25 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const [busq, setBusq]       = useState('');
   const [copiado, setCopiado] = useState(null);
   const [previa, setPrevia]   = useState(null);   // imagen del vendedor lista para compartir
+  const [estados, setEstados] = useState({});     // vendedor_id → su último envío por el WhatsApp del sistema
+  const [editTel, setEditTel] = useState(null);   // { id, valor } del teléfono que se está escribiendo
+  const [confirmar, setConfirmar] = useState(false);
+  const [progreso, setProgreso]   = useState(null);   // { hechos, total } mientras se preparan las imágenes
   const turnoImagen = useRef(0);
   const dig = digitosRifa(rifa);
+  const cargarEstados = useCallback(() => {
+    API.get(`/rifas/${rifa.id}/envios-vendedores`)
+      .then(r => setEstados(Object.fromEntries(r.data.map(e => [e.vendedor_id, e]))))
+      .catch(() => {});
+  }, [rifa.id]);
   useEffect(() => {
     API.get(`/rifas/${rifa.id}/boleteria-vendedores`)
       .then(r => setData(r.data))
       .catch(() => { toast.error('No se pudieron cargar los números de los vendedores'); setData({ vendedores: [] }); });
-  }, [rifa.id]);
+    cargarEstados();
+    const reloj = setInterval(cargarEstados, 20000);
+    return () => clearInterval(reloj);
+  }, [rifa.id, cargarEstados]);
   const esSim = !!data?.es_simultanea;
   const vendedores = (data?.vendedores || [])
     .filter(v => (v.numeros_fijos || []).length)
@@ -1378,11 +1390,44 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     turnoImagen.current += 1;
     setPrevia(p => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
   };
+  // Todos juntos de menor a mayor, sin decir la serie. Si tiene el mismo número
+  // en las dos series, sale dos veces.
+  const juntar = (lista) => lista.flatMap(g => g.numeros).sort();
+  const disponiblesDe = (v) => juntar(numerosDeVendedor(v, dig, true));
+
+  const enviarUno = async (v) => {
+    const { blob } = await generarImagenVendedor({ numeros: disponiblesDe(v), dig, imagen: rifa.imagen_url });
+    const imagen = await new Promise((resolve, reject) => {
+      const lector = new FileReader();
+      lector.onload = () => resolve(lector.result);
+      lector.onerror = reject;
+      lector.readAsDataURL(blob);
+    });
+    await API.post(`/rifas/${rifa.id}/vendedores/${v.vendedor_id}/enviar-numeros`, { imagen });
+  };
+  const enviarVarios = async (lista) => {
+    setConfirmar(false);
+    setProgreso({ hechos: 0, total: lista.length });
+    let fallos = 0;
+    for (let i = 0; i < lista.length; i++) {
+      try { await enviarUno(lista[i]); } catch { fallos += 1; }
+      setProgreso({ hechos: i + 1, total: lista.length });
+    }
+    setProgreso(null);
+    cargarEstados();
+    if (fallos) toast.error(`${fallos} no se pudieron poner en cola. Intenta de nuevo con esos vendedores`);
+    if (lista.length > fallos) toast.success(`${lista.length - fallos} en cola para salir por WhatsApp`);
+  };
+  const guardarTelefono = async () => {
+    try {
+      const r = await API.put(`/vendedores/${editTel.id}`, { telefono: editTel.valor });
+      setData(d => ({ ...d, vendedores: d.vendedores.map(v => v.vendedor_id === editTel.id ? { ...v, telefono: r.data.vendedor.telefono } : v) }));
+      setEditTel(null);
+    } catch (e) { toast.error(e.response?.data?.error || 'No se pudo guardar el teléfono'); }
+  };
+
   const compartir = async (v) => {
-    // Todos juntos de menor a mayor, sin decir la serie. Si tiene el mismo número
-    // en las dos series, sale dos veces.
-    const juntar = (lista) => lista.flatMap(g => g.numeros).sort();
-    const numeros = juntar(numerosDeVendedor(v, dig, true));
+    const numeros = disponiblesDe(v);
     const libres = numeros.length;
     if (!libres) { toast.info(`${v.vendedor_nombre} ya no tiene números disponibles`); return; }
     const asignados = juntar(numerosDeVendedor(v, dig)).length;
@@ -1404,6 +1449,17 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     catch (e) { if (e?.name !== 'AbortError') toast.error('No se pudo compartir. Descarga la imagen y envíala por WhatsApp'); }
   };
   const compartirTodos = () => enviarTexto(`${rifa.nombre} · vendedores`, textoTodosVendedores(rifa, vista, dig, esSim));
+  const paraEnviar = vista.filter(v => v.telefono && disponiblesDe(v).length);
+  const sinTelefono = vista.filter(v => !v.telefono && disponiblesDe(v).length).length;
+  const nuevos = paraEnviar.filter(v => !estados[v.vendedor_id] || estados[v.vendedor_id].frio).length;
+  const ESTADO_ENVIO = {
+    en_cola:           ['En cola', '#b37700'],
+    enviando:          ['Enviando…', '#b37700'],
+    esperando_cliente: ['Espera por el tope diario', '#b37700'],
+    enviado:           ['Enviado', '#128c7e'],
+    error:             ['No salió', '#c0392b'],
+  };
+
   const copiar = async (v) => {
     try { await navigator.clipboard.writeText(textoVendedor(rifa, v, dig, esSim)); setCopiado(v.vendedor_id); setTimeout(() => setCopiado(null), 2000); toast.success(`Números de ${v.vendedor_nombre} copiados`); }
     catch { toast.error('No se pudo copiar'); }
@@ -1425,6 +1481,10 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             <i className="bi bi-search" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
             <input className="jd-input" value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar vendedor…" aria-label="Buscar vendedor" style={{ paddingLeft:32 }} />
           </div>
+          <button disabled={!paraEnviar.length || !!progreso} onClick={() => setConfirmar(true)} title="Le llega a cada vendedor su imagen desde el WhatsApp del sistema"
+            style={{ background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700, opacity: paraEnviar.length ? 1 : .55 }}>
+            <i className="bi bi-send-fill me-1"></i>{progreso ? `Preparando ${progreso.hechos} de ${progreso.total}…` : `Enviar a cada uno (${paraEnviar.length})`}
+          </button>
           <button disabled={!vista.length} onClick={compartirTodos} title="Un solo mensaje con los números de todos"
             style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'7px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
             <i className="bi bi-whatsapp me-1"></i>Compartir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
@@ -1433,6 +1493,17 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             <i className="bi bi-printer-fill me-1"></i>Imprimir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
           </button>
         </div>
+        {confirmar && (
+          <div style={{ padding:'12px 18px', background:'#f0fbf8', borderBottom:'1px solid var(--jordyn-border)', fontSize:'.8rem', lineHeight:1.5 }}>
+            <b>¿Enviar la imagen a {paraEnviar.length} vendedor{paraEnviar.length === 1 ? '' : 'es'}?</b> Le llega a cada uno desde el WhatsApp del sistema, con sus números disponibles.
+            {nuevos > 0 && <> Los que nunca le han escrito a ese WhatsApp salen de uno en uno, con unos minutos entre cada uno y solo de día, para que no lo bloqueen.</>}
+            {sinTelefono > 0 && <> {sinTelefono} sin teléfono no {sinTelefono === 1 ? 'lo recibirá' : 'lo recibirán'}.</>}
+            <div style={{ display:'flex', gap:8, marginTop:8 }}>
+              <button onClick={() => enviarVarios(paraEnviar)} style={{ background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'7px 14px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>Sí, enviar</button>
+              <button onClick={() => setConfirmar(false)} style={{ background:'#fff', border:'1.5px solid var(--jordyn-border)', borderRadius:8, padding:'7px 14px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>Cancelar</button>
+            </div>
+          </div>
+        )}
         <div style={{ overflowY:'auto', padding:'10px 18px 16px' }}>
           {!data ? (
             <div style={{ display:'flex', justifyContent:'center', padding:'2rem' }}><div className="jd-spinner" style={{ width:32, height:32 }}></div></div>
@@ -1442,6 +1513,8 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             const grupos = numerosDeVendedor(v, dig);
             const total = grupos.reduce((s, g) => s + g.numeros.length, 0);
             const todos = grupos.flatMap(g => g.numeros);
+            const envio = estados[v.vendedor_id];
+            const [textoEnvio, colorEnvio] = ESTADO_ENVIO[envio?.estado] || [];
             return (
               <div key={v.vendedor_id} style={{ border:'1px solid var(--jordyn-border)', borderRadius:12, padding:'10px 12px', marginBottom:8 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
@@ -1467,6 +1540,28 @@ function ModalCompartirVendedores({ rifa, onClose }) {
                 </div>
                 <div style={{ fontSize:'.74rem', color:'var(--jordyn-muted)', marginTop:6, letterSpacing:.5, lineHeight:1.6, wordBreak:'break-word' }}>
                   {todos.slice(0, 30).join(' · ')}{todos.length > 30 ? ` … y ${todos.length - 30} más` : ''}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:6, fontSize:'.74rem' }}>
+                  {editTel?.id === v.vendedor_id ? (
+                    <>
+                      <input className="jd-input" type="tel" inputMode="tel" autoFocus value={editTel.valor} onChange={e => setEditTel(p => ({ ...p, valor: e.target.value }))}
+                        placeholder="04121234567 o 573001234567" aria-label={`Teléfono de ${v.vendedor_nombre}`} style={{ flex:'1 1 170px', padding:'6px 10px', fontSize:'.8rem' }} />
+                      <button onClick={guardarTelefono} style={{ background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'6px 10px', cursor:'pointer', fontWeight:700 }}>Guardar</button>
+                      <button onClick={() => setEditTel(null)} aria-label="Cancelar" style={{ background:'none', border:'none', cursor:'pointer', color:'var(--jordyn-muted)' }}><i className="bi bi-x-lg"></i></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setEditTel({ id: v.vendedor_id, valor: v.telefono || '' })} style={{ background:'none', border:'none', padding:0, cursor:'pointer', color: v.telefono ? 'var(--jordyn-muted)' : '#7c3aed', fontWeight:700 }}>
+                        <i className={`bi ${v.telefono ? 'bi-telephone' : 'bi-plus-circle'} me-1`}></i>{v.telefono || 'Agregar teléfono'}
+                      </button>
+                      {v.telefono && disponiblesDe(v).length > 0 && (
+                        <button disabled={!!progreso} onClick={() => enviarVarios([v])} style={{ background:'none', border:'none', padding:0, cursor:'pointer', color:'#128c7e', fontWeight:700 }}>
+                          <i className="bi bi-send me-1"></i>Enviar
+                        </button>
+                      )}
+                      {textoEnvio && <span title={envio.error || undefined} style={{ color:colorEnvio, fontWeight:700 }}>{textoEnvio}</span>}
+                    </>
+                  )}
                 </div>
               </div>
             );

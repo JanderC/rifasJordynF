@@ -264,14 +264,17 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
 
 // ── ModalEditarVendedor ──────────────────────────────────────────
 function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
-  const [form,setForm] = useState({nombre:vendedor.nombre||'',cedula:vendedor.cedula||'',password:''});
+  const [form,setForm] = useState({nombre:vendedor.nombre||'',cedula:vendedor.cedula||'',telefono:'',password:''});
   const [saving,setSaving] = useState(false);
+  useEffect(()=>{
+    API.get(`/vendedores/${vendedor.id}`).then(r=>setForm(p=>({...p,telefono:r.data.vendedor?.telefono||''}))).catch(()=>{});
+  },[vendedor.id]);
   const guardar = async () => {
     if (!form.nombre.trim()) return toast.error('El nombre es requerido');
     if (form.password&&form.password.length<6) return toast.error('Mínimo 6 caracteres');
     setSaving(true);
     try {
-      const payload={nombre:form.nombre.trim(),cedula:form.cedula||null};
+      const payload={nombre:form.nombre.trim(),cedula:form.cedula||null,telefono:form.telefono};
       if (form.password) payload.password=form.password;
       await API.put(`/vendedores/${vendedor.id}`,payload);
       toast.success('Vendedor actualizado'); onSaved(); onClose();
@@ -289,6 +292,7 @@ function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
           <div style={{display:'flex',flexDirection:'column',gap:'0.85rem',marginBottom:'1.25rem'}}>
             <div><label className="jd-label">NOMBRE *</label><input className="jd-input" value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} autoFocus /></div>
             <div><label className="jd-label">CÉDULA</label><input className="jd-input" value={form.cedula} onChange={e=>setForm(p=>({...p,cedula:e.target.value}))} placeholder="Opcional" /></div>
+            <div><label className="jd-label">TELÉFONO (WHATSAPP)</label><input className="jd-input" type="tel" inputMode="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="04121234567 o 573001234567" /></div>
             <div><label className="jd-label">NUEVA CONTRASEÑA</label><input className="jd-input" type="password" value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="Dejar vacío = sin cambios" /></div>
           </div>
           <div className="d-flex gap-2">
