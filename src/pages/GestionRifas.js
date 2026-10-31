@@ -1379,12 +1379,13 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     setPrevia(p => { if (p?.url) URL.revokeObjectURL(p.url); return null; });
   };
   const compartir = async (v) => {
-    // Todos juntos de menor a mayor, sin separar por serie
-    const unicos = (lista) => [...new Set(lista.flatMap(g => g.numeros))].sort();
-    const numeros = unicos(numerosDeVendedor(v, dig, true));
+    // Todos juntos de menor a mayor, sin decir la serie. Si tiene el mismo número
+    // en las dos series, sale dos veces.
+    const juntar = (lista) => lista.flatMap(g => g.numeros).sort();
+    const numeros = juntar(numerosDeVendedor(v, dig, true));
     const libres = numeros.length;
     if (!libres) { toast.info(`${v.vendedor_nombre} ya no tiene números disponibles`); return; }
-    const asignados = unicos(numerosDeVendedor(v, dig)).length;
+    const asignados = juntar(numerosDeVendedor(v, dig)).length;
     const turno = ++turnoImagen.current;
     setPrevia({ v, cargando: true, libres, asignados });
     try {

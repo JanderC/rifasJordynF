@@ -492,15 +492,6 @@ const injectStyles = () => {
     }
 
     /* ── Pack card en banner ── */
-    .pack-card {
-      background:rgba(255,255,255,.07);
-      border:1.5px solid rgba(255,255,255,.15);
-      border-radius:14px; padding:14px 16px;
-      display:flex; flex-direction:column; gap:4px;
-      transition:transform .15s, background .15s;
-      flex:1; min-width:120px; max-width:200px;
-    }
-    .pack-card:hover { background:rgba(255,255,255,.13); transform:translateY(-2px); }
 
     @keyframes fadeUp  { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
     @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
@@ -628,17 +619,17 @@ const injectStyles = () => {
       background:linear-gradient(90deg,${TURQ},#f5a623); }
     .pub-titulo .sub { font-size:.86rem; color:${DARK}88; margin-top:12px; }
 
-    .pub-pasos { display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:18px; counter-reset:paso; }
-    .pub-paso { position:relative; background:linear-gradient(180deg,#fff,#f7fdfd); border:1px solid rgba(10,150,150,.13); border-radius:22px; padding:30px 20px 22px;
-      text-align:center; box-shadow:0 6px 24px rgba(10,100,100,.06); transition:transform .25s, box-shadow .25s, border-color .25s; }
-    .pub-paso:hover { transform:translateY(-6px); box-shadow:0 18px 44px rgba(10,150,150,.16); border-color:${TURQ}66; }
-    .pub-paso::before { counter-increment:paso; content:counter(paso); position:absolute; top:-15px; left:50%; transform:translateX(-50%);
-      width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,${TURQ},${TURQ_DK}); color:#fff; font-weight:900; font-size:.9rem;
-      display:flex; align-items:center; justify-content:center; box-shadow:0 6px 14px ${TURQ}66; border:3px solid #fff; }
-    .pub-paso-ico { width:66px; height:66px; border-radius:20px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:1.9rem;
-      background:linear-gradient(135deg,${TURQ}18,${TURQ2}2e); }
-    .pub-paso h3 { font-size:1.02rem; color:${DARK}; font-weight:800; margin-bottom:7px; }
-    .pub-paso p { font-size:.86rem; color:${DARK}88; line-height:1.6; }
+    .pub-pasos { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+    .pub-paso { background:#f7fdfd; border:1px solid rgba(10,150,150,.13); border-radius:12px; padding:9px 5px; text-align:center; font-size:.72rem; font-weight:700; line-height:1.2; color:${DARK}; }
+    .pub-paso i { display:block; font-style:normal; font-size:1.15rem; margin-bottom:3px; }
+    @media (max-width:640px) {
+      .pub-intro { padding-top:24px; }
+      .pub-intro p, .pub-sellos { display:none; }
+      .pub-titulo { margin-bottom:18px; }
+      .pub-titulo .sub { display:none; }
+    }
+    .pub-panel-numeros { background:#fff; border-radius:20px; padding:16px; margin-top:14px; min-width:0; scroll-margin-top:76px; box-shadow:0 4px 32px rgba(10,100,100,.08); animation:fadeUp .25s ease both; }
+    .pub-mini-titulo { text-align:center; font-size:.68rem; font-weight:800; color:${TURQ_DK}; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
 
     .pago-card { transition:transform .22s, box-shadow .22s; }
     .pago-card:hover { transform:translateY(-5px); box-shadow:0 16px 40px rgba(10,100,100,.13); }
@@ -689,19 +680,13 @@ const injectStyles = () => {
     }
     @media (prefers-reduced-motion: reduce) {
       .pub-intro, .pub-intro-chip b { animation:none; }
-      .pub-cifra, .pub-paso, .pago-card { transition:none; }
+      .pub-cifra, .pago-card { transition:none; }
     }
 
     /* ══════════ Métodos de pago (solo logos) ══════════ */
-    .pagos-logos { display:flex; flex-wrap:wrap; justify-content:center; gap:14px; }
-    .pago-logo { flex:0 1 150px; display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; padding:16px 10px 14px;
-      background:#f8fbfb; border:1.5px solid #e4eeee; border-radius:18px; transition:transform .15s, box-shadow .15s; }
-    .pago-logo:hover { transform:translateY(-3px); box-shadow:0 10px 24px rgba(10,100,100,.1); }
-    .pago-logo-ico { width:58px; height:58px; border-radius:16px; background:#fff; border:1.5px solid; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-    .pago-logo-ico img { width:100%; height:100%; object-fit:contain; padding:6px; }
-    .pago-logo b { font-size:.86rem; line-height:1.2; color:${DARK}; }
-    .pago-logo small { font-size:.66rem; color:${DARK}77; }
-    @media (max-width:420px) { .pago-logo { flex-basis:calc(50% - 7px); } }
+    .pagos-logos { display:flex; justify-content:center; gap:8px; }
+    .pago-logo-ico { flex:0 1 38px; min-width:0; aspect-ratio:1; border-radius:10px; background:#fff; border:1.5px solid; display:flex; align-items:center; justify-content:center; overflow:hidden; font-size:1rem; }
+    .pago-logo-ico img { width:100%; height:100%; object-fit:contain; padding:3px; }
 
     /* ══════════ Formulario de compra por pasos ══════════ */
     .compra-resumen { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; background:linear-gradient(135deg,${TURQ}12,${TURQ2}18);
@@ -907,59 +892,6 @@ function useRifaProgress(rifaId, refreshKey = 0) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   BANNER DE OFERTAS — encima del grid
-═══════════════════════════════════════════════════════════ */
-function BannerOfertas({ ofertas, precioUnitario }) {
-  if (!ofertas || ofertas.length === 0) return null;
-
-  return (
-    <div style={{
-      background: 'linear-gradient(135deg,#0d2e1a,#0a3d22)',
-      border: `1.5px solid ${VERDE}44`,
-      borderRadius: 18, padding: '18px 22px',
-      marginBottom: 20, animation: 'fadeUp .3s ease',
-    }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-        <span style={{ fontSize:'1.3rem' }}>🎁</span>
-        <div>
-          <div style={{ fontSize:'.6rem', color:'rgba(255,255,255,.5)', letterSpacing:'2px', textTransform:'uppercase', fontWeight:700 }}>Ofertas especiales</div>
-          <div style={{ fontSize:'.95rem', color:'#fff', fontWeight:700, lineHeight:1.2 }}>¡Compra más y ahorra más!</div>
-        </div>
-      </div>
-      <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-        {ofertas.map((o, i) => {
-          const totalNormal = precioUnitario * o.cantidad;
-          const ahorro      = totalNormal - o.precio_total;
-          const pct         = Math.round((ahorro / totalNormal) * 100);
-          return (
-            <div key={i} className="pack-card">
-              <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
-                <span style={{ fontSize:'1.1rem' }}>🏷️</span>
-                <span style={{ fontSize:'.82rem', color:'rgba(255,255,255,.9)', fontWeight:700 }}>
-                  {o.etiqueta || `Pack x${o.cantidad}`}
-                </span>
-              </div>
-              <div style={{ display:'flex', alignItems:'baseline', gap:7, flexWrap:'wrap' }}>
-                <span style={{ fontSize:'1.1rem', color:VERDE, fontWeight:900 }}>{fmt(o.precio_total)}</span>
-                <span style={{ fontSize:'.72rem', color:'rgba(255,255,255,.4)', textDecoration:'line-through', fontWeight:600 }}>{fmt(totalNormal)}</span>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
-                <span style={{ fontSize:'.62rem', color:'rgba(255,255,255,.5)' }}>{o.cantidad} números</span>
-                <span style={{
-                  background:`linear-gradient(135deg,${NARANJA},#ff8c42)`,
-                  color:'#fff', borderRadius:20, padding:'1px 7px',
-                  fontSize:'.55rem', fontWeight:800,
-                }}>-{pct}%</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
    GALERÍA DE FOTOS DE LA RIFA (tipo Instagram)
    La foto principal + las que el dueño agregue en el panel. Se pasa
    con las flechas, tocando los puntos o deslizando el dedo.
@@ -1100,7 +1032,7 @@ const SuerteParaTodos = ({ oscuro = false }) => (
   </div>
 );
 
-function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
+function HeroRifaPrincipal({ rifa, onVerNumeros, abierta = false, refreshKey = 0 }) {
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
   const gal = useGaleria(rifa);
@@ -1250,8 +1182,8 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, refreshKey = 0 }) {
             <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>{fmt(rifa.precio)}</div>
           </div>
           {rifa.cerrada ? <SuerteParaTodos oscuro /> : (
-          <button className="pub-btn" onClick={() => onVerNumeros(rifa)} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, padding:'15px 28px', borderRadius:50, fontSize:'.95rem', fontWeight:700, width:'100%', justifyContent:'center', animation:'glowPulse 2.5s ease-in-out infinite' }}>
-            🎟 Ver números disponibles
+          <button className="pub-btn" aria-expanded={abierta} onClick={() => onVerNumeros(rifa)} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, padding:'15px 28px', borderRadius:50, fontSize:'.95rem', fontWeight:700, width:'100%', justifyContent:'center', animation:'glowPulse 2.5s ease-in-out infinite' }}>
+            🎟 {abierta ? 'Ocultar números ▲' : 'Ver números disponibles ▼'}
           </button>
           )}
         </div>
@@ -2265,8 +2197,6 @@ function BuscadorNumeros4({ rifa, onComprar }) {
         .b4-sug.on,.b4-sug.claro.on{background:${VERDE};border-color:${VERDE};color:#fff}
       `}</style>
 
-      {ofertas.length > 0 && <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />}
-
       {/* ── Hero buscador ── */}
       <div style={{
         background:`linear-gradient(135deg,${DARK},#0d2424)`,
@@ -2656,11 +2586,6 @@ function GridNumeros({ rifa, onComprar }) {
 
   return (
     <div>
-      {/* Banner de ofertas disponibles */}
-      {ofertas.length > 0 && (
-        <BannerOfertas ofertas={ofertas} precioUnitario={rifa.precio} />
-      )}
-
       {/* Números disponibles */}
       <div style={{ background:`${TURQ}0d`, border:`1.5px solid ${TURQ}28`, borderRadius:14, padding:'14px 18px', marginBottom:18, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
         <div style={{ flex:1, minWidth:180 }}>
@@ -3021,7 +2946,7 @@ function GridNumeros({ rifa, onComprar }) {
 /* ═══════════════════════════════════════════════════════════
    CARD DE RIFA — con badge OFERTA, countdown y barra real
 ═══════════════════════════════════════════════════════════ */
-function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
+function RifaCard({ rifa, onSeleccionar, abierta = false, refreshKey = 0 }) {
   const [imgError, setImgError] = useState(false);
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const progreso = useRifaProgress(rifa.id, refreshKey);
@@ -3173,8 +3098,8 @@ function RifaCard({ rifa, onSeleccionar, refreshKey = 0 }) {
           </div>
         </div>
         {rifa.cerrada ? <SuerteParaTodos /> : (
-        <button className="pub-btn" onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14, marginTop:'auto' }}>
-          Ver números disponibles
+        <button className="pub-btn" aria-expanded={abierta} onClick={() => onSeleccionar(rifa)} style={{ width:'100%', justifyContent:'center', borderRadius:14, marginTop:'auto' }}>
+          {abierta ? 'Ocultar números ▲' : 'Ver números disponibles ▼'}
         </button>
         )}
       </div>
@@ -3220,9 +3145,30 @@ export default function ClientePublico() {
 
   const handleSelRifa = rifa => {
     if (rifa.cerrada) return;   // ventas cerradas: no se muestran los números
+    if (rifaSel?.id === rifa.id) { setRifaSel(null); return; }
     setRifaSel(rifa);
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
   };
+
+  // Los números abren ahí mismo, debajo de la rifa. Lo demás ya está en la publicidad.
+  const panelNumeros = rifa => (
+    <div ref={gridRef} className="pub-panel-numeros">
+      {Number(rifa.venta_minima) > 1 && <div style={{ fontSize:'.82rem', color:NARANJA, fontWeight:700, marginBottom:10 }}>🎟 Mínimo {rifa.venta_minima} números por compra</div>}
+      {Number(rifa.cifras) >= 4 ? (
+        <BuscadorNumeros4
+          key={`${rifa.id}-${refreshKey}`}
+          rifa={rifa}
+          onComprar={nums => setNumerosCarrito(nums)}
+        />
+      ) : (
+        <GridNumeros
+          key={`${rifa.id}-${refreshKey}`}
+          rifa={rifa}
+          onComprar={nums => setNumerosCarrito(nums)}
+        />
+      )}
+    </div>
+  );
 
   /* ─────────────────────────────────────────────────────────────
      ORDENAR RIFAS POR CUENTA REGRESIVA (más próximas primero)
@@ -3326,8 +3272,9 @@ export default function ClientePublico() {
       ) : rifaHero ? (
         <section id="hero-sec" style={{ padding:'32px 5vw 0', maxWidth:1100, margin:'0 auto', scrollMarginTop:64 }}>
           <div className="pub-hero-marco">
-            <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} refreshKey={refreshKey} />
+            <HeroRifaPrincipal rifa={rifaHero} onVerNumeros={handleSelRifa} abierta={rifaSel?.id === rifaHero.id} refreshKey={refreshKey} />
           </div>
+          {rifaSel?.id === rifaHero.id && panelNumeros(rifaSel)}
         </section>
       ) : (
         <section style={{ padding:'40px 5vw 0', maxWidth:700, margin:'0 auto', textAlign:'center' }}>
@@ -3351,76 +3298,19 @@ export default function ClientePublico() {
       )}
 
       {rifasSecundarias.length > 0 && (
-        <section id="rifas-sec" style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
+        <section id="rifas-sec" style={{ padding:'36px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
           <div className="pub-titulo">
             <span className="kicker">Más rifas</span>
             <h2>Otras rifas activas</h2>
             <div className="sub">Ordenadas por proximidad al sorteo</div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:24 }}>
-            {rifasSecundarias.map(r => <RifaCard key={r.id} rifa={r} onSeleccionar={handleSelRifa} refreshKey={refreshKey} />)}
-          </div>
-        </section>
-      )}
-
-      {rifaSel && (
-        <section ref={gridRef} style={{ padding:'60px 5vw 0', maxWidth:1100, margin:'0 auto' }}>
-          <div style={{ background:'#fff', borderRadius:24, padding:'28px', boxShadow:'0 4px 32px rgba(10,100,100,.08)' }}>
-            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:24, flexWrap:'wrap' }}>
-              <div>
-                <div style={{ fontSize:'.58rem', color:TURQ, letterSpacing:'0.5px', marginBottom:5, fontWeight:600 }}>ESCOGE TU NÚMERO</div>
-                <div style={{ fontSize:'1.5rem', color:DARK, marginBottom:5, fontWeight:700 }}>{rifaSel.nombre}</div>
-                <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>🏆 {rifaSel.premio}</span>
-                  <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>💰 {fmt(rifaSel.precio)} / número</span>
-                  {Number(rifaSel.venta_minima) > 1 && <span style={{ fontSize:'.85rem', color:NARANJA, fontWeight:700 }}>🎟 Mínimo {rifaSel.venta_minima} números por compra</span>}
-                  <span style={{ fontSize:'.85rem', color:`${DARK}77` }}>📅 {fmtF(rifaSel.fecha_sorteo)}</span>
-                </div>
-                {rifaSel.pago_diferido && (
-                  <div style={{ marginTop:10, fontSize:'.8rem', color:'#5b21b6', fontWeight:600 }}>
-                    🔖 Puedes apartar sin pagar: tienes hasta el {rifaSel.pago_hasta_texto}.
-                  </div>
-                )}
-                {tienePremiosExtra(rifaSel) && (
-                  <div style={{ marginTop:14, maxWidth:420 }}><PremiosRifa rifa={rifaSel} /></div>
-                )}
-              </div>
-              <button onClick={() => setRifaSel(null)} className="pub-btn-outline" style={{ padding:'10px 20px', flexShrink:0 }}>
-                Cambiar rifa
-              </button>
-            </div>
-
-            <div style={{ display:'flex', gap:8, marginBottom:22, flexWrap:'wrap' }}>
-              {[
-                { n:'1', t:'Selecciona',  d:'Toca uno o varios números. ¡Activa ofertas con packs!' },
-                { n:'2', t:'Paga',        d:'Los datos del banco aparecen al elegir el método' },
-                { n:'3', t:'Confirma',    d:'Sube el comprobante y bloquea tus números' },
-              ].map(({ n, t, d }) => (
-                <div key={n} style={{ flex:'1 1 140px', background:'#f8fdfd', borderRadius:12, padding:'11px 13px', display:'flex', gap:9, alignItems:'flex-start' }}>
-                  <div style={{ width:26, height:26, background:`linear-gradient(135deg,${TURQ},${TURQ2})`, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <span style={{ fontSize:'.58rem', color:'#fff', fontWeight:700 }}>{n}</span>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:'.82rem', fontWeight:600, color:DARK }}>{t}</div>
-                    <div style={{ fontSize:'.74rem', color:`${DARK}66` }}>{d}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {Number(rifaSel.cifras) >= 4 ? (
-              <BuscadorNumeros4
-                key={`${rifaSel.id}-${refreshKey}`}
-                rifa={rifaSel}
-                onComprar={nums => setNumerosCarrito(nums)}
-              />
-            ) : (
-              <GridNumeros
-                key={`${rifaSel.id}-${refreshKey}`}
-                rifa={rifaSel}
-                onComprar={nums => setNumerosCarrito(nums)}
-              />
-            )}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gridAutoFlow:'dense', gap:24 }}>
+            {rifasSecundarias.map(r => (
+              <React.Fragment key={r.id}>
+                <RifaCard rifa={r} onSeleccionar={handleSelRifa} abierta={rifaSel?.id === r.id} refreshKey={refreshKey} />
+                {rifaSel?.id === r.id && <div style={{ gridColumn:'1 / -1', minWidth:0 }}>{panelNumeros(rifaSel)}</div>}
+              </React.Fragment>
+            ))}
           </div>
         </section>
       )}
@@ -3431,47 +3321,24 @@ export default function ClientePublico() {
 
       <GanadoresPublico ganadores={ganadores} />
 
-      <section style={{ background:'#fff', padding:'70px 5vw 0' }}>
-        <div style={{ maxWidth:1100, margin:'0 auto' }}>
-          <div className="pub-titulo">
-            <span className="kicker">Sin complicaciones</span>
-            <h2>Cómo participar</h2>
-          </div>
+      <section style={{ background:'#fff', padding:'24px 5vw 26px', marginTop:28 }}>
+        <div style={{ maxWidth:640, margin:'0 auto' }}>
+          <div className="pub-mini-titulo">Cómo participar</div>
           <div className="pub-pasos">
             {[
-              { icon:'🔢', titulo:'Elige tus números',   desc:'Toca uno o varios números. Con los packs activas ofertas automáticamente.' },
-              hayApartados
-                ? { icon:'💳', titulo:'Paga o aparta',        desc:'Paga de una vez, o aparta tu número y paga antes del sorteo.' }
-                : { icon:'💳', titulo:'Realiza el pago',      desc:'Los datos del banco aparecen al elegir el método de pago.' },
-              { icon:'📸', titulo:'Sube el comprobante', desc:'Adjunta la captura del pago. Un solo comprobante para todos tus números.' },
-              { icon:'✅', titulo:'Recibe tu ticket',     desc:'Verificamos el pago y te llega tu ticket por WhatsApp.' },
-            ].map(({ icon, titulo, desc }) => (
-              <div key={titulo} className="pub-paso">
-                <div className="pub-paso-ico">{icon}</div>
-                <h3>{titulo}</h3>
-                <p>{desc}</p>
-              </div>
-            ))}
+              ['🔢', 'Elige tus números'],
+              ['💳', hayApartados ? 'Paga o aparta' : 'Realiza el pago'],
+              ['📸', 'Sube el comprobante'],
+              ['✅', 'Recibe tu ticket'],
+            ].map(([icono, titulo]) => <div key={titulo} className="pub-paso"><i>{icono}</i>{titulo}</div>)}
           </div>
-        </div>
-      </section>
 
-      {/* Métodos de pago: solo los logos. Los datos para transferir salen al momento de pagar */}
-      <section id="pagos-sec" style={{ background:'#fff', padding:'60px 5vw 64px' }}>
-        <div style={{ maxWidth:900, margin:'0 auto' }}>
-          <div className="pub-titulo">
-            <span className="kicker">Pagos verificados</span>
-            <h2>Métodos de pago</h2>
-            <div className="sub">Paga con el que te quede más fácil. Los datos para transferir te aparecen cuando vas a pagar.</div>
-          </div>
+          {/* Métodos de pago: solo los logos. Los datos para transferir salen al momento de pagar */}
+          <div id="pagos-sec" className="pub-mini-titulo" style={{ marginTop:20 }}>Métodos de pago</div>
           <div className="pagos-logos">
             {Object.entries(METODOS_PAGO).map(([nombre, d]) => (
-              <div key={nombre} className="pago-logo" title={nombre}>
-                <div className="pago-logo-ico" style={{ borderColor: d.border }}>
-                  {d.imagen ? <img src={d.imagen} alt="" /> : <span style={{ fontSize:'1.7rem' }}>{d.icono}</span>}
-                </div>
-                <b>{nombre}</b>
-                <small>{d.pais}</small>
+              <div key={nombre} className="pago-logo-ico" title={nombre} style={{ borderColor: d.border }}>
+                {d.imagen ? <img src={d.imagen} alt={nombre} /> : <span role="img" aria-label={nombre}>{d.icono}</span>}
               </div>
             ))}
           </div>

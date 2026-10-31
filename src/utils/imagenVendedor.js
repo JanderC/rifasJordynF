@@ -86,7 +86,7 @@ const columnasPara = (total, dig) => {
   return dig >= 4 ? Math.min(cols, 8) : cols;
 };
 
-/* numeros: ya ordenados y sin repetir. Devuelve { blob, conFoto }. */
+/* numeros: ya ordenados (se pintan tal cual). Devuelve { blob, conFoto }. */
 export async function generarImagenVendedor({ numeros, dig, imagen }) {
   const foto = await cargarFoto(imagen);
   const canvas = document.createElement('canvas');
