@@ -1106,7 +1106,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, abierta = false, refreshKey = 0
         {/* Resumen de packs si hay ofertas */}
         {tieneOfertas && (
           <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', borderRadius:12, padding:'10px 14px', marginBottom:18, position:'relative' }}>
-            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:8 }}>🎁 Packs disponibles</div>
+            <div style={{ fontSize:'.55rem', color:'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:8 }}>🎁 Promociones disponibles</div>
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               {rifa.ofertas.map((o, i) => {
                 const totalNormal = rifa.precio * o.cantidad;
@@ -1243,7 +1243,7 @@ function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = 
           <span style={{ fontSize:'1.1rem' }}>🎁</span>
           <div>
             <div style={{ fontSize:'.6rem', color:`${VERDE}bb`, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px' }}>
-              {oferta.etiqueta || `Pack x${oferta.cantidad}`} activado
+              {oferta.etiqueta || `Promo x${oferta.cantidad}`} activado
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
               <span style={{ fontSize:'.95rem', color:VERDE, fontWeight:900 }}>{fmt(totalConOferta)}</span>
@@ -1274,7 +1274,7 @@ function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = 
             ¡Oferta aplicada!
           </div>
           <div style={{ fontSize:'1rem', color:'#fff', fontWeight:800 }}>
-            {oferta.etiqueta || `Pack x${oferta.cantidad}`}
+            {oferta.etiqueta || `Promo x${oferta.cantidad}`}
           </div>
         </div>
       </div>
@@ -2448,7 +2448,7 @@ function BuscadorNumeros4({ rifa, onComprar }) {
                   <span style={{ fontSize:'1rem' }}>💡</span>
                   <span style={{ fontSize:'.78rem', color:`${NARANJA}ee`, fontWeight:700 }}>
                     ¡Agrega <strong style={{ color:'#fff', background:NARANJA, borderRadius:4, padding:'0 5px' }}>{sugerencia.faltan}</strong> número{sugerencia.faltan > 1 ? 's' : ''} más y activa{' '}
-                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Pack x${sugerencia.oferta.cantidad}`}</strong>!
+                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Promo x${sugerencia.oferta.cantidad}`}</strong>!
                   </span>
                 </div>
               </div>
@@ -2887,7 +2887,7 @@ function GridNumeros({ rifa, onComprar }) {
                   <span style={{ fontSize:'1rem' }}>💡</span>
                   <span style={{ fontSize:'.78rem', color:`${NARANJA}ee`, fontWeight:700 }}>
                     ¡Agrega <strong style={{ color:'#fff', background:NARANJA, borderRadius:4, padding:'0 5px' }}>{sugerencia.faltan}</strong> número{sugerencia.faltan > 1 ? 's' : ''} más y activa{' '}
-                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Pack x${sugerencia.oferta.cantidad}`}</strong>!
+                    <strong style={{ color:`${NARANJA}ee` }}>{sugerencia.oferta.etiqueta || `Promo x${sugerencia.oferta.cantidad}`}</strong>!
                   </span>
                 </div>
               </div>
@@ -3010,7 +3010,7 @@ function RifaCard({ rifa, onSeleccionar, abierta = false, refreshKey = 0 }) {
             <span className="badge-oferta">🏷️ OFERTA</span>
             {mejorOferta && (
               <span style={{ background:'rgba(0,0,0,.7)', color:'#fff', borderRadius:20, padding:'2px 9px', fontSize:'.55rem', fontWeight:700, backdropFilter:'blur(4px)' }}>
-                Hasta -{mejorPct}% en packs
+                Hasta -{mejorPct}% en promociones
               </span>
             )}
           </div>
@@ -3037,7 +3037,7 @@ function RifaCard({ rifa, onSeleccionar, abierta = false, refreshKey = 0 }) {
         {/* Resumen de packs */}
         {tieneOfertas && (
           <div style={{ background:`${NARANJA}0d`, border:`1px solid ${NARANJA}33`, borderRadius:10, padding:'8px 12px', marginBottom:12 }}>
-            <div style={{ fontSize:'.55rem', color:NARANJA, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:5 }}>🎁 Packs disponibles</div>
+            <div style={{ fontSize:'.55rem', color:NARANJA, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', marginBottom:5 }}>🎁 Promociones disponibles</div>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {rifa.ofertas.map((o, i) => {
                 const totalN = rifa.precio * o.cantidad;
