@@ -61,7 +61,7 @@ function TicketCard({ rifa, vendedor, numero, design }) {
   const nombre  = rifa?.nombre || 'RIFA';
   const premio  = rifa?.premio || '—';
   const fecha   = fmtFecha(rifa?.fecha_sorteo);
-  const valor   = fmtMoney(rifa?.precio);
+  const valor   = rifa?.moneda === 'USD' ? `$${rifa.precio} USD` : fmtMoney(rifa?.precio);
   const loteria = rifa?.loteria_ref || '';
 
   return (
@@ -458,7 +458,7 @@ export default function GeneradorPDFTickets() {
             <div style={styles.rifaInfo}>
               <InfoRow label="Premio" value={rifaActual.premio} />
               <InfoRow label="Sorteo" value={fmtFecha(rifaActual.fecha_sorteo)} />
-              <InfoRow label="Precio" value={fmtMoney(rifaActual.precio)} />
+              <InfoRow label="Precio" value={rifaActual.moneda === 'USD' ? `$${rifaActual.precio} USD` : fmtMoney(rifaActual.precio)} />
               {rifaActual.loteria_ref && <InfoRow label="Lotería" value={rifaActual.loteria_ref} />}
               <InfoRow label="Ventas" value={`${rifaActual.total_ventas || 0} boletos`} />
             </div>

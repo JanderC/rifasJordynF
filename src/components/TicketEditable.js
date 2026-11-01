@@ -3293,7 +3293,7 @@ export default function TicketEditable({ r, numero, design, onUpdate, printMode 
               color: D.colorValor, fontStyle: 'italic', lineHeight: 1,
               textShadow: `2px 2px 0 ${STROKE}40`,
             })}
-            {F('valorSufijo', D.valorSufijo, 'valorSufijo', {
+            {F('valorSufijo', r?.moneda === 'USD' ? 'DÓLARES' : D.valorSufijo, 'valorSufijo', {
               fontSize: pxScaled(D.sizePesos), fontWeight: 900,
               color: D.colorPesos, letterSpacing: .5,
               textShadow: `1.5px 1.5px 0 ${STROKE}40`,

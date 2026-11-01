@@ -332,6 +332,12 @@ export default function Caja() {
       <div style={S.root}>
         <SelectorRifa rifas={rifasDisponibles} rifaSeleccionada={rifaActiva} loading={loadingRifas} onSeleccionar={r => setRifaActiva(r)} />
 
+        {rifaActiva?.moneda === 'USD' && (
+          <div style={{ margin: '0 0 12px', padding: '9px 13px', borderRadius: 10, background: 'rgba(10,191,188,.1)', border: '1px solid rgba(10,191,188,.3)', fontSize: '.8rem', fontWeight: 700 }}>
+            💵 Esta rifa está en dólares: todos los montos de esta caja van en USD.
+          </div>
+        )}
+
         {!loadingRifas && rifasDisponibles.length === 0 && (
           <div style={S.empty}>
             <div style={{ fontSize: '3rem', opacity: .2 }}>🎟</div>

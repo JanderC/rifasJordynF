@@ -371,7 +371,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
           API.get(`/rifas/${reserva.rifa_id}`).catch(() => ({ data:null })),
         ]);
         if (cancelado) return;
-        const rifaData = rifaR.data || { id:reserva.rifa_id, nombre:reserva.rifa_nombre, premio:reserva.premio, precio:reserva.precio, fecha_sorteo:reserva.fecha_sorteo };
+        const rifaData = rifaR.data || { id:reserva.rifa_id, nombre:reserva.rifa_nombre, premio:reserva.premio, precio:reserva.precio, moneda: reserva.moneda, fecha_sorteo:reserva.fecha_sorteo };
         setRifaCompleta(rifaData);
         const tpl = await resolverPlantillaParaRifa(rifaData);
         if (!cancelado) setPlantilla(tpl);
@@ -418,7 +418,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
       // 1. Generar imágenes de tickets
       const rifaPara = rifaCompleta || {
         id: reserva.rifa_id, nombre: reserva.rifa_nombre, premio: reserva.premio,
-        precio: reserva.precio, fecha_sorteo: reserva.fecha_sorteo,
+        precio: reserva.precio, moneda: reserva.moneda, fecha_sorteo: reserva.fecha_sorteo,
         loteria_ref: reserva.loteria_ref, hora_sorteo: reserva.hora_sorteo,
       };
       const ticketsBase64 = [];
@@ -499,7 +499,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
   const generarYSubirTickets = async () => {
     const rifaPara = rifaCompleta || {
       id:reserva.rifa_id, nombre:reserva.rifa_nombre, premio:reserva.premio,
-      precio:reserva.precio, fecha_sorteo:reserva.fecha_sorteo,
+      precio:reserva.precio, moneda: reserva.moneda, fecha_sorteo:reserva.fecha_sorteo,
       loteria_ref:reserva.loteria_ref, hora_sorteo:reserva.hora_sorteo,
     };
     setSubiendoTicket(true);
@@ -531,7 +531,7 @@ function ModalReserva({ reserva: inicial, hermanas = [], onClose, onAccion, savi
     try {
       const rifaPara = rifaCompleta || {
         id:reserva.rifa_id, nombre:reserva.rifa_nombre, premio:reserva.premio,
-        precio:reserva.precio, fecha_sorteo:reserva.fecha_sorteo,
+        precio:reserva.precio, moneda: reserva.moneda, fecha_sorteo:reserva.fecha_sorteo,
         loteria_ref:reserva.loteria_ref, hora_sorteo:reserva.hora_sorteo,
       };
       const archivos  = [];

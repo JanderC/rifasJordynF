@@ -13,6 +13,10 @@ const NARANJA = '#ff6b2b';
 const VERDE   = '#22c55e';
 
 const fmt  = p => p ? new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:0}).format(p) : '$0';
+// Rifas ancladas al dólar: el precio va en USD y los Bs salen de la tasa del día
+const fmtDe = (rifa) => (n) => (rifa?.moneda === 'USD'
+  ? `$${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(Number(n) || 0)} USD`
+  : fmt(n));
 
 /* ─────────────────────────────────────────────────────────────
    ZONA HORARIA DEL NEGOCIO
@@ -215,20 +219,32 @@ const METODO_MONEDA = {
 };
 
 // DESPUÉS
-function calcularPrecioMetodo(precioCOP, metodo, tasaBsUSD, copUsd = 4200, copUsdBs = copUsd) {
+function calcularPrecioMetodo(precio, metodo, tasaBsUSD, copUsd = 4200, copUsdBs = copUsd, monedaRifa = 'COP') {
   const moneda = METODO_MONEDA[metodo];
   if (!moneda || moneda === 'COP') return null;
-  const usd = precioCOP / copUsd;
+  const enDolares = monedaRifa === 'USD';
+  const usd = enDolares ? precio : precio / copUsd;
   if (moneda === 'USD') return { valor: usd, texto: `$${usd.toFixed(2)} USD`, moneda: 'USD', icono: '💵' };
   if (moneda === 'VES') {
     // Si la tasa aún no cargó, mostrar "cargando" en lugar de caer a COP
     if (!tasaBsUSD || tasaBsUSD <= 0) {
       return { valor: 0, texto: 'Cargando Bs...', moneda: 'VES', icono: '🇻🇪', cargando: true };
     }
-    const bs = (precioCOP / (copUsdBs || copUsd)) * tasaBsUSD;
+    const bs = enDolares ? precio * tasaBsUSD : (precio / (copUsdBs || copUsd)) * tasaBsUSD;
     return { valor: bs, texto: `Bs. ${new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(bs)}`, moneda: 'VES', icono: '🇻🇪' };
   }
   return null;
+}
+
+// Las rifas en dólares se pagan solo en bolívares o dólares
+const admiteMetodo = (metodo, monedaRifa) => monedaRifa !== 'USD' || METODO_MONEDA[metodo] !== 'COP';
+
+// Lo que vale hoy en bolívares un precio en dólares
+function EquivBs({ rifa, monto, color }) {
+  const tasas = useTasasHoy();
+  if (rifa?.moneda !== 'USD' || !tasas?.bsdUsd) return null;
+  const bs = (monto ?? rifa.precio) * tasas.bsdUsd;
+  return <div style={{ fontSize:'.76rem', fontWeight:700, color: color || `${DARK}88`, marginTop:3 }}>≈ Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits:2, maximumFractionDigits:2 }).format(bs)} hoy</div>;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -319,6 +335,7 @@ const buildWhatsAppLink = ({ numeros, rifa, nombre, telefono, reservaIds, totalR
   const id     = reservaIds?.[0]?.slice(0,8).toUpperCase() || '-------';
   const total  = totalReal ?? (rifa?.precio * todos.length);
   const hora   = fmtHora(rifa?.fecha_sorteo);
+  const fmt    = fmtDe(rifa);
 
   const msg =
     `*RESUELVE TU SEMANA* — Confirmación de reserva\n\n` +
@@ -1033,6 +1050,7 @@ const SuerteParaTodos = ({ oscuro = false }) => (
 );
 
 function HeroRifaPrincipal({ rifa, onVerNumeros, abierta = false, refreshKey = 0 }) {
+  const fmt = fmtDe(rifa);
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const [imgError, setImgError] = useState(false);
   const gal = useGaleria(rifa);
@@ -1180,6 +1198,7 @@ function HeroRifaPrincipal({ rifa, onVerNumeros, abierta = false, refreshKey = 0
           <div>
             <div style={{ fontSize:'.52rem', color:'rgba(255,255,255,.4)', textTransform:'uppercase', letterSpacing:'2px', fontWeight:700, marginBottom:2 }}>Por número</div>
             <div style={{ fontSize:'2rem', color:'#fff', fontWeight:900, lineHeight:1, textShadow:`0 0 24px ${TURQ}99` }}>{fmt(rifa.precio)}</div>
+            <EquivBs rifa={rifa} color="rgba(255,255,255,.75)" />
           </div>
           {rifa.cerrada ? <SuerteParaTodos oscuro /> : (
           <button className="pub-btn" aria-expanded={abierta} onClick={() => onVerNumeros(rifa)} style={{ background:`linear-gradient(135deg,${TURQ},${TURQ2})`, padding:'15px 28px', borderRadius:50, fontSize:'.95rem', fontWeight:700, width:'100%', justifyContent:'center', animation:'glowPulse 2.5s ease-in-out infinite' }}>
@@ -1231,7 +1250,8 @@ function PagoInlineCard({ metodo }) {
 /* ═══════════════════════════════════════════════════════════
    BLOQUE DE OFERTA APLICADA (reutilizable en modal y carrito)
 ═══════════════════════════════════════════════════════════ */
-function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = false }) {
+function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = false, moneda }) {
+  const fmt = fmtDe({ moneda });
   if (!ofertaInfo) return null;
   const { oferta, totalConOferta, ahorro, pct } = ofertaInfo;
   const totalNormal = precioUnitario * cantidad;
@@ -1300,6 +1320,7 @@ function BloqueOfertaAplicada({ ofertaInfo, cantidad, precioUnitario, compact = 
    MODAL DE RESERVA — con soporte de ofertas
 ═══════════════════════════════════════════════════════════ */
 function ModalReserva({ rifa, numeros: numerosRaw, onClose, onSuccess }) {
+  const fmt = fmtDe(rifa);
   // numerosRaw puede ser array de strings ["007","007"] o array de objetos [{numero:"007",idx:4},{numero:"007",idx:8}]
   // Normalizamos siempre a objetos para poder distinguir duplicados por idx
   const numerosObjs = Array.isArray(numerosRaw)
@@ -1437,8 +1458,8 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
   };
 
   /* ── Calcular precio en moneda del método ── */
-  const convTotal    = calcularPrecioMetodo(totalReal,   form.metodo_pago, tasaBs, copUsd, copUsdBs);
-  const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd, copUsdBs);
+  const convTotal    = calcularPrecioMetodo(totalReal,   form.metodo_pago, tasaBs, copUsd, copUsdBs, rifa.moneda);
+  const convUnitario = calcularPrecioMetodo(rifa.precio, form.metodo_pago, tasaBs, copUsd, copUsdBs, rifa.moneda);
 
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
@@ -1487,7 +1508,7 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
             <div id="compra-arriba" style={{ animation:'fadeUp .25s ease', scrollMarginTop:20 }}>
 
               {paso === 'datos' && (<>
-              {ofertaInfo && <BloqueOfertaAplicada ofertaInfo={ofertaInfo} cantidad={numeros.length} precioUnitario={rifa.precio} />}
+              {ofertaInfo && <BloqueOfertaAplicada moneda={rifa.moneda} ofertaInfo={ofertaInfo} cantidad={numeros.length} precioUnitario={rifa.precio} />}
 
               {/* Resumen: números y total */}
               <div className="compra-resumen">
@@ -1561,7 +1582,7 @@ const copUsdBs = tasasHoy?.copUsdBs ?? copUsd;
               <div style={{ fontSize:'.8rem', color:`${DARK}88`, marginTop:-6, marginBottom:12 }}>Elige con qué vas a pagar: te mostramos el monto exacto y los datos.</div>
 
               <div className="compra-metodos" role="radiogroup" aria-label="Método de pago">
-                {Object.keys(METODOS_PAGO).filter(m => !METODOS_PAGO[m].presencial).map(m => {
+                {Object.keys(METODOS_PAGO).filter(m => !METODOS_PAGO[m].presencial && admiteMetodo(m, rifa.moneda)).map(m => {
                   const info = METODOS_PAGO[m];
                   const sel = form.metodo_pago === m;
                   return (
@@ -1853,7 +1874,7 @@ function ModalMisApartados({ onClose, onPagado }) {
 
   const pagar = async () => {
     if (modoPago === 'abono' && !(abonoNum > 0)) { setError('Escribe cuánto vas a abonar'); return; }
-    if (modoPago === 'abono' && abonoNum > falta) { setError(`Solo te faltan ${fmt(falta)}`); return; }
+    if (modoPago === 'abono' && abonoNum > falta) { setError(`Solo te faltan ${fmtDe(sel)(falta)}`); return; }
     if (!metodo) { setError('Elige con qué método pagaste'); return; }
     if (METODOS_PAGO[metodo]?.pedir_titular && pagador.trim().length < 3) { setError(`Escribe el nombre de la persona que envió el pago por ${metodo}`); return; }
     if (!imgB64) { setError('Sube la captura del comprobante'); return; }
@@ -1867,7 +1888,7 @@ function ModalMisApartados({ onClose, onPagado }) {
     finally { setCargando(false); }
   };
 
-  const conv = sel && metodo && montoPago > 0 ? calcularPrecioMetodo(montoPago, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200, tasasHoy?.copUsdBs) : null;
+  const conv = sel && metodo && montoPago > 0 ? calcularPrecioMetodo(montoPago, metodo, tasasHoy?.bsdUsd ?? 0, tasasHoy?.copUsd ?? 4200, tasasHoy?.copUsdBs, sel.moneda) : null;
   const MORADO = '#7c3aed';
 
   return (
@@ -1925,15 +1946,15 @@ function ModalMisApartados({ onClose, onPagado }) {
                   </div>
                   {(g.abonado > 0 || g.por_confirmar > 0) && (
                     <div style={{ background:'#fff', border:'1px solid rgba(124,58,237,.18)', borderRadius:10, padding:'8px 12px', marginBottom:10, fontSize:'.78rem', color:`${DARK}cc`, lineHeight:1.7 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between' }}><span>Total</span><strong>{fmt(g.total)}</strong></div>
-                      {g.abonado > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#059669' }}><span>✅ Abonado</span><strong>− {fmt(g.abonado)}</strong></div>}
-                      {g.por_confirmar > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#b37700' }}><span>⏳ Abono por confirmar</span><strong>{fmt(g.por_confirmar)}</strong></div>}
+                      <div style={{ display:'flex', justifyContent:'space-between' }}><span>Total</span><strong>{fmtDe(g)(g.total)}</strong></div>
+                      {g.abonado > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#059669' }}><span>✅ Abonado</span><strong>− {fmtDe(g)(g.abonado)}</strong></div>}
+                      {g.por_confirmar > 0 && <div style={{ display:'flex', justifyContent:'space-between', color:'#b37700' }}><span>⏳ Abono por confirmar</span><strong>{fmtDe(g)(g.por_confirmar)}</strong></div>}
                     </div>
                   )}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                     <div>
                       <div style={{ fontSize:'.62rem', fontWeight:700, color:`${DARK}77`, textTransform:'uppercase', letterSpacing:'.06em' }}>{g.abonado > 0 ? 'Te falta' : 'Total'}</div>
-                      <div style={{ fontSize:'1.25rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{fmt(g.saldo ?? g.total)}</div>
+                      <div style={{ fontSize:'1.25rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{fmtDe(g)(g.saldo ?? g.total)}</div>
                       <div style={{ fontSize:'.7rem', color:`${DARK}88`, marginTop:2 }}>⏰ Hasta el {g.pago_hasta_texto}</div>
                     </div>
                     {faltaDe(g) > 0 ? (
@@ -1959,7 +1980,7 @@ function ModalMisApartados({ onClose, onPagado }) {
               <div className="modo-pago" role="radiogroup" aria-label="¿Cuánto vas a pagar?">
                 <button type="button" role="radio" aria-checked={modoPago === 'todo'} className={modoPago === 'todo' ? 'on morado' : ''} onClick={() => { setModoPago('todo'); setError(''); }}>
                   <b>💳 Pagar todo</b>
-                  <span>{sel.abonado > 0 ? `Lo que te falta: ${fmt(falta)}` : fmt(falta)}</span>
+                  <span>{sel.abonado > 0 ? `Lo que te falta: ${fmtDe(sel)(falta)}` : fmtDe(sel)(falta)}</span>
                 </button>
                 <button type="button" role="radio" aria-checked={modoPago === 'abono'} className={modoPago === 'abono' ? 'on morado' : ''} onClick={() => { setModoPago('abono'); setError(''); }}>
                   <b>💵 Abonar una parte</b>
@@ -1968,24 +1989,24 @@ function ModalMisApartados({ onClose, onPagado }) {
               </div>
               {modoPago === 'abono' && (
                 <div style={{ marginBottom:14 }}>
-                  <label className="pub-label">¿Cuánto vas a abonar? (en pesos)</label>
+                  <label className="pub-label">¿Cuánto vas a abonar? (en {sel?.moneda === 'USD' ? 'dólares' : 'pesos'})</label>
                   <input className="pub-input" value={montoAbono} inputMode="numeric" type="tel" placeholder={`Ej: ${Math.round(falta / 3 / 1000) * 1000 || 10000}`}
                     onChange={e => setMontoAbono(e.target.value.replace(/\D/g, '').slice(0, 9))} />
                   {abonoNum > 0 && abonoNum < falta && (
-                    <div style={{ fontSize:'.74rem', color:MORADO, fontWeight:600, marginTop:5 }}>Después de este abono te quedarían {fmt(falta - abonoNum)}.</div>
+                    <div style={{ fontSize:'.74rem', color:MORADO, fontWeight:600, marginTop:5 }}>Después de este abono te quedarían {fmtDe(sel)(falta - abonoNum)}.</div>
                   )}
                 </div>
               )}
               <label className="pub-label">¿Cómo vas a pagar?</label>
               <select className="pub-input" value={metodo} onChange={e => setMetodo(e.target.value)} style={{ cursor:'pointer' }}>
                 <option value="">Selecciona un método...</option>
-                {Object.keys(METODOS_PAGO).map(m => <option key={m}>{m}</option>)}
+                {Object.keys(METODOS_PAGO).filter(m => admiteMetodo(m, sel?.moneda)).map(m => <option key={m}>{m}</option>)}
               </select>
               {metodo && montoPago > 0 && (
                 <div style={{ marginTop:12, borderRadius:14, padding:'14px 18px', background:'rgba(124,58,237,.06)', border:'2px solid rgba(124,58,237,.22)' }}>
                   <div style={{ fontSize:'.6rem', fontWeight:700, color:MORADO, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>{modoPago === 'abono' ? 'Tu abono: paga exactamente' : 'Debes pagar exactamente'}</div>
-                  <div style={{ fontSize:'1.7rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{conv ? conv.texto : fmt(montoPago)}</div>
-                  {conv && <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:3 }}>≈ {fmt(montoPago)}</div>}
+                  <div style={{ fontSize:'1.7rem', fontWeight:900, color:MORADO, lineHeight:1.1 }}>{conv ? conv.texto : fmtDe(sel)(montoPago)}</div>
+                  {conv && <div style={{ fontSize:'.7rem', color:`${DARK}77`, marginTop:3 }}>≈ {fmtDe(sel)(montoPago)}</div>}
                 </div>
               )}
               {metodo && <PagoInlineCard metodo={metodo} />}
@@ -2060,6 +2081,7 @@ function ModalMisApartados({ onClose, onPagado }) {
    y lo agrega al carrito. Reutiliza ModalReserva, ofertas y carrito.
 ═══════════════════════════════════════════════════════════ */
 function BuscadorNumeros4({ rifa, onComprar }) {
+  const fmt = fmtDe(rifa);
   const cifras   = Number(rifa.cifras) || 4;
   const ofertas  = rifa.ofertas || [];
   const maxNum   = '9'.repeat(cifras);
@@ -2454,7 +2476,7 @@ function BuscadorNumeros4({ rifa, onComprar }) {
               </div>
             )}
             {ofertaInfo && (
-              <BloqueOfertaAplicada ofertaInfo={ofertaInfo} cantidad={sel.length} precioUnitario={rifa.precio} compact />
+              <BloqueOfertaAplicada moneda={rifa.moneda} ofertaInfo={ofertaInfo} cantidad={sel.length} precioUnitario={rifa.precio} compact />
             )}
             {ofertaInfo && <div style={{ height:10 }}></div>}
 
@@ -2491,6 +2513,7 @@ function BuscadorNumeros4({ rifa, onComprar }) {
 }
 
 function GridNumeros({ rifa, onComprar }) {
+  const fmt = fmtDe(rifa);
   // 2 cifras = terminal (00–99) · 3 cifras = 000–999
   const cifras    = Number(rifa.cifras) || 3;
   const totalNums = 10 ** cifras;
@@ -2895,7 +2918,7 @@ function GridNumeros({ rifa, onComprar }) {
 
             {/* Oferta activa */}
             {ofertaInfo && (
-              <BloqueOfertaAplicada
+              <BloqueOfertaAplicada moneda={rifa.moneda}
                 ofertaInfo={ofertaInfo}
                 cantidad={selArr.length}
                 precioUnitario={rifa.precio}
@@ -2947,6 +2970,7 @@ function GridNumeros({ rifa, onComprar }) {
    CARD DE RIFA — con badge OFERTA, countdown y barra real
 ═══════════════════════════════════════════════════════════ */
 function RifaCard({ rifa, onSeleccionar, abierta = false, refreshKey = 0 }) {
+  const fmt = fmtDe(rifa);
   const [imgError, setImgError] = useState(false);
   const cd = useCountdown(rifa.datetime_sorteo || rifa.fecha_sorteo);
   const progreso = useRifaProgress(rifa.id, refreshKey);
@@ -3017,7 +3041,7 @@ function RifaCard({ rifa, onSeleccionar, abierta = false, refreshKey = 0 }) {
         )}
 
         <div style={{ position:'absolute', top:14, right:14, background:'rgba(255,255,255,.95)', borderRadius:50, padding:'6px 14px', backdropFilter:'blur(8px)', boxShadow:'0 4px 16px rgba(0,0,0,.1)', zIndex:2 }}>
-          <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}</span>
+          <span style={{ fontSize:'.72rem', color:TURQ_DK, fontWeight:700 }}>{fmt(rifa.precio)}<EquivBs rifa={rifa} /></span>
         </div>
       </div>
 
@@ -3237,7 +3261,7 @@ export default function ClientePublico() {
         const datos = [
           ['🏆 Premio', rifaHero.premio],
           rifaHero.fecha_sorteo ? ['📅 Se juega el', fmtF(rifaHero.fecha_sorteo)] : null,
-          ['🎟 Números desde', fmt(rifaHero.precio)],
+          ['🎟 Números desde', fmtDe(rifaHero)(rifaHero.precio)],
           rifaHero.ofertas?.length ? ['🎁 Promos', `${rifaHero.ofertas.length} activa${rifaHero.ofertas.length > 1 ? 's' : ''}`] : null,
           hayApartados ? ['🔖 Aparta hoy', 'y paga después'] : null,
           ['📲 Tu ticket', 'llega por WhatsApp'],

@@ -30,7 +30,7 @@ const LOTERIAS = [
 ];
 
 const emptyForm = {
-  nombre: '', descripcion: '', premio: '', precio: '', precio_display: '',
+  nombre: '', descripcion: '', premio: '', precio: '', precio_display: '', moneda: 'COP',
   premio_secundario: '', premio_secundario_display: '',
   fecha_sorteo: '', hora_sorteo: '', loteria_ref: '', tipo: 'sencilla', cifras: 3, imagen_base64: '',
   ticket_template_id: null,
@@ -56,6 +56,9 @@ const horaVEAIso = (v) => { const d = new Date(`${v}:00-04:00`); return isNaN(d.
 const fmtCOP = v =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
 const parseCOP = str => parseInt(str.replace(/\D/g, '') || '0');
+// Rifas en dólares: admiten decimales y se muestran en USD
+const parseMonto = (str, moneda) => (moneda === 'USD' ? parseFloat(String(str).replace(',', '.').replace(/[^\d.]/g, '')) || 0 : parseCOP(String(str)));
+const fmtMonto = (v, moneda) => (moneda === 'USD' ? `$${new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(Number(v) || 0)} USD` : fmtCOP(v));
 const fileToBase64 = file => new Promise((res, rej) => {
   const r = new FileReader();
   r.onload = () => res(r.result);
@@ -114,7 +117,9 @@ const EST_RIFA_MODAL = {
 /* ════════════════════════════════════════════════════════════
    EDITOR DE OFERTAS
 ════════════════════════════════════════════════════════════ */
-function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
+function EditorOfertas({ ofertas = [], onChange, precioBase = 0, moneda = 'COP' }) {
+  const fmtCOP = (v) => fmtMonto(v, moneda);
+  const parseCOP = (v) => parseMonto(v, moneda);
   const [nuevaCant,   setNuevaCant]   = useState('');
   const [nuevoPrecio, setNuevoPrecio] = useState('');
   const [nuevaEtiq,   setNuevaEtiq]   = useState('');
@@ -185,7 +190,7 @@ function EditorOfertas({ ofertas = [], onChange, precioBase = 0 }) {
           <div>
             <label className="jd-label" style={{ fontSize: '.6rem' }}>PRECIO TOTAL</label>
             <input className="jd-input" value={nuevoPrecio} onChange={e => setNuevoPrecio(e.target.value)}
-              onFocus={() => setNuevoPrecio(nuevoPrecio.replace(/\D/g, ''))}
+              onFocus={() => setNuevoPrecio(nuevoPrecio ? String(parseCOP(nuevoPrecio)) : '')}
               onBlur={() => nuevoPrecio && setNuevoPrecio(fmtCOP(parseCOP(nuevoPrecio)))}
               onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarOferta())}
               placeholder="$25.000" style={{ fontWeight: 700 }} />
@@ -591,7 +596,7 @@ function buildWhatsAppVentaDirecta({ numero, rifa, comprador, vendedor }) {
     (rifa?.loteria_ref ? `🎲 Lotería: ${rifa.loteria_ref}\n` : '') +
     `📅 Sorteo: ${fmtF(rifa?.fecha_sorteo)}\n` +
     (hora ? `🕐 Hora del sorteo: ${hora}\n` : '') +
-    `💰 Precio pagado: ${fmtCOP(rifa?.precio || 0)}\n` +
+    `💰 Precio pagado: ${fmtMonto(rifa?.precio || 0, rifa?.moneda)}\n` +
     `👤 Atendido por: ${vendedor || 'Admin'}\n\n` +
     `✅ _Tu número está confirmado. ¡Mucha suerte!_\n` +
     `🌐 rifasjordyn.com`;
@@ -704,7 +709,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                     <div style={{ background: `linear-gradient(90deg,${accentColor}0d,transparent)`, padding: '10px 14px', borderBottom: '1px solid var(--jordyn-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                       <div>
                         <div style={{ fontWeight: 800, fontSize: '0.95rem', color: accentColor }}>{r.rifa_nombre}</div>
-                        <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>🏆 {r.premio} · {fmt(r.precio)}</div>
+                        <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>🏆 {r.premio} · {fmtMonto(r.precio, r.moneda)}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ background: `${rcfg.color}15`, border: `1px solid ${rcfg.color}35`, color: rcfg.color, borderRadius: 20, padding: '2px 12px', fontSize: '.6rem', fontWeight: 700 }}>{rcfg.icon} {rcfg.label}</div>
@@ -745,7 +750,7 @@ function NumeroDetalleModal({ numero, data, onClose, onRefresh, user }) {
                         <div style={{ fontWeight: 800, fontSize: '0.88rem', color: rifaSel?.rifa_id === r.rifa_id ? 'var(--jordyn-primary)' : 'var(--jordyn-text)' }}>{r.rifa_nombre}</div>
                         <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>{r.premio}</div>
                         <div style={{ fontSize: '.66rem', color: 'var(--jordyn-green)', marginTop: 3, fontWeight: 700 }}>
-                          {fmt(r.precio)}{r.veces_vendido === 1 && <span style={{ color: 'var(--jordyn-gold)', marginLeft: 6 }}>· ya tiene 1 venta</span>}
+                          {fmtMonto(r.precio, r.moneda)}{r.veces_vendido === 1 && <span style={{ color: 'var(--jordyn-gold)', marginLeft: 6 }}>· ya tiene 1 venta</span>}
                         </div>
                       </button>
                     ))}
@@ -1289,7 +1294,7 @@ function textoVendedor(rifa, v, dig, esSim) {
     `🎟️ *${rifa.nombre}*`,
     `📅 Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}${rifa.loteria_ref ? ` · ${rifa.loteria_ref}` : ''}`,
     `🏆 Premio: ${rifa.premio || ''}`,
-    `💰 Precio: ${fmtCOP(rifa.precio)} c/u`,
+    `💰 Precio: ${fmtMonto(rifa.precio, rifa.moneda)} c/u`,
     '',
     `👤 Vendedor: *${v.vendedor_nombre}* — ${total} número${total === 1 ? '' : 's'}`,
     '',
@@ -1343,7 +1348,7 @@ function imprimirHojas(rifa, vendedores, dig, esSim) {
       @media print{body{padding:0} @page{size:portrait;margin:8mm}}
     </style></head><body>
     <header><h1>${escHtml(rifa.nombre)}</h1>
-      <p>Sorteo: <b>${escHtml(fmtF(rifa.fecha_sorteo))}${hora ? ` · ${hora}` : ''}</b>${rifa.loteria_ref ? ` · ${escHtml(rifa.loteria_ref)}` : ''} · Premio: <b>${escHtml(rifa.premio || '')}</b> · Precio: <b>${escHtml(fmtCOP(rifa.precio))}</b> · ${vendedores.length} vendedor${vendedores.length === 1 ? '' : 'es'} · ${totalNums} números</p></header>
+      <p>Sorteo: <b>${escHtml(fmtF(rifa.fecha_sorteo))}${hora ? ` · ${hora}` : ''}</b>${rifa.loteria_ref ? ` · ${escHtml(rifa.loteria_ref)}` : ''} · Premio: <b>${escHtml(rifa.premio || '')}</b> · Precio: <b>${escHtml(fmtMonto(rifa.precio, rifa.moneda))}</b> · ${vendedores.length} vendedor${vendedores.length === 1 ? '' : 'es'} · ${totalNums} números</p></header>
     ${vendedores.map(v => bloqueVendedorHtml(v, dig, esSim)).join('')}
     <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
   win.document.close();
@@ -2833,7 +2838,7 @@ function ModalNumerosExtrasVendedor({ rifa, vendedor, onClose, onChanged }) {
                   </div>
                   {rifa.precio > 0 && (
                     <div style={{ fontSize: '.6rem', color: 'var(--jordyn-muted)', marginTop: 2 }}>
-                      {fmtCOP((numerosFijos.length + numerosExtras.length) * rifa.precio)}
+                      {fmtMonto((numerosFijos.length + numerosExtras.length) * rifa.precio, rifa.moneda)}
                     </div>
                   )}
                 </div>
@@ -3074,9 +3079,11 @@ export default function GestionRifas() {
   useEffect(() => { load(); }, [load]);
 
   const handlePrecioChange = (val) => {
-    const num = parseCOP(val);
-    setForm(p => ({ ...p, precio: num, precio_display: num ? fmtCOP(num) : '' }));
+    const num = parseMonto(val, form.moneda);
+    // En dólares se deja tal cual lo escribe (puede ir por "7.")
+    setForm(p => ({ ...p, precio: num, precio_display: p.moneda === 'USD' ? val : num ? fmtCOP(num) : '' }));
   };
+  const cambiarMoneda = (moneda) => setForm(p => (p.moneda === moneda ? p : { ...p, moneda, precio: '', precio_display: '', ofertas: [] }));
 
   const handleSubPremioChange = (val) => {
     const num = parseCOP(val);
@@ -3141,7 +3148,8 @@ export default function GestionRifas() {
       descripcion:               r.descripcion  || '',
       premio:                    r.premio       || '',
       precio:                    r.precio       || '',
-      precio_display:            r.precio       ? fmtCOP(r.precio) : '',
+      precio_display:            r.precio       ? fmtMonto(r.precio, r.moneda) : '',
+      moneda:                    r.moneda       || 'COP',
       premio_secundario:         r.premio_secundario || '',
       premio_secundario_display: r.premio_secundario ? fmtCOP(r.premio_secundario) : '',
       fecha_sorteo:              r.fecha_sorteo ? r.fecha_sorteo.split('T')[0] : '',
@@ -3209,6 +3217,7 @@ export default function GestionRifas() {
         descripcion:           form.descripcion,
         premio:                form.premio,
         precio:                form.precio,
+        moneda:                form.moneda,
         premio_secundario:     form.premio_secundario || null,
         fecha_sorteo:          form.fecha_sorteo || null,
         hora_sorteo:           form.hora_sorteo  || null,
@@ -3319,7 +3328,8 @@ export default function GestionRifas() {
     publicadas: rifasActivas.filter(r => r.publicada !== false).length,
     vendedores: new Set(rifasActivas.flatMap(r => (r.vendedores || []).map(v => v.id))).size,
     ventas:     rifasActivas.reduce((t, r) => t + (Number(r.total_ventas) || 0), 0),
-    ingresos:   rifasActivas.reduce((t, r) => t + (Number(r.ingresos_totales) || 0), 0),
+    ingresos:   rifasActivas.filter(r => r.moneda !== 'USD').reduce((t, r) => t + (Number(r.ingresos_totales) || 0), 0),
+    ingresosUSD: rifasActivas.filter(r => r.moneda === 'USD').reduce((t, r) => t + (Number(r.ingresos_totales) || 0), 0),
     proxima:    rifasActivas.map(r => ({ r, d: diasParaSorteo(r) })).filter(x => x.d != null && x.d >= 0).sort((a, b) => a.d - b.d)[0] || null,
   };
 
@@ -3454,7 +3464,7 @@ export default function GestionRifas() {
             backdropFilter: 'blur(8px)',
             zIndex: 2,
           }}>
-            💰 {fmtCOP(r.precio)}
+            💰 {fmtMonto(r.precio, r.moneda)}
           </div>
 
           {/* Franja inferior con nombre + premio sobre la imagen */}
@@ -3507,7 +3517,7 @@ export default function GestionRifas() {
             </div>
             <div className="col-3">
               <div style={{ color: 'var(--jordyn-muted)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>💵 TOTAL</div>
-              <div style={{ fontWeight: 800, color: 'var(--jordyn-green)', fontSize: '0.82rem', lineHeight: 1 }}>{fmtCOP(r.ingresos_totales)}</div>
+              <div style={{ fontWeight: 800, color: 'var(--jordyn-green)', fontSize: '0.82rem', lineHeight: 1 }}>{fmtMonto(r.ingresos_totales, r.moneda)}</div>
             </div>
           </div>
 
@@ -3646,7 +3656,7 @@ export default function GestionRifas() {
                   const desc = r.precio > 0 ? Math.round((1 - o.precio_total / (r.precio * o.cantidad)) * 100) : 0;
                   return (
                     <span key={o.cantidad} style={{ background: 'rgba(10,191,188,.12)', color: 'var(--jordyn-primary)', border: '1px solid rgba(10,191,188,.3)', borderRadius: 20, padding: '2px 8px', fontSize: '.65rem', fontWeight: 700 }}>
-                      ×{o.cantidad} → {fmtCOP(o.precio_total)} {desc > 0 && <span style={{ color: '#059669' }}>−{desc}%</span>}
+                      ×{o.cantidad} → {fmtMonto(o.precio_total, r.moneda)} {desc > 0 && <span style={{ color: '#059669' }}>−{desc}%</span>}
                     </span>
                   );
                 })}
@@ -3715,7 +3725,7 @@ export default function GestionRifas() {
         {[
           { ico:'bi-trophy-fill',   color:'#0abfbc', valor: resumenRifas.activas,    rotulo:`Rifa${resumenRifas.activas === 1 ? '' : 's'} activa${resumenRifas.activas === 1 ? '' : 's'}`, nota:`${resumenRifas.publicadas} en la página del cliente` },
           { ico:'bi-people-fill',   color:'#7c3aed', valor: resumenRifas.vendedores, rotulo:'Vendedores', nota:'con números en rifas activas' },
-          { ico:'bi-ticket-perforated-fill', color:'#f0a500', valor: resumenRifas.ventas.toLocaleString('es-CO'), rotulo:'Ventas registradas', nota: fmtCOP(resumenRifas.ingresos) },
+          { ico:'bi-ticket-perforated-fill', color:'#f0a500', valor: resumenRifas.ventas.toLocaleString('es-CO'), rotulo:'Ventas registradas', nota: [fmtCOP(resumenRifas.ingresos), ...(resumenRifas.ingresosUSD ? [fmtMonto(resumenRifas.ingresosUSD, 'USD')] : [])].join(' + ') },
           { ico:'bi-calendar-event-fill', color:'#e63946',
             valor: resumenRifas.proxima ? (resumenRifas.proxima.d === 0 ? 'Hoy' : resumenRifas.proxima.d === 1 ? 'Mañana' : `${resumenRifas.proxima.d} días`) : '—',
             rotulo:'Próximo sorteo', nota: resumenRifas.proxima ? resumenRifas.proxima.r.nombre : 'Sin fecha cargada' },
@@ -3890,13 +3900,21 @@ export default function GestionRifas() {
 
               {/* Precio */}
               <div className="col-12 col-md-4">
-                <label className="jd-label">PRECIO POR NÚMERO (COP) *</label>
+                <label className="jd-label">PRECIO POR NÚMERO ({form.moneda}) *</label>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  {[['COP', 'Pesos'], ['USD', 'Dólares']].map(([m, t]) => (
+                    <button key={m} type="button" onClick={() => cambiarMoneda(m)} aria-pressed={form.moneda === m}
+                      style={{ flex: 1, padding: '5px 8px', borderRadius: 8, cursor: 'pointer', fontSize: '.76rem', fontWeight: 700,
+                        border: `1.5px solid ${form.moneda === m ? 'var(--jordyn-primary)' : 'var(--jordyn-border)'}`,
+                        background: form.moneda === m ? 'rgba(10,191,188,.12)' : '#fff', color: form.moneda === m ? 'var(--jordyn-primary)' : 'var(--jordyn-muted)' }}>{t}</button>
+                  ))}
+                </div>
                 <input className="jd-input" value={form.precio_display}
                   onChange={e => handlePrecioChange(e.target.value)}
-                  onBlur={() => form.precio && setForm(p => ({ ...p, precio_display: fmtCOP(p.precio) }))}
+                  onBlur={() => form.precio && setForm(p => ({ ...p, precio_display: fmtMonto(p.precio, p.moneda) }))}
                   onFocus={() => setForm(p => ({ ...p, precio_display: p.precio ? String(p.precio) : '' }))}
-                  placeholder="$10.000" style={{ fontWeight: 700, fontSize: '1rem' }} />
-                {form.precio > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-primary)', marginTop: 3, fontWeight: 600 }}>= {fmtCOP(form.precio)} por boleto</div>}
+                  placeholder={form.moneda === 'USD' ? '10' : '$10.000'} style={{ fontWeight: 700, fontSize: '1rem' }} />
+                {form.precio > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--jordyn-primary)', marginTop: 3, fontWeight: 600 }}>= {fmtMonto(form.precio, form.moneda)} por boleto{form.moneda === 'USD' ? '. El cliente paga en Bs o dólares a la tasa del día' : ''}</div>}
               </div>
 
               {/* Fecha */}
@@ -4239,6 +4257,7 @@ export default function GestionRifas() {
                     ofertas={form.ofertas}
                     onChange={nuevas => setForm(p => ({ ...p, ofertas: nuevas }))}
                     precioBase={form.precio}
+                    moneda={form.moneda}
                   />
                 </div>
               </div>

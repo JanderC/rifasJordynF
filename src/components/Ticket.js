@@ -797,7 +797,7 @@ export function buildTicketHTML(d, r, numero, comprador, vendedor, copia) {
           </span>
           <span style="font-size:${px(D.sizePesos)}px;font-weight:900;color:${D.colorPesos};
             letter-spacing:.5px;text-shadow:1.5px 1.5px 0 ${D.colorBorde}40;">
-            ${D.valorSufijo}
+            ${r?.moneda === 'USD' ? 'DÓLARES' : D.valorSufijo}
           </span>
         </div>
       </div>
@@ -1515,7 +1515,7 @@ export function TicketPreview({ r, rifa, numero, comprador, vendedor, design: dP
               <span style={{
                 fontSize:px(D.sizePesos), fontWeight:900, color:D.colorPesos,
                 letterSpacing:.5, textShadow:`1.5px 1.5px 0 ${STROKE}40`,
-              }}>{D.valorSufijo}</span>
+              }}>{rifaData?.moneda === 'USD' ? 'DÓLARES' : D.valorSufijo}</span>
             </div>
           </div>
         </div>
