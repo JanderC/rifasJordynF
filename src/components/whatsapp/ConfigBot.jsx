@@ -103,7 +103,7 @@ export default function ConfigBot() {
   const alternarDia = (d) => setSub('recordatorios_apartado', 'dias', (diasSel.includes(d) ? diasSel.filter((x) => x !== d) : [...diasSel, d]).sort((a, b) => a - b));
   const hora12 = (h) => { const [hh, mm] = String(h).split(':').map(Number); return `${((hh + 11) % 12) + 1}:${String(mm || 0).padStart(2, '0')} ${hh < 12 ? 'am' : 'pm'}`; };
   const listaDias = (() => { const n = DIAS_SEMANA.filter(([d]) => diasSel.includes(d)).map(([, , plural]) => plural); return n.length > 1 ? `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}` : n[0] || ''; })();
-  const recHoras = Math.min(72, Math.max(1, Number(rec.cada_horas) || 12));
+  const recHoras = Math.min(72, Math.max(6, Number(rec.cada_horas) || 12));
   const recFinal = Math.min(12, Math.max(1, Number(rec.final_horas) || 2));
   const insertarVariable = (k) => {
     const el = recRef.current, actual = rec.mensaje || '';
@@ -289,23 +289,28 @@ export default function ConfigBot() {
           {/* Recordatorios de pago */}
           <div className="wcb-card">
             <h4><i className="bi bi-bell" />Recordatorios de pago</h4>
-            <div className="desc">Para las rifas donde se puede apartar sin pagar: el bot le recuerda al cliente lo que debe. Es el mismo mensaje del botón <b>Recordar</b> de Reservas. Si una rifa tiene sus propios días y horas (se ponen al editar la rifa), en esa rifa salen solo en esos momentos.</div>
-            <div className="wcb-opcion"><div><b>Enviar recordatorios automáticos generales</b><span>Si lo apagas, siguen saliendo las fechas que pongas por rifa en Reservas → Apartados sin pagar, y el botón Recordar.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
+            <div className="desc">El bot le escribe a quien tiene números apartados sin pagar. Esto aplica a las rifas <b>sin fechas propias</b>: si a una rifa le pones día y hora en Reservas → Apartados sin pagar, esa rifa sale solo en esas fechas.</div>
+            <div className="wcb-opcion"><div><b>Recordar automáticamente</b><span>Apagado: solo salen las fechas de cada rifa y el botón Recordar de Reservas.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
 
-            <label className="wcb-label">¿Cada cuánto se envía?</label>
+            <label className="wcb-label">¿Cuándo le escribe al cliente?</label>
             <div className="wcb-fila">
               <select className="jd-input" value={recDias ? 'dias' : recCada ? 'cada' : 'momentos'} onChange={(e) => setSub('recordatorios_apartado', 'frecuencia', e.target.value)}>
-                <option value="dias">Los días de la semana y a la hora que yo elija</option>
-                <option value="momentos">En los momentos clave (víspera y día del sorteo)</option>
-                <option value="cada">Cada cierto número de horas</option>
+                <option value="momentos">3 avisos (recomendado)</option>
+                <option value="dias">Los días y la hora que yo elija</option>
+                <option value="cada">Repetir cada cierto número de horas</option>
               </select>
-              {recCada && (
-                <div style={{ flex: '0 0 150px' }}>
-                  <input className="jd-input" type="number" min={1} max={72} value={rec.cada_horas ?? 12}
-                    onChange={(e) => setSub('recordatorios_apartado', 'cada_horas', e.target.value === '' ? '' : Number(e.target.value))} aria-label="Horas entre recordatorios" />
-                </div>
-              )}
             </div>
+            {recCada && (
+              <>
+                <label className="wcb-label">Repetir cada</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input className="jd-input" type="number" min={6} max={72} style={{ maxWidth: 110 }} value={rec.cada_horas === '' ? '' : recHoras}
+                    onChange={(e) => setSub('recordatorios_apartado', 'cada_horas', e.target.value === '' ? '' : Number(e.target.value))} aria-label="Horas entre recordatorios" />
+                  <span style={{ fontSize: '.85rem', fontWeight: 700 }}>horas</span>
+                </div>
+                <div className="wcb-ayuda">Mínimo 6 horas. Escribirle muy seguido a quien no te conoce puede hacer que WhatsApp bloquee el número.</div>
+              </>
+            )}
             {recDias && (
               <>
                 <label className="wcb-label">Días en que se envía</label>
@@ -326,20 +331,23 @@ export default function ConfigBot() {
             )}
             {!recDias && (
               <>
-                <label className="wcb-label">Aviso final: horas antes de que venza el plazo</label>
-                <input className="jd-input" type="number" min={1} max={12} style={{ maxWidth: 150 }} value={rec.final_horas ?? 2}
-                  onChange={(e) => setSub('recordatorios_apartado', 'final_horas', e.target.value === '' ? '' : Number(e.target.value))} />
+                <label className="wcb-label">Último aviso</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <input className="jd-input" type="number" min={1} max={12} style={{ maxWidth: 110 }} value={rec.final_horas ?? 2}
+                    onChange={(e) => setSub('recordatorios_apartado', 'final_horas', e.target.value === '' ? '' : Number(e.target.value))} aria-label="Horas antes de que venza el apartado" />
+                  <span style={{ fontSize: '.85rem', fontWeight: 700 }}>horas antes de que se venza el apartado</span>
+                </div>
+                <div className="wcb-ayuda">Es un solo mensaje, no se repite.</div>
               </>
             )}
             <div className="wcb-resultado ok" style={{ marginTop: 10 }}>
               <i className="bi bi-clock-history me-1" />
-              {rec.activo === false ? 'Los generales están apagados. Las fechas que pongas por rifa salen igual.'
+              {rec.activo === false ? 'Apagado. Las fechas que pongas por rifa salen igual.'
                 : recDias
-                  ? (diasSel.length ? `Se envía los ${listaDias} a las ${hora12(recHora)} (hora de Venezuela), a quienes tengan números apartados sin pagar. Se detiene cuando el cliente paga.` : 'Elige al menos un día para que se envíen.')
+                  ? (diasSel.length ? `El cliente recibe un mensaje los ${listaDias} a las ${hora12(recHora)}. Cuando paga, no le llega más.` : 'Elige al menos un día para que se envíen.')
                 : recCada
-                  ? `Se envía cada ${recHoras} ${recHoras === 1 ? 'hora' : 'horas'} desde que el cliente aparta, y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`
-                  : `Se envía 3 veces: la víspera del sorteo (10:00 am), el día del sorteo (9:00 am) y un aviso final ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que venza el plazo.`}
-              {rec.activo !== false && !recDias && ' Solo de día (8:00 am a 9:30 pm) y se detiene cuando el cliente paga.'}
+                  ? `El cliente recibe un mensaje cada ${recHoras} horas desde que aparta, y un último aviso ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que se le venza el apartado. Solo de 8:00 am a 9:30 pm. Cuando paga, no le llega más.`
+                  : `El cliente recibe 3 mensajes: el día antes del sorteo a las 10:00 am, el día del sorteo a las 9:00 am y un último aviso ${recFinal} ${recFinal === 1 ? 'hora' : 'horas'} antes de que se le venza el apartado. Solo de 8:00 am a 9:30 pm. Cuando paga, no le llega más.`}
             </div>
 
             <label className="wcb-label">Mensaje</label>
