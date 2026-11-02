@@ -4,6 +4,7 @@
 //   ✅ Datos de cada vendedor (usuario, cédula, estado, ventas)
 //   ✅ Sus números fijos por categoría
 //   ✅ Las rifas donde participa y los números que tiene en cada una
+//   ✅ Separados por ciudad o ubicación
 //   Los números se asignan en "Numeros Fijos" y al crear la rifa.
 // ============================================================
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -11,6 +12,7 @@ import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
+import CampoUbicacion from '../components/CampoUbicacion';
 
 const fmtCOP = v =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
@@ -37,6 +39,7 @@ function enRangos(nums) {
 }
 
 const COLOR_SERIE = { A: '#4361ee', B: '#e91e8c' };
+const SIN_UBICACION = '__sin';
 
 /* Números de una categoría o rifa: en rangos, separados por serie si es simultánea */
 function Numeros({ series, tipo }) {
@@ -71,7 +74,22 @@ const Titulo = ({ icono, children }) => (
   </div>
 );
 
-function FichaVendedor({ v, abierto, onToggle }) {
+// Se guarda al salir del campo
+function EditarUbicacion({ v, onGuardada }) {
+  const [valor, setValor] = useState(v.ubicacion || '');
+  const guardar = async () => {
+    if (valor.trim() === (v.ubicacion || '')) return;
+    try {
+      const r = await API.put(`/vendedores/${v.id}`, { ubicacion: valor });
+      setValor(r.data.vendedor.ubicacion || '');
+      onGuardada(v.id, r.data.vendedor.ubicacion);
+      toast.success('Ubicación guardada');
+    } catch (err) { toast.error(err.response?.data?.error || 'No se pudo guardar'); }
+  };
+  return <CampoUbicacion valor={valor} onCambio={setValor} onSalir={guardar} style={{ maxWidth:280 }} etiqueta={`Ubicación de ${v.nombre}`} />;
+}
+
+function FichaVendedor({ v, abierto, onToggle, onUbicacion }) {
   const rifasActivas = v.rifas.filter((r) => r.activa);
   return (
     <div className="jd-card fade-in" style={{ padding:0, overflow:'hidden', opacity: v.activo ? 1 : 0.7 }}>
@@ -93,7 +111,7 @@ function FichaVendedor({ v, abierto, onToggle }) {
             {!v.activo && <span style={{ fontSize:'.58rem', fontWeight:800, padding:'2px 8px', borderRadius:20, background:'rgba(230,57,70,0.09)', color:'#c0303a' }}>INACTIVO</span>}
           </div>
           <div style={{ fontSize:'.7rem', color:'var(--jordyn-muted)', marginTop:1 }}>
-            @{v.usuario}{v.cedula ? ` · C.I. ${v.cedula}` : ''}
+            @{v.usuario}{v.cedula ? ` · C.I. ${v.cedula}` : ''}{v.ubicacion ? ` · ${v.ubicacion}` : ''}
           </div>
         </div>
 
@@ -107,6 +125,11 @@ function FichaVendedor({ v, abierto, onToggle }) {
 
       {abierto && (
         <div style={{ borderTop:'1px solid var(--jordyn-border)', padding:'16px', display:'flex', flexDirection:'column', gap:18 }}>
+
+          <div>
+            <Titulo icono="bi-geo-alt-fill">Ciudad o ubicación</Titulo>
+            <EditarUbicacion v={v} onGuardada={onUbicacion} />
+          </div>
 
           {/* Números fijos por categoría */}
           <div>
@@ -189,6 +212,7 @@ export default function ListaVendedores() {
   const [loading,    setLoading]    = useState(true);
   const [busqueda,   setBusqueda]   = useState('');
   const [rifaSel,    setRifaSel]    = useState('');
+  const [ubicacionSel, setUbicacionSel] = useState('');
   const [soloActivos, setSoloActivos] = useState(true);
   const [abiertos,   setAbiertos]   = useState(() => new Set());
 
@@ -209,20 +233,36 @@ export default function ListaVendedores() {
     return [...m.values()].sort((a, b) => Number(b.activa) - Number(a.activa) || String(b.fecha_sorteo || '').localeCompare(String(a.fecha_sorteo || '')));
   }, [vendedores]);
 
-  // Busca por nombre, usuario, cédula o por un número que tenga (fijo o en una rifa)
+  const ubicaciones = useMemo(() => {
+    const m = new Map();
+    vendedores.forEach((v) => { if (v.ubicacion) m.set(v.ubicacion, (m.get(v.ubicacion) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [vendedores]);
+
+  // Busca por nombre, usuario, cédula, ubicación o por un número que tenga (fijo o en una rifa)
   const filtrados = useMemo(() => {
     const q = sinTildes(busqueda.trim());
     const esNumero = /^\d+$/.test(q);
     return vendedores.filter((v) => {
       if (soloActivos && !v.activo) return false;
       if (rifaSel && !v.rifas.some((r) => r.rifa_id === rifaSel)) return false;
+      if (ubicacionSel === SIN_UBICACION ? v.ubicacion : ubicacionSel && v.ubicacion !== ubicacionSel) return false;
       if (!q) return true;
-      if (sinTildes(`${v.nombre} ${v.usuario} ${v.cedula || ''}`).includes(q)) return true;
+      if (sinTildes(`${v.nombre} ${v.usuario} ${v.cedula || ''} ${v.ubicacion || ''}`).includes(q)) return true;
       if (!esNumero) return false;
       const tiene = (series) => Object.values(series).some((ns) => ns.some((n) => Number(n) === Number(q)));
       return v.numeros_fijos.some((c) => tiene(c.series)) || v.rifas.some((r) => tiene(r.series));
     });
-  }, [vendedores, busqueda, rifaSel, soloActivos]);
+  }, [vendedores, busqueda, rifaSel, ubicacionSel, soloActivos]);
+
+  // Separados por ubicación; los que no tienen van de últimos
+  const grupos = useMemo(() => {
+    const m = new Map();
+    filtrados.forEach((v) => { const k = v.ubicacion || ''; m.set(k, [...(m.get(k) || []), v]); });
+    return [...m.entries()].sort((a, b) => (!a[0] - !b[0]) || a[0].localeCompare(b[0]));
+  }, [filtrados]);
+
+  const ponerUbicacion = (id, ubicacion) => setVendedores((l) => l.map((v) => (v.id === id ? { ...v, ubicacion } : v)));
 
   const toggle = (id) => setAbiertos((s) => {
     const n = new Set(s);
@@ -248,12 +288,20 @@ export default function ListaVendedores() {
       {/* Filtros */}
       <div className="jd-card" style={{ marginBottom:18 }}>
         <div className="row g-3 align-items-end">
-          <div className="col-12 col-md-5">
+          <div className="col-12 col-md-3">
             <label className="jd-label">BUSCAR</label>
             <input className="jd-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
               placeholder="Nombre, usuario, cédula o un número (ej: 045)" />
           </div>
-          <div className="col-12 col-md-4">
+          <div className="col-12 col-md-3">
+            <label className="jd-label">CIUDAD O UBICACIÓN</label>
+            <select className="jd-select" value={ubicacionSel} onChange={(e) => setUbicacionSel(e.target.value)}>
+              <option value="">Todas</option>
+              {ubicaciones.map(([u, n]) => <option key={u} value={u}>{u} ({n})</option>)}
+              <option value={SIN_UBICACION}>Sin ubicación</option>
+            </select>
+          </div>
+          <div className="col-12 col-md-3">
             <label className="jd-label">RIFA</label>
             <select className="jd-select" value={rifaSel} onChange={(e) => setRifaSel(e.target.value)}>
               <option value="">Todas las rifas</option>
@@ -301,11 +349,19 @@ export default function ListaVendedores() {
                 : 'Ningún vendedor coincide con la búsqueda.'}
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              {filtrados.map((v) => (
-                <FichaVendedor key={v.id} v={v} abierto={abiertos.has(v.id)} onToggle={() => toggle(v.id)} />
-              ))}
-            </div>
+            grupos.map(([ubicacion, lista]) => (
+              <div key={ubicacion} style={{ marginBottom:18 }}>
+                <div style={{ fontWeight:800, fontSize:'.84rem', color:'var(--jordyn-primary-d)', marginBottom:8 }}>
+                  <i className="bi bi-geo-alt-fill me-1"></i>{ubicacion || 'Sin ubicación'}
+                  <span style={{ fontWeight:600, fontSize:'.72rem', color:'var(--jordyn-muted)', marginLeft:6 }}>{lista.length}</span>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {lista.map((v) => (
+                    <FichaVendedor key={v.id} v={v} abierto={abiertos.has(v.id)} onToggle={() => toggle(v.id)} onUbicacion={ponerUbicacion} />
+                  ))}
+                </div>
+              </div>
+            ))
           )}
         </>
       )}

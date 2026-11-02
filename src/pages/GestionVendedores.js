@@ -10,6 +10,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
+import CampoUbicacion from '../components/CampoUbicacion';
 
 // Formato por defecto (3 cifras). Dentro de cada modal de una categoría se redefinen
 // según sus cifras (3 → 000–999, 4 → 0000–9999).
@@ -264,17 +265,17 @@ function ModalCrearCategoria({ categoria, onClose, onSaved }) {
 
 // ── ModalEditarVendedor ──────────────────────────────────────────
 function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
-  const [form,setForm] = useState({nombre:vendedor.nombre||'',cedula:vendedor.cedula||'',telefono:'',password:''});
+  const [form,setForm] = useState({nombre:vendedor.nombre||'',cedula:vendedor.cedula||'',telefono:'',ubicacion:'',password:''});
   const [saving,setSaving] = useState(false);
   useEffect(()=>{
-    API.get(`/vendedores/${vendedor.id}`).then(r=>setForm(p=>({...p,telefono:r.data.vendedor?.telefono||''}))).catch(()=>{});
+    API.get(`/vendedores/${vendedor.id}`).then(r=>setForm(p=>({...p,telefono:r.data.vendedor?.telefono||'',ubicacion:r.data.vendedor?.ubicacion||''}))).catch(()=>{});
   },[vendedor.id]);
   const guardar = async () => {
     if (!form.nombre.trim()) return toast.error('El nombre es requerido');
     if (form.password&&form.password.length<6) return toast.error('Mínimo 6 caracteres');
     setSaving(true);
     try {
-      const payload={nombre:form.nombre.trim(),cedula:form.cedula||null,telefono:form.telefono};
+      const payload={nombre:form.nombre.trim(),cedula:form.cedula||null,telefono:form.telefono,ubicacion:form.ubicacion};
       if (form.password) payload.password=form.password;
       await API.put(`/vendedores/${vendedor.id}`,payload);
       toast.success('Vendedor actualizado'); onSaved(); onClose();
@@ -293,6 +294,7 @@ function ModalEditarVendedor({ vendedor, onClose, onSaved }) {
             <div><label className="jd-label">NOMBRE *</label><input className="jd-input" value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} autoFocus /></div>
             <div><label className="jd-label">CÉDULA</label><input className="jd-input" value={form.cedula} onChange={e=>setForm(p=>({...p,cedula:e.target.value}))} placeholder="Opcional" /></div>
             <div><label className="jd-label">TELÉFONO (WHATSAPP)</label><input className="jd-input" type="tel" inputMode="tel" value={form.telefono} onChange={e=>setForm(p=>({...p,telefono:e.target.value}))} placeholder="04121234567 o 573001234567" /></div>
+            <div><label className="jd-label">CIUDAD O UBICACIÓN</label><CampoUbicacion valor={form.ubicacion} onCambio={v=>setForm(p=>({...p,ubicacion:v}))} /></div>
             <div><label className="jd-label">NUEVA CONTRASEÑA</label><input className="jd-input" type="password" value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="Dejar vacío = sin cambios" /></div>
           </div>
           <div className="d-flex gap-2">
@@ -847,7 +849,7 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
 
   const [modo,        setModo]        = useState('nuevo');
   const [vendedorSel, setVendedorSel] = useState('');
-  const [form,        setForm]        = useState({nombre:'',cedula:''});
+  const [form,        setForm]        = useState({nombre:'',cedula:'',ubicacion:''});
   // numeros es array con POSIBLES REPETIDOS en simultanea: ['123','123'] = A y B
   const [numeros,     setNumeros]     = useState([]);
   const [numInput,    setNumInput]    = useState('');
@@ -938,7 +940,7 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
       const payload = {
         ...(modo==='existente'
           ? {vendedor_id:vendedorSel}
-          : {nombre:form.nombre.trim(),cedula:form.cedula||undefined,...creds}),
+          : {nombre:form.nombre.trim(),cedula:form.cedula||undefined,ubicacion:form.ubicacion,...creds}),
         numeros, // puede tener repetidos ej: ['123','123']
       };
       const r = await API.post(`/categorias-globales/${categoria.id}/vendedores`,payload);
@@ -1023,6 +1025,10 @@ function ModalCrearVendedorEnCategoria({ categoria, vendedoresDisponibles, onClo
               <div style={{flex:'1 1 130px'}}>
                 <label className="jd-label">CÉDULA</label>
                 <input className="jd-input" value={form.cedula} onChange={e=>setForm(p=>({...p,cedula:e.target.value}))} placeholder="Opcional" />
+              </div>
+              <div style={{flex:'1 1 130px'}}>
+                <label className="jd-label">CIUDAD O UBICACIÓN</label>
+                <CampoUbicacion valor={form.ubicacion} onCambio={v=>setForm(p=>({...p,ubicacion:v}))} />
               </div>
             </div>
           ):(

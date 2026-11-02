@@ -1017,7 +1017,8 @@ function ModalBoleteria({ rifa, onClose }) {
             const filtrados = q
               ? data.vendedores.filter(v =>
                   v.vendedor_nombre?.toLowerCase().includes(q) ||
-                  (v.cedula && v.cedula.toLowerCase().includes(q))
+                  (v.cedula && v.cedula.toLowerCase().includes(q)) ||
+                  (v.ubicacion && v.ubicacion.toLowerCase().includes(q))
                 )
               : data.vendedores;
             return filtrados.length === 0 ? (
@@ -1357,6 +1358,7 @@ function imprimirHojas(rifa, vendedores, dig, esSim) {
 function ModalCompartirVendedores({ rifa, onClose }) {
   const [data, setData]       = useState(null);
   const [busq, setBusq]       = useState('');
+  const [ubicacion, setUbicacion] = useState('');
   const [copiado, setCopiado] = useState(null);
   const [previa, setPrevia]   = useState(null);   // imagen del vendedor lista para compartir
   const [estados, setEstados] = useState({});     // vendedor_id → su último envío por el WhatsApp del sistema
@@ -1381,9 +1383,12 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const esSim = !!data?.es_simultanea;
   const vendedores = (data?.vendedores || [])
     .filter(v => (v.numeros_fijos || []).length)
-    .sort((a, b) => String(a.vendedor_nombre).localeCompare(String(b.vendedor_nombre)));
+    .sort((a, b) => (!a.ubicacion - !b.ubicacion) || String(a.ubicacion || '').localeCompare(String(b.ubicacion || '')) || String(a.vendedor_nombre).localeCompare(String(b.vendedor_nombre)));
+  const ubicaciones = [...new Set(vendedores.map(v => v.ubicacion).filter(Boolean))];
   const t = busq.trim().toLowerCase();
-  const vista = vendedores.filter(v => !t || String(v.vendedor_nombre).toLowerCase().includes(t));
+  const filtrando = !!(t || ubicacion);
+  const vista = vendedores.filter(v =>
+    (!t || String(v.vendedor_nombre).toLowerCase().includes(t)) && (!ubicacion || (v.ubicacion || '') === ubicacion));
 
   const enviarTexto = async (titulo, texto) => {
     if (navigator.share) { try { await navigator.share({ title: titulo, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
@@ -1486,16 +1491,22 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             <i className="bi bi-search" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
             <input className="jd-input" value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar vendedor…" aria-label="Buscar vendedor" style={{ paddingLeft:32 }} />
           </div>
+          {ubicaciones.length > 0 && (
+            <select className="jd-select" value={ubicacion} onChange={e => { setUbicacion(e.target.value); setConfirmar(false); }} aria-label="Filtrar por ciudad o ubicación" style={{ flex:'1 1 150px', width:'auto' }}>
+              <option value="">Todas las ubicaciones</option>
+              {ubicaciones.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          )}
           <button disabled={!paraEnviar.length || !!progreso} onClick={() => setConfirmar(true)} title="Le llega a cada vendedor su imagen desde el WhatsApp del sistema"
             style={{ background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700, opacity: paraEnviar.length ? 1 : .55 }}>
             <i className="bi bi-send-fill me-1"></i>{progreso ? `Preparando ${progreso.hechos} de ${progreso.total}…` : `Enviar a cada uno (${paraEnviar.length})`}
           </button>
           <button disabled={!vista.length} onClick={compartirTodos} title="Un solo mensaje con los números de todos"
             style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'7px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
-            <i className="bi bi-whatsapp me-1"></i>Compartir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
+            <i className="bi bi-whatsapp me-1"></i>Compartir {filtrando ? `estos ${vista.length}` : `todos (${vendedores.length})`}
           </button>
           <button className="btn-jordyn" disabled={!vista.length} onClick={() => imprimirHojas(rifa, vista, dig, esSim)} title="Todos los vendedores seguidos, varios por hoja" style={{ fontSize:'.78rem' }}>
-            <i className="bi bi-printer-fill me-1"></i>Imprimir {t ? `estos ${vista.length}` : `todos (${vendedores.length})`}
+            <i className="bi bi-printer-fill me-1"></i>Imprimir {filtrando ? `estos ${vista.length}` : `todos (${vendedores.length})`}
           </button>
         </div>
         {confirmar && (
@@ -1525,6 +1536,7 @@ function ModalCompartirVendedores({ rifa, onClose }) {
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                   <div style={{ minWidth:0 }}>
                     <b style={{ fontSize:'.9rem' }}>{v.vendedor_nombre}</b>
+                    {v.ubicacion && <span style={{ marginLeft:6, fontSize:'.68rem', color:'var(--jordyn-muted)' }}><i className="bi bi-geo-alt-fill"></i> {v.ubicacion}</span>}
                     <span style={{ marginLeft:8, background:'rgba(124,58,237,.12)', color:'#7c3aed', borderRadius:20, padding:'1px 8px', fontSize:'.7rem', fontWeight:800 }}>{total}</span>
                     {esSim && <span style={{ marginLeft:6, fontSize:'.68rem', color:'var(--jordyn-muted)' }}>{grupos.map(g => `${g.serie}: ${g.numeros.length}`).join(' · ')}</span>}
                   </div>
