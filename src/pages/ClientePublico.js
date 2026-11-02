@@ -4,6 +4,7 @@ import API from '../services/api';
 import GanadoresPublico from '../components/GanadoresPublico';
 import { TopCompradores, BurbujaGrupo } from '../components/ComunidadPublico';
 import ResultadosPublico from '../components/ResultadosPublico';
+import { DecoracionFondo, DecoracionSuperior, EfectoDecoracion, useDecoracion } from '../components/DecoracionPublico';
 
 const TURQ    = '#0abfbc';
 const TURQ2   = '#00d4d0';
@@ -3153,10 +3154,11 @@ export default function ClientePublico() {
   useEffect(() => {
     API.get('/resultados').then(r => setResultados(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, []);
-  const [sitio, setSitio] = useState({ grupo_whatsapp: null, top_compradores: [] });
+  const [sitio, setSitio] = useState({ grupo_whatsapp: null, top_compradores: [], decoracion: undefined });
   useEffect(() => {
-    API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [] })).catch(() => {});
+    API.get('/sitio').then(r => setSitio({ grupo_whatsapp: r.data?.grupo_whatsapp || null, top_compradores: r.data?.top_compradores || [], decoracion: r.data?.decoracion || null })).catch(() => {});
   }, [refreshKey]);
+  const decoracion = useDecoracion(sitio.decoracion);
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -3238,13 +3240,16 @@ export default function ClientePublico() {
   };
 
   return (
-    <div className="pub-pagina">
+    <div className={`pub-pagina${decoracion ? ` pub-deco pub-deco-${decoracion.tono}` : ''}`}>
       {/* Manchas de color de fondo (decorativas) */}
       <div className="pub-fondo" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <DecoracionFondo decoracion={decoracion} />
+      {/* Mientras se eligen los números o se paga no cae nada encima */}
+      <EfectoDecoracion decoracion={rifaSel || numerosCarrito || verApartados ? null : decoracion} />
 
       <nav className="pub-nav">
         <a href="#hero-sec" onClick={scrollToRifas} className="pub-marca">
-          <img className="pub-marca-img" src={`${process.env.PUBLIC_URL}/logo-resuelve.png`} alt="Resuelve tu Semana" width="640" height="266" />
+          <img className="pub-marca-img" src={decoracion?.img_logo || `${process.env.PUBLIC_URL}/logo-resuelve.png`} alt="Resuelve tu Semana" width="640" height="266" />
         </a>
         <div className="pub-nav-links" style={{ display:'flex', gap:22, alignItems:'center' }}>
           <a href="#rifas-sec" onClick={scrollToRifas} className="nav-link nav-solo-escritorio">Rifas</a>
@@ -3275,11 +3280,13 @@ export default function ClientePublico() {
         );
       })()}
 
+      <DecoracionSuperior decoracion={decoracion} />
+
       {/* Presentación */}
       <header className="pub-intro">
         <div className="pub-bolas" aria-hidden="true">{['7', '21', '★', '13', '88', '🍀'].map((t, i) => <i key={i}>{t}</i>)}</div>
-        <span className="pub-intro-chip"><b></b> {rifasActivasOrdenadas.length > 1 ? `${rifasActivasOrdenadas.length} rifas activas ahora` : 'Sorteos todas las semanas'}</span>
-        <h1>Tu número de la suerte <span>te está esperando</span></h1>
+        <span className="pub-intro-chip"><b></b> {decoracion?.mensaje || (rifasActivasOrdenadas.length > 1 ? `${rifasActivasOrdenadas.length} rifas activas ahora` : 'Sorteos todas las semanas')}</span>
+        <h1>{decoracion?.titulo1 || 'Tu número de la suerte'} <span>{decoracion?.titulo2 || 'te está esperando'}</span></h1>
         <p>Elige tu número, paga fácil desde tu teléfono y recibe tu ticket por WhatsApp. Así de simple.</p>
         <div className="pub-sellos">
           <span className="pub-sello"><i>✓</i> Sorteos con lotería oficial</span>

@@ -23,6 +23,7 @@ import GestionReservas   from './pages/GestionReservas';
 import Tasas             from './pages/Tasas';
 import WhatsApp          from './pages/WhatsApp';   // ← NUEVO
 import Configuracion     from './pages/Configuracion';
+import Decoracion        from './pages/Decoracion';
 import ListaVendedores   from './pages/ListaVendedores';
 import CuentasBancarias  from './pages/CuentasBancarias';
 import Resultados        from './pages/Resultados';
@@ -66,6 +67,7 @@ function AppRoutes() {
       <Route path="/cuentas-bancarias" element={<PrivateRoute rol="dueno"><CuentasBancarias /></PrivateRoute>} />
       <Route path="/lista-vendedores" element={<PrivateRoute rol="dueno"><ListaVendedores /></PrivateRoute>} />
       <Route path="/configuracion" element={<PrivateRoute rol="dueno"><Configuracion /></PrivateRoute>} />
+      <Route path="/decoracion"    element={<PrivateRoute rol="dueno"><Decoracion /></PrivateRoute>} />
       <Route path="/generador-pdf"element={<PrivateRoute rol="dueno"><GeneradorPDFTickets /></PrivateRoute>} />
       <Route path="/imprimir-boletos" element={<PrivateRoute rol="dueno"><ImprimirBoletos /></PrivateRoute>} />
 
