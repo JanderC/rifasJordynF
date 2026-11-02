@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import API from '../services/api';
 import { toast } from 'react-toastify';
+import RecordatoriosApartados from '../components/RecordatoriosApartados';
 import { TicketPreview } from '../components/Ticket';
 import TicketEditable from '../components/TicketEditable';
 import {
@@ -1144,6 +1145,8 @@ export default function GestionReservas() {
           })}
         </div>
       )}
+
+      {filtro === 'apartado' && <RecordatoriosApartados />}
 
       {filtro === 'comprobantes' ? (
         <ArchivoComprobantes />

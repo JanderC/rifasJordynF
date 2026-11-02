@@ -290,7 +290,7 @@ export default function ConfigBot() {
           <div className="wcb-card">
             <h4><i className="bi bi-bell" />Recordatorios de pago</h4>
             <div className="desc">Para las rifas donde se puede apartar sin pagar: el bot le recuerda al cliente lo que debe. Es el mismo mensaje del botón <b>Recordar</b> de Reservas. Si una rifa tiene sus propios días y horas (se ponen al editar la rifa), en esa rifa salen solo en esos momentos.</div>
-            <div className="wcb-opcion"><div><b>Enviar recordatorios automáticos</b><span>Si lo apagas, solo sale cuando presionas Recordar en Reservas.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
+            <div className="wcb-opcion"><div><b>Enviar recordatorios automáticos generales</b><span>Si lo apagas, siguen saliendo las fechas que pongas por rifa en Reservas → Apartados sin pagar, y el botón Recordar.</span></div><Toggle on={rec.activo !== false} onClick={() => setSub('recordatorios_apartado', 'activo', rec.activo === false)} /></div>
 
             <label className="wcb-label">¿Cada cuánto se envía?</label>
             <div className="wcb-fila">
@@ -333,7 +333,7 @@ export default function ConfigBot() {
             )}
             <div className="wcb-resultado ok" style={{ marginTop: 10 }}>
               <i className="bi bi-clock-history me-1" />
-              {rec.activo === false ? 'Los recordatorios automáticos están apagados.'
+              {rec.activo === false ? 'Los generales están apagados. Las fechas que pongas por rifa salen igual.'
                 : recDias
                   ? (diasSel.length ? `Se envía los ${listaDias} a las ${hora12(recHora)} (hora de Venezuela), a quienes tengan números apartados sin pagar. Se detiene cuando el cliente paga.` : 'Elige al menos un día para que se envíen.')
                 : recCada
