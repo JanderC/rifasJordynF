@@ -17,7 +17,7 @@ import TicketEditable from '../components/TicketEditable';
 import { DEFAULT_DESIGN } from '../components/Ticket';
 import { useAuth } from '../context/AuthContext';
 import { generarImagenVendedor } from '../utils/imagenVendedor';
-import ConfigVendedoresRifa from '../components/ConfigVendedoresRifa';
+import ConfigVendedoresRifa, { RECORDATORIO_VENDEDORES_VACIO } from '../components/ConfigVendedoresRifa';
 
 /* ─── Loterías ─── */
 const LOTERIAS = [
@@ -48,6 +48,9 @@ const emptyForm = {
   diferido_max_numeros: 10,        // tope de números sin pagar por persona
   venta_minima: 1,                 // números que hay que llevar, como mínimo, en cada compra en línea
   recordatorios_programados: [],   // días y horas (Venezuela) en que el bot recuerda el pago: 'AAAA-MM-DDTHH:mm'
+  // Vendedores: imágenes de cada ciudad (juega el día / mañana / hoy) y el envío programado
+  imagenes_ubicacion: [],
+  recordatorio_vendedores: RECORDATORIO_VENDEDORES_VACIO,
 };
 
 // Momento ISO ↔ valor de <input type="datetime-local"> en hora de Venezuela (UTC-4, sin cambio de hora)
@@ -1304,22 +1307,6 @@ function textoVendedor(rifa, v, dig, esSim) {
   ].join('\n').trim();
 }
 
-// Un solo mensaje con los números de todos los vendedores
-function textoTodosVendedores(rifa, vendedores, dig, esSim) {
-  const hora = fmtHoraSorteo(rifa.hora_sorteo);
-  const filas = (nums) => { const out = []; for (let i = 0; i < nums.length; i += 6) out.push(nums.slice(i, i + 6).join(' · ')); return out.join('\n'); };
-  return [
-    `🎟️ *${rifa.nombre}*`,
-    `📅 Sorteo: ${fmtF(rifa.fecha_sorteo)}${hora ? ` · ${hora}` : ''}${rifa.loteria_ref ? ` · ${rifa.loteria_ref}` : ''}`,
-    '',
-    ...vendedores.flatMap(v => {
-      const grupos = numerosDeVendedor(v, dig);
-      const total = grupos.reduce((t, g) => t + g.numeros.length, 0);
-      return [`👤 *${v.vendedor_nombre}* (${total})`, ...grupos.flatMap(g => [...(esSim ? [`Serie ${g.serie}:`] : []), filas(g.numeros)]), ''];
-    }),
-  ].join('\n').trim();
-}
-
 // Bloque compacto de un vendedor: su nombre y sus números en cuadrícula.
 // Van uno debajo del otro para que quepan varios vendedores en cada hoja.
 function bloqueVendedorHtml(v, dig, esSim) {
@@ -1360,7 +1347,6 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const [data, setData]       = useState(null);
   const [busq, setBusq]       = useState('');
   const [ubicacion, setUbicacion] = useState('');
-  const [verConfig, setVerConfig] = useState(false);   // imagen por ciudad y mensaje programado
   const [copiado, setCopiado] = useState(null);
   const [previa, setPrevia]   = useState(null);   // imagen del vendedor lista para compartir
   const [estados, setEstados] = useState({});     // vendedor_id → su último envío por el WhatsApp del sistema
@@ -1395,10 +1381,6 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   const vista = vendedores.filter(v =>
     (!t || String(v.vendedor_nombre).toLowerCase().includes(t)) && (!ubicacion || (v.ubicacion || '') === ubicacion));
 
-  const enviarTexto = async (titulo, texto) => {
-    if (navigator.share) { try { await navigator.share({ title: titulo, text: texto }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
-  };
   // Compartir abre la imagen ya hecha: el iPhone solo deja compartir archivos justo
   // después de tocar un botón, y armarla tarda demasiado para hacerlo de una vez.
   const cerrarPrevia = () => {
@@ -1409,12 +1391,17 @@ function ModalCompartirVendedores({ rifa, onClose }) {
   // en las dos series, sale dos veces.
   const juntar = (lista) => lista.flatMap(g => g.numeros).sort();
   const disponiblesDe = (v) => juntar(numerosDeVendedor(v, dig, true));
-  // La publicidad de su ciudad, la de las demás o la de la rifa
+  // La publicidad de su ciudad para hoy ("juega el sábado", "mañana" u "hoy"); si falta,
+  // otra de su ciudad, luego la de las demás y por último la foto de la rifa
   const flyerDe = (v) => {
     const lista = data?.imagenes_ubicacion || [];
+    const hoy = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+    const faltan = Math.round((new Date(`${String(rifa.fecha_sorteo).slice(0, 10)}T12:00:00Z`) - new Date(`${hoy}T12:00:00Z`)) / 864e5);
+    const momento = faltan <= 0 ? 'hoy' : faltan === 1 ? 'manana' : 'dia';
+    const de = (f) => f && (f[momento] || f.dia || f.imagen || f.manana || f.hoy);
     const ciudad = String(v.ubicacion || '').trim().toLowerCase();
-    return (ciudad && lista.find(x => x.ubicacion.trim().toLowerCase() === ciudad)?.imagen)
-      || lista.find(x => x.ubicacion === '*')?.imagen || rifa.imagen_url;
+    return (ciudad && de(lista.find(x => x.ubicacion.trim().toLowerCase() === ciudad)))
+      || de(lista.find(x => x.ubicacion === '*')) || rifa.imagen_url;
   };
 
   const enviarUno = async (v) => {
@@ -1470,7 +1457,6 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     try { await navigator.share({ files: [previa.archivo], title: `${rifa.nombre} · ${previa.v.vendedor_nombre}` }); }
     catch (e) { if (e?.name !== 'AbortError') toast.error('No se pudo compartir. Descarga la imagen y envíala por WhatsApp'); }
   };
-  const compartirTodos = () => enviarTexto(`${rifa.nombre} · vendedores`, textoTodosVendedores(rifa, vista, dig, esSim));
   const paraEnviar = vista.filter(v => v.telefono && disponiblesDe(v).length);
   const sinTelefono = vista.filter(v => !v.telefono && disponiblesDe(v).length).length;
   const nuevos = paraEnviar.filter(v => !estados[v.vendedor_id] || estados[v.vendedor_id].frio).length;
@@ -1494,15 +1480,11 @@ function ModalCompartirVendedores({ rifa, onClose }) {
         <div style={{ background:'linear-gradient(135deg,#0a3d62,#0abfbc)', color:'#fff', padding:'14px 18px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
           <div>
             <div style={{ fontWeight:800, fontSize:'1rem' }}><i className="bi bi-share-fill me-2"></i>Números por vendedor</div>
-            <div style={{ fontSize:'.74rem', opacity:.85, marginTop:2 }}>{rifa.nombre} · comparte los números de cada uno o imprime todos juntos en pocas hojas</div>
+            <div style={{ fontSize:'.74rem', opacity:.85, marginTop:2 }}>{rifa.nombre} · envía a cada uno su imagen o imprime todos juntos en pocas hojas</div>
           </div>
           <button onClick={onClose} aria-label="Cerrar" style={{ background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:30, height:30, borderRadius:'50%', cursor:'pointer' }}><i className="bi bi-x-lg"></i></button>
         </div>
-        {!verConfig && <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--jordyn-border)', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-          <button onClick={() => setVerConfig(true)} title="La imagen de cada ciudad y el mensaje programado a los vendedores"
-            style={{ flex:'1 1 100%', background:'rgba(124,58,237,.08)', border:'1.5px solid rgba(124,58,237,.35)', color:'#7c3aed', borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
-            <i className="bi bi-calendar-check-fill me-1"></i>Imagen por ciudad y mensaje programado
-          </button>
+        <div style={{ padding:'12px 18px', borderBottom:'1px solid var(--jordyn-border)', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
           <div style={{ position:'relative', flex:'1 1 200px' }}>
             <i className="bi bi-search" style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:'var(--jordyn-muted)', fontSize:'.85rem' }}></i>
             <input className="jd-input" value={busq} onChange={e => setBusq(e.target.value)} placeholder="Buscar vendedor…" aria-label="Buscar vendedor" style={{ paddingLeft:32 }} />
@@ -1517,15 +1499,11 @@ function ModalCompartirVendedores({ rifa, onClose }) {
             style={{ background:'#128c7e', border:'none', color:'#fff', borderRadius:8, padding:'8px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700, opacity: paraEnviar.length ? 1 : .55 }}>
             <i className="bi bi-send-fill me-1"></i>{progreso ? `Preparando ${progreso.hechos} de ${progreso.total}…` : `Enviar a cada uno (${paraEnviar.length})`}
           </button>
-          <button disabled={!vista.length} onClick={compartirTodos} title="Un solo mensaje con los números de todos"
-            style={{ background:'rgba(37,211,102,.1)', border:'1.5px solid rgba(37,211,102,.5)', color:'#128c7e', borderRadius:8, padding:'7px 12px', cursor:'pointer', fontSize:'.78rem', fontWeight:700 }}>
-            <i className="bi bi-whatsapp me-1"></i>Compartir {filtrando ? `estos ${vista.length}` : `todos (${vendedores.length})`}
-          </button>
           <button className="btn-jordyn" disabled={!vista.length} onClick={() => imprimirHojas(rifa, vista, dig, esSim)} title="Todos los vendedores seguidos, varios por hoja" style={{ fontSize:'.78rem' }}>
             <i className="bi bi-printer-fill me-1"></i>Imprimir {filtrando ? `estos ${vista.length}` : `todos (${vendedores.length})`}
           </button>
-        </div>}
-        {confirmar && !verConfig && (
+        </div>
+        {confirmar && (
           <div style={{ padding:'12px 18px', background:'#f0fbf8', borderBottom:'1px solid var(--jordyn-border)', fontSize:'.8rem', lineHeight:1.5 }}>
             <b>¿Enviar la imagen a {paraEnviar.length} vendedor{paraEnviar.length === 1 ? '' : 'es'}?</b> Le llega a cada uno desde el WhatsApp del sistema, con sus números disponibles.
             {nuevos > 0 && <> Los que nunca le han escrito a ese WhatsApp salen de uno en uno, con unos minutos entre cada uno y solo de día, para que no lo bloqueen.</>}
@@ -1537,9 +1515,7 @@ function ModalCompartirVendedores({ rifa, onClose }) {
           </div>
         )}
         <div style={{ overflowY:'auto', padding:'10px 18px 16px' }}>
-          {verConfig ? (
-            <ConfigVendedoresRifa rifa={rifa} onVolver={() => setVerConfig(false)} onGuardado={cargarVendedores} />
-          ) : !data ? (
+          {!data ? (
             <div style={{ display:'flex', justifyContent:'center', padding:'2rem' }}><div className="jd-spinner" style={{ width:32, height:32 }}></div></div>
           ) : vista.length === 0 ? (
             <div style={{ textAlign:'center', padding:'2rem 1rem', color:'var(--jordyn-muted)', fontSize:'.85rem' }}>{vendedores.length ? 'Ningún vendedor coincide' : 'Esta rifa no tiene números asignados a vendedores'}</div>
@@ -3201,6 +3177,8 @@ export default function GestionRifas() {
       diferido_max_numeros:      r.diferido_max_numeros ?? 10,
       venta_minima:              r.venta_minima ?? 1,
       recordatorios_programados: (Array.isArray(r.recordatorios_programados) ? r.recordatorios_programados : []).map(isoAHoraVE).filter(Boolean),
+      imagenes_ubicacion:        Array.isArray(r.imagenes_ubicacion) ? r.imagenes_ubicacion : [],
+      recordatorio_vendedores:   { ...RECORDATORIO_VENDEDORES_VACIO, ...(r.recordatorio_vendedores || {}) },
     });
     setVendedoresCat([]);
     setSelectedVendorIds([]);
@@ -3269,6 +3247,8 @@ export default function GestionRifas() {
         diferido_max_numeros:  Number(form.diferido_max_numeros) || 10,
         venta_minima:          Math.max(1, Number(form.venta_minima) || 1),
         recordatorios_programados: (form.recordatorios_programados || []).map(horaVEAIso).filter(Boolean),
+        imagenes_ubicacion:    form.imagenes_ubicacion || [],
+        recordatorio_vendedores: form.recordatorio_vendedores || RECORDATORIO_VENDEDORES_VACIO,
       };
       if (editId) {
         await API.put(`/rifas/${editId}`, payload);
@@ -4242,6 +4222,22 @@ export default function GestionRifas() {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* ══ IMÁGENES Y MENSAJE A LOS VENDEDORES ══ */}
+              <div className="col-12">
+                <div style={{ borderTop: '1px solid var(--jordyn-border)', paddingTop: '1.25rem' }}>
+                  <label className="jd-label" style={{ fontSize: '.7rem' }}>
+                    <i className="bi bi-send-fill me-1" style={{ color: '#128c7e' }}></i>
+                    IMÁGENES Y MENSAJE A LOS VENDEDORES
+                  </label>
+                  <ConfigVendedoresRifa
+                    value={{ imagenes_ubicacion: form.imagenes_ubicacion, recordatorio_vendedores: form.recordatorio_vendedores }}
+                    onChange={cambios => setForm(p => ({ ...p, ...cambios }))}
+                    rifaId={editId}
+                    fechaSorteo={form.fecha_sorteo}
+                  />
                 </div>
               </div>
 
