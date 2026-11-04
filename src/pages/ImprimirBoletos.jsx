@@ -188,6 +188,7 @@ export default function ImprimirBoletos() {
   const [vendedores, setVendedores]   = useState([]);
   const [plantilla, setPlantilla]     = useState(null);
   const [todasPlantillas, setTodasPlantillas] = useState([]);
+  const [porCiudad, setPorCiudad]     = useState(null);   // ciudad del diseño puesto solo al elegir el vendedor
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
 
@@ -430,6 +431,28 @@ export default function ImprimirBoletos() {
   );
 
   const digRifa = [2, 4].includes(Number(rifa?.cifras)) ? Number(rifa.cifras) : 3;
+
+  // Los diseños de esta rifa: el principal y el de cada ciudad
+  const disenosRifa = useMemo(() => {
+    const buscar = (id) => todasPlantillas.find(p => String(p.id) === String(id));
+    const principal = buscar(rifa?.ticket_template_id) || todasPlantillas.find(p => p.es_default || p.is_default) || todasPlantillas[0];
+    const lista = principal ? [{ etiqueta: 'Principal', plantilla: principal }] : [];
+    (rifa?.tickets_ubicacion || []).forEach(t => {
+      const p = buscar(t.template_id);
+      if (p) lista.push({ etiqueta: t.ubicacion, ubicacion: t.ubicacion, plantilla: p });
+    });
+    return lista;
+  }, [rifa, todasPlantillas]);
+
+  // Al elegir un vendedor se pone el diseño de su ciudad (o el principal)
+  const elegirVendedor = (v) => {
+    setVendedorId(v.vendedor_id);
+    if (disenosRifa.length < 2) return;
+    const ciudad = String(v.ubicacion || '').trim().toLowerCase();
+    const suyo = ciudad && disenosRifa.find(d => d.ubicacion && d.ubicacion.trim().toLowerCase() === ciudad);
+    setPlantilla((suyo || disenosRifa[0]).plantilla);
+    setPorCiudad(suyo ? suyo.ubicacion : null);
+  };
 
   const numerosImprimir = useMemo(
     () => vendedorActual ? dedupNumeros(vendedorActual.numeros_fijos, digRifa) : [],
@@ -751,6 +774,26 @@ export default function ImprimirBoletos() {
             </p>
           </div>
 
+          {/* Los diseños de la rifa, a un toque */}
+          {disenosRifa.length > 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                Diseño de esta rifa{porCiudad ? ` · puesto por la ciudad (${porCiudad})` : ''}
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {disenosRifa.map(d => {
+                  const on = String(plantilla?.id) === String(d.plantilla.id);
+                  return (
+                    <button key={d.etiqueta} type="button" onClick={() => { setPlantilla(d.plantilla); setPorCiudad(null); }} title={d.plantilla.nombre}
+                      style={{ padding: '7px 12px', borderRadius: 8, border: `2px solid ${on ? '#0abfbc' : '#ccc'}`, background: on ? '#e0f9f8' : '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      {d.etiqueta}<span style={{ display: 'block', fontSize: 10, fontWeight: 500, color: '#666' }}>{d.plantilla.nombre}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Selector manual de plantilla */}
           {todasPlantillas.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -809,7 +852,7 @@ export default function ImprimirBoletos() {
                 return (
                   <button
                     key={v.vendedor_id}
-                    onClick={() => setVendedorId(v.vendedor_id)}
+                    onClick={() => elegirVendedor(v)}
                     style={{
                       ...S.vendedorCard,
                       background: isSelected ? '#e0f9f8' : '#fff',
@@ -823,9 +866,9 @@ export default function ImprimirBoletos() {
                       <div style={S.vendedorNombre}>
                         {v.vendedor_nombre}
                       </div>
-                      {v.cedula && (
+                      {(v.cedula || v.ubicacion) && (
                         <div style={S.vendedorCedula}>
-                          C.I: {v.cedula}
+                          {[v.cedula && `C.I: ${v.cedula}`, v.ubicacion].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </div>

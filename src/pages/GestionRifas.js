@@ -18,6 +18,7 @@ import { DEFAULT_DESIGN } from '../components/Ticket';
 import { useAuth } from '../context/AuthContext';
 import { generarImagenVendedor } from '../utils/imagenVendedor';
 import ConfigVendedoresRifa, { RECORDATORIO_VENDEDORES_VACIO } from '../components/ConfigVendedoresRifa';
+import { useUbicaciones } from '../components/CampoUbicacion';
 
 /* ─── Loterías ─── */
 const LOTERIAS = [
@@ -51,6 +52,7 @@ const emptyForm = {
   // Vendedores: imágenes de cada ciudad (juega el día / mañana / hoy) y el envío programado
   imagenes_ubicacion: [],
   recordatorio_vendedores: RECORDATORIO_VENDEDORES_VACIO,
+  tickets_ubicacion: [],           // diseño de ticket de cada ciudad, para imprimir: [{ ubicacion, template_id }]
 };
 
 // Momento ISO ↔ valor de <input type="datetime-local"> en hora de Venezuela (UTC-4, sin cambio de hora)
@@ -3178,6 +3180,7 @@ export default function GestionRifas() {
       venta_minima:              r.venta_minima ?? 1,
       recordatorios_programados: (Array.isArray(r.recordatorios_programados) ? r.recordatorios_programados : []).map(isoAHoraVE).filter(Boolean),
       imagenes_ubicacion:        Array.isArray(r.imagenes_ubicacion) ? r.imagenes_ubicacion : [],
+      tickets_ubicacion:         Array.isArray(r.tickets_ubicacion) ? r.tickets_ubicacion : [],
       recordatorio_vendedores:   { ...RECORDATORIO_VENDEDORES_VACIO, ...(r.recordatorio_vendedores || {}) },
     });
     setVendedoresCat([]);
@@ -3248,6 +3251,7 @@ export default function GestionRifas() {
         venta_minima:          Math.max(1, Number(form.venta_minima) || 1),
         recordatorios_programados: (form.recordatorios_programados || []).map(horaVEAIso).filter(Boolean),
         imagenes_ubicacion:    form.imagenes_ubicacion || [],
+        tickets_ubicacion:     (form.tickets_ubicacion || []).filter(t => t.ubicacion?.trim() && t.template_id),
         recordatorio_vendedores: form.recordatorio_vendedores || RECORDATORIO_VENDEDORES_VACIO,
       };
       if (editId) {
@@ -4056,6 +4060,13 @@ export default function GestionRifas() {
                       onSelect={id => setForm(p => ({ ...p, ticket_template_id: id }))}
                     />
                   )}
+                  {plantillas.length > 0 && (
+                    <TicketsPorCiudad
+                      plantillas={plantillas}
+                      lista={form.tickets_ubicacion || []}
+                      onChange={lista => setForm(p => ({ ...p, tickets_ubicacion: lista }))}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -4444,6 +4455,42 @@ export default function GestionRifas() {
         />
       )}
     </Layout>
+  );
+}
+
+// Otro diseño para los vendedores de una ciudad (al imprimir se elige solo por la ciudad del vendedor)
+function TicketsPorCiudad({ plantillas, lista, onChange }) {
+  const ubicaciones = useUbicaciones();
+  const cambiar = (i, k, v) => onChange(lista.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px dashed rgba(10,191,188,.3)', paddingTop: 12 }}>
+      <label className="jd-label" style={{ marginBottom: 2 }}>OTRO DISEÑO PARA UNA CIUDAD</label>
+      <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', marginBottom: 8, lineHeight: 1.45 }}>
+        Ej.: San Cristóbal con el ticket de 4 millones. Al imprimir los números de un vendedor de esa ciudad, sale ese diseño solo; los demás usan el de arriba. También se puede cambiar al momento de imprimir.
+      </div>
+      <datalist id="ciudades-ticket">{ubicaciones.map(u => <option key={u.ubicacion} value={u.ubicacion} />)}</datalist>
+      {lista.map((x, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+          <input className="jd-input" list="ciudades-ticket" value={x.ubicacion} maxLength={80} placeholder="Ciudad (ej: San Cristóbal)"
+            onChange={e => cambiar(i, 'ubicacion', e.target.value)} aria-label={`Ciudad del diseño ${i + 1}`} style={{ flex: '1 1 160px', padding: '7px 10px' }} />
+          <select className="jd-select" value={x.template_id || ''} onChange={e => cambiar(i, 'template_id', Number(e.target.value) || '')}
+            aria-label={`Diseño para ${x.ubicacion || 'esa ciudad'}`} style={{ flex: '1 1 180px' }}>
+            <option value="">Elige el diseño…</option>
+            {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+          <button type="button" onClick={() => onChange(lista.filter((_, j) => j !== i))} aria-label="Quitar este diseño"
+            style={{ border: '1.5px solid rgba(230,57,70,.4)', background: 'transparent', color: 'var(--jordyn-red)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer' }}>
+            <i className="bi bi-trash3"></i>
+          </button>
+        </div>
+      ))}
+      {lista.length < 8 && (
+        <button type="button" onClick={() => onChange([...lista, { ubicacion: '', template_id: '' }])}
+          style={{ border: '1.5px dashed rgba(10,191,188,.5)', background: 'rgba(10,191,188,.05)', color: 'var(--jordyn-primary-d)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: '.76rem', fontWeight: 700 }}>
+          <i className="bi bi-plus-lg me-1"></i>Agregar diseño por ciudad
+        </button>
+      )}
+    </div>
   );
 }
 
