@@ -206,7 +206,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
         {stats && (
           <div style={{ fontSize: '.7rem', lineHeight: 1.45, marginTop: 8, color: 'var(--jordyn-muted)' }}>
             Le llegaría a <b>{stats.con_telefono}</b> vendedor{stats.con_telefono === 1 ? '' : 'es'}.
-            {stats.sin_telefono > 0 && <> {stats.sin_telefono} sin teléfono no {stats.sin_telefono === 1 ? 'lo recibe' : 'lo reciben'}.</>}
+            {stats.sin_telefono > 0 && <div style={{ color: stats.con_telefono ? '#a07000' : '#c0392b', fontWeight: 700 }}>{stats.sin_telefono} vendedor{stats.sin_telefono === 1 ? '' : 'es'} sin teléfono no {stats.sin_telefono === 1 ? 'lo recibe' : 'lo reciben'}. Ponles el teléfono en «Números por vendedor» (botón «Agregar teléfono») o en Vendedores.</div>}
             {stats.nuevos > 0 && <> <b>{stats.nuevos}</b> nunca le {stats.nuevos === 1 ? 'ha' : 'han'} escrito a este WhatsApp: {stats.nuevos === 1 ? 'sale' : 'salen'} de a poco y con tope de 30 por día. Si te escriben una vez, les llega al instante.</>}
             {!stats.conectado && <div style={{ color: '#c0392b', fontWeight: 700 }}>WhatsApp no está conectado: mientras tanto no sale nada.</div>}
             {stats.turnos.length > 0 && <div>Últimos envíos: {stats.turnos.map((t) => `${t.turno.slice(5).replace('T', ' ')} (${t.enviados})`).join(' · ')}</div>}
