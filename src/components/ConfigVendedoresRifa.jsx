@@ -13,13 +13,68 @@ import { useUbicaciones } from './CampoUbicacion';
 
 const DEMAS = '*';
 const MAX_MB = 8;
-const DIAS = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
+const SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['tasa', 'Tasa (pesos por Bs)'], ['tasa_pesos', 'Dólar por Zelle (pesos)'], ['tasa_efectivo', 'Dólar en efectivo (automático)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
-const TODOS_LOS_DIAS = [0, 1, 2, 3, 4, 5, 6];
-const vacio = (c) => !c.activo && !c.mensaje && !c.dias.length && !c.horas.length;
+const vacio = (c) => !c.activo && !c.mensaje && !c.fechas.length && !c.dias.length && !c.horas.length;
+// Fechas como 'AAAA-MM-DD' (hora de Venezuela)
+const hoyVE = () => new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+const masDias = (f, n) => { const d = new Date(`${f}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const diaSemana = (f) => new Date(`${f}T12:00:00Z`).getUTCDay();
+const corta = (f) => new Date(`${f}T12:00:00Z`).toLocaleDateString('es-VE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+function rango(desde, hasta) {
+  const out = [];
+  for (let f = desde; f <= hasta && out.length < 120; f = masDias(f, 1)) out.push(f);
+  return out;
+}
+
+// Calendario de hoy al sorteo: se tocan los días en que sale el mensaje.
+// ocupadas: { 'AAAA-MM-DD': ['Otra rifa', ...] } — días que ya tiene marcados otra rifa
+function Calendario({ desde, hasta, sorteo, marcadas, ocupadas, onCambio }) {
+  const meses = [];
+  for (let m = desde.slice(0, 7); m <= hasta.slice(0, 7); m = masDias(`${m}-28`, 7).slice(0, 7)) meses.push(m);
+  const alternar = (f) => onCambio(marcadas.includes(f) ? marcadas.filter((x) => x !== f) : [...marcadas, f].sort());
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 6 }}>
+      {meses.map((m) => {
+        const primero = `${m}-01`;
+        const hueco = (diaSemana(primero) + 6) % 7;   // la semana empieza el lunes
+        const dias = rango(primero, masDias(`${masDias(`${m}-28`, 7).slice(0, 7)}-01`, -1));
+        return (
+          <div key={m} style={{ flex: '1 1 250px', maxWidth: 330, background: '#fff', border: '1px solid var(--jordyn-border)', borderRadius: 12, padding: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: '.8rem', textAlign: 'center', marginBottom: 6 }}>
+              {new Date(`${primero}T12:00:00Z`).toLocaleDateString('es-VE', { month: 'long', year: 'numeric', timeZone: 'UTC' }).replace(/^./, (x) => x.toUpperCase())}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+              {SEMANA.map((d) => <div key={d} style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--jordyn-muted)', textAlign: 'center' }}>{d}</div>)}
+              {Array.from({ length: hueco }, (_, i) => <div key={`h${i}`} />)}
+              {dias.map((f) => {
+                const fuera = f < desde || f > hasta;
+                const on = marcadas.includes(f);
+                const otra = ocupadas[f];
+                const esSorteo = f === sorteo;
+                return (
+                  <button key={f} type="button" disabled={fuera} onClick={() => alternar(f)} aria-pressed={on}
+                    aria-label={`${corta(f)}${esSorteo ? ', día del sorteo' : ''}${otra ? `, ya lo tiene ${otra.join(' y ')}` : ''}`}
+                    title={otra ? `Ya lo tiene: ${otra.join(', ')}` : esSorteo ? 'Día del sorteo' : ''}
+                    style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: 8, fontSize: '.74rem', fontWeight: 800, padding: 0, cursor: fuera ? 'default' : 'pointer',
+                      border: esSorteo ? '2px solid #e0a800' : `1.5px solid ${on ? 'var(--jordyn-primary)' : 'transparent'}`,
+                      background: fuera ? 'transparent' : on ? 'var(--jordyn-primary)' : otra ? '#fff1e0' : 'var(--jordyn-bg2)',
+                      color: fuera ? '#c9d3d3' : on ? '#fff' : 'var(--jordyn-text)' }}>
+                    {Number(f.slice(8))}
+                    {otra && !fuera && <span style={{ position: 'absolute', top: 2, right: 3, width: 6, height: 6, borderRadius: '50%', background: '#e67e22' }} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 const miniatura = (url) => (url && url.includes('/upload/') ? url.replace('/upload/', '/upload/f_auto,q_auto,c_limit,w_160/') : url);
 const hora12 = (h) => new Date(`2026-01-01T${h}:00`).toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit', hour12: true });
-export const RECORDATORIO_VENDEDORES_VACIO = { activo: false, dias: [], horas: [], mensaje: '' };
+export const RECORDATORIO_VENDEDORES_VACIO = { activo: false, fechas: [], dias: [], horas: [], mensaje: '' };
 
 // Las tres imágenes de una ciudad
 const momentos = (fecha) => {
@@ -68,6 +123,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const [defecto, setDefecto] = useState('');
   const [ultimo, setUltimo] = useState(null);   // lo de la última rifa configurada
   const [viejos, setViejos] = useState([]);     // plantillas anteriores del sistema
+  const [otras, setOtras] = useState([]);       // días que ya tienen marcados las otras rifas
   const [listo, setListo] = useState(false);
   const [stats, setStats] = useState(null);
   const [nuevaHora, setNuevaHora] = useState('18:00');
@@ -78,7 +134,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
 
   useEffect(() => {
     API.get('/rifas/vendedores-config/defecto')
-      .then((r) => { setDefecto(r.data.mensaje || ''); setUltimo(r.data.ultimo || null); setViejos(r.data.viejos || []); })
+      .then((r) => { setDefecto(r.data.mensaje || ''); setUltimo(r.data.ultimo || null); setViejos(r.data.viejos || []); setOtras(r.data.ocupadas || []); })
       .catch(() => {}).finally(() => setListo(true));
   }, []);
   // Rifa nueva: arranca con el mensaje y el horario de la última. Si ya estaba encendido
@@ -91,16 +147,21 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
     // Quedó guardada una plantilla anterior del sistema: se muestra la de Jordyn
     else if (defecto && viejos.some((v) => v.trim() === String(cfg.mensaje || '').replace(/\r/g, '').trim())) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
   }, [listo]);
+  // Configurada antes por día de la semana: se pasa a esas fechas del calendario
+  useEffect(() => {
+    if (!cfg.dias.length || cfg.fechas.length || !fechaSorteo) return;
+    const fechas = rango(hoyVE(), String(fechaSorteo).slice(0, 10)).filter((f) => cfg.dias.includes(diaSemana(f)));
+    onChange({ recordatorio_vendedores: { ...cfg, fechas, dias: [] } });
+  }, [cfg.dias.length, fechaSorteo]);
   useEffect(() => {
     if (!rifaId) return;
     API.get(`/rifas/${rifaId}/vendedores-config`).then((r) => setStats(r.data)).catch(() => {});
   }, [rifaId]);
 
   const set = (k, v) => onChange({ recordatorio_vendedores: { ...cfg, [k]: v } });
-  // Al encender sin horario: el de la última rifa, o todos los días a las 8:00 a. m.
+  // Al encender sin horario: las horas de la última rifa, o las 8:00 a. m. Los días se marcan en el calendario.
   const encender = (on) => onChange({ recordatorio_vendedores: on ? {
     ...cfg, activo: true,
-    dias: cfg.dias.length ? cfg.dias : (ultimo?.dias?.length ? ultimo.dias : TODOS_LOS_DIAS),
     horas: cfg.horas.length ? cfg.horas : (ultimo?.horas?.length ? ultimo.horas : ['08:00']),
     mensaje: cfg.mensaje || ultimo?.mensaje || defecto,
   } : { ...cfg, activo: false } });
@@ -112,8 +173,12 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
     onChange({ imagenes_ubicacion: [...imagenes.filter((x) => x.ubicacion !== u), fila] });
   };
   const ciudades = [...new Set([...ubicaciones.map((u) => u.ubicacion), ...(stats?.ubicaciones || []), ...imagenes.map((x) => x.ubicacion).filter((u) => u !== DEMAS)])].sort();
-  const diaOn = (d) => cfg.dias.includes(d);
-  const alternarDia = (d) => set('dias', diaOn(d) ? cfg.dias.filter((x) => x !== d) : [...cfg.dias, d]);
+  const sorteo = fechaSorteo ? String(fechaSorteo).slice(0, 10) : null;
+  const desde = hoyVE();
+  const hasta = sorteo && sorteo >= desde ? sorteo : masDias(desde, 45);
+  const ocupadas = {};
+  for (const o of otras) if (o.rifa_id !== rifaId) for (const f of o.fechas) (ocupadas[f] ||= []).push(o.nombre);
+  const dobles = cfg.fechas.filter((f) => ocupadas[f]);
   const agregarHora = () => {
     if (!nuevaHora || cfg.horas.includes(nuevaHora)) return;
     if (cfg.horas.length >= 4) { toast.error('Máximo 4 horas al día'); return; }
@@ -174,14 +239,23 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
           <input type="checkbox" checked={cfg.activo} onChange={(e) => encender(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--jordyn-primary)' }} />
           Enviarles la publicidad a los vendedores automáticamente
         </label>
-        <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '3px 0 8px', lineHeight: 1.4 }}>Esos días, a esas horas, hasta el sorteo, a cada vendedor de esta rifa le llega la imagen de su ciudad con este mensaje. La próxima rifa que crees arranca con este mismo mensaje y horario.</div>
+        <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '3px 0 8px', lineHeight: 1.4 }}>Los días que marques, a esas horas, a cada vendedor de esta rifa le llega la imagen de su ciudad con este mensaje. La próxima rifa que crees arranca con este mismo mensaje y horas.</div>
 
         {cfg.activo && <>
-          <label className="jd-label">DÍAS</label>
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-            {DIAS.map(([d, t]) => <button key={d} type="button" onClick={() => alternarDia(d)} aria-pressed={diaOn(d)} style={chip(diaOn(d))}>{t}</button>)}
-            <button type="button" onClick={() => set('dias', cfg.dias.length === 7 ? [] : [0, 1, 2, 3, 4, 5, 6])} style={{ ...chip(false), borderStyle: 'dashed' }}>{cfg.dias.length === 7 ? 'Ninguno' : 'Todos'}</button>
+          <label className="jd-label">DÍAS (TOCA EN EL CALENDARIO)</label>
+          {!sorteo && <div style={{ fontSize: '.68rem', color: '#a07000', marginBottom: 6 }}>Pon la fecha del sorteo arriba para ver el calendario hasta ese día.</div>}
+          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={cfg.fechas} ocupadas={ocupadas} onCambio={(f) => set('fechas', f)} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: '.66rem', color: 'var(--jordyn-muted)', marginBottom: 6 }}>
+            <button type="button" onClick={() => set('fechas', rango(desde, hasta).filter((f) => !ocupadas[f]))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días libres hasta el sorteo</button>
+            {cfg.fechas.length > 0 && <button type="button" onClick={() => set('fechas', [])} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px', borderStyle: 'dashed' }}>Quitar todos</button>}
+            <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#e67e22', marginRight: 4 }} />ya lo tiene otra rifa</span>
+            {sorteo && <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 3, border: '2px solid #e0a800', marginRight: 4, verticalAlign: -1 }} />sorteo</span>}
           </div>
+          {cfg.fechas.length > 0 && <div style={{ fontSize: '.7rem', marginBottom: 6 }}><b>{cfg.fechas.length} día{cfg.fechas.length === 1 ? '' : 's'}:</b> {cfg.fechas.map(corta).join(' · ')}</div>}
+          {!cfg.fechas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, marginBottom: 6 }}>Toca en el calendario los días en que sale el mensaje.</div>}
+          {dobles.length > 0 && <div style={{ fontSize: '.72rem', color: '#a05a00', fontWeight: 700, background: '#fff1e0', borderRadius: 8, padding: '6px 8px', marginBottom: 8 }}>
+            <i className="bi bi-exclamation-triangle-fill me-1"></i>Esos días a los vendedores les llega doble: {dobles.map((f) => `${corta(f)} (${ocupadas[f].join(', ')})`).join(' · ')}
+          </div>}
 
           <label className="jd-label">HORAS (VENEZUELA)</label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
@@ -194,7 +268,6 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             <button type="button" onClick={agregarHora} className="btn-jordyn-outline" style={{ fontSize: '.74rem', padding: '6px 10px' }}>Agregar hora</button>
           </div>
           {!cfg.horas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, margin: '-2px 0 8px' }}>Sin una hora no sale nada: elige la hora y toca «Agregar hora».</div>}
-          {!cfg.dias.length && <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '-2px 0 8px' }}>Sin días marcados sale todos los días.</div>}
 
           <label className="jd-label">MENSAJE</label>
           <textarea ref={refTexto} className="jd-input" rows={9} maxLength={1500} value={cfg.mensaje} placeholder={defecto} onChange={(e) => set('mensaje', e.target.value)} />
