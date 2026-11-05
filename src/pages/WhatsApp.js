@@ -4,6 +4,7 @@
  * Tabs:
  *  1. Chats     — conversaciones en tiempo real (estilo WhatsApp Web)
  *  2. Conexión  — QR / código de vinculación, estado, cerrar sesión, reset
+ *  · Número personal — el WhatsApp del dueño (solo código), para los recordatorios
  *  3. Bot e IA  — proveedor de IA, personalidad, datos de pago, anti-bloqueo, simulador
  */
 
@@ -13,6 +14,7 @@ import ChatsWhatsApp from '../components/whatsapp/ChatsWhatsApp';
 import ConfigBot from '../components/whatsapp/ConfigBot';
 import GrupoWhatsApp from '../components/whatsapp/GrupoWhatsApp';
 import ResultadosSorteos from '../components/whatsapp/ResultadosSorteos';
+import NumeroPersonal from '../components/whatsapp/NumeroPersonal';
 import { toast } from 'react-toastify';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'https://rifasjordynb-production.up.railway.app';
@@ -338,6 +340,7 @@ export default function WhatsApp() {
   const tabs = [
     { key: 'chats',    label: 'Chats',     icon: 'bi-chat-dots-fill' },
     { key: 'conexion', label: 'Conexión',  icon: 'bi-wifi' },
+    { key: 'personal', label: 'Número personal', icon: 'bi-person-badge-fill' },
     { key: 'resultados', label: 'Resultados', icon: 'bi-trophy' },
     { key: 'grupo',    label: 'Grupo',     icon: 'bi-people-fill' },
     { key: 'bot',      label: 'Bot e IA',  icon: 'bi-robot' },
@@ -370,6 +373,7 @@ export default function WhatsApp() {
       <div className="fade-in">
         {tab === 'chats'    && <ChatsWhatsApp />}
         {tab === 'conexion' && <TabConexion />}
+        {tab === 'personal' && <NumeroPersonal />}
         {tab === 'resultados' && <ResultadosSorteos />}
         {tab === 'grupo'    && <GrupoWhatsApp />}
         {tab === 'bot'      && <ConfigBot />}
