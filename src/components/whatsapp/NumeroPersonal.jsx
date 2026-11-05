@@ -1,7 +1,7 @@
 // ============================================================
 //  NumeroPersonal.jsx — WhatsApp → Número personal
 //  Vincula el WhatsApp personal del dueño SOLO con código (sin QR) y
-//  elige si los recordatorios de pago salen por ahí. No muestra chats.
+//  lo pone como principal: todos los envíos salen por ahí. No muestra chats.
 //  El número permitido y los términos vienen del backend
 //  (backend/config/numeroPersonal.js).
 // ============================================================
@@ -51,11 +51,14 @@ export default function NumeroPersonal() {
   };
   const pedirCodigo = () => accion('codigo', () => API.post('/numero-personal/codigo', { acepto: true }));
   const desvincular = () => {
-    if (!window.confirm(`¿Desvincular ${d.visible}? Los recordatorios volverán a salir por el número del negocio.`)) return;
+    if (!window.confirm(`¿Desvincular ${d.visible}? Los envíos volverán a salir por el número del negocio.`)) return;
     accion('desvincular', () => API.post('/numero-personal/desvincular'), 'Número personal desvinculado');
   };
-  const cambiarUso = (si) => accion('uso', () => API.put('/numero-personal/uso', { recordatorios: si }),
-    si ? 'Los recordatorios saldrán por tu número personal' : 'Los recordatorios saldrán por el número del negocio');
+  const cambiarUso = (si) => {
+    if (si && !window.confirm('Con tu número personal como principal, todos los envíos salen por él y no habrá respuestas automáticas a lo que te contesten. ¿Continuar?')) return;
+    accion('uso', () => API.put('/numero-personal/uso', { principal: si }),
+      si ? 'Tu número personal es el principal. Te llegará un aviso por WhatsApp.' : 'El número del negocio volvió a ser el principal');
+  };
   const prueba = () => accion('prueba', () => API.post('/numero-personal/prueba', { telefono }), 'Prueba en camino');
 
   if (!d) return <div style={{ padding: 30, textAlign: 'center' }}><span className="jd-spinner"></span></div>;
@@ -75,7 +78,7 @@ export default function NumeroPersonal() {
         </div>
         <div style={{ fontWeight: 900, fontSize: '1.25rem', marginTop: 6 }}>Número personal</div>
         <div style={{ fontSize: '.8rem', opacity: .85, marginTop: 4, maxWidth: 520, lineHeight: 1.45 }}>
-          Los recordatorios de pago a tus clientes salen desde tu propio WhatsApp, sin que tengas que escribirlos uno por uno.
+          Los mensajes del sistema a tus clientes y vendedores salen desde tu propio WhatsApp, sin que tengas que escribirlos uno por uno.
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
           {[['bi-shield-lock-fill', 'Conexión cifrada de extremo a extremo'], ['bi-eye-slash-fill', 'No lee tus chats'], ['bi-speedometer2', 'Envío anti-bloqueo']].map(([i, t]) => (
@@ -149,11 +152,11 @@ export default function NumeroPersonal() {
       {/* ── Uso ── */}
       {conectado && <>
         <div style={tarjeta}>
-          <div style={{ fontWeight: 900, fontSize: '.95rem', marginBottom: 4 }}>¿Por qué número salen los recordatorios de pago?</div>
-          <div style={{ fontSize: '.74rem', color: 'var(--jordyn-muted)', marginBottom: 12 }}>Los clientes con números apartados reciben el recordatorio desde el número que elijas. Si eliges el personal y se desconecta, salen por el del negocio.</div>
+          <div style={{ fontWeight: 900, fontSize: '.95rem', marginBottom: 4 }}>Número principal para enviar</div>
+          <div style={{ fontSize: '.74rem', color: 'var(--jordyn-muted)', marginBottom: 12, lineHeight: 1.45 }}>Por el principal salen todos los envíos: recordatorios de pago, tickets, números y publicidad a vendedores. Si el personal se desconecta, salen por el del negocio.</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {[[false, 'bi-shop', 'Número del negocio', 'Como hasta ahora'], [true, 'bi-person-badge-fill', 'Mi número personal', d.visible]].map(([si, icono, titulo, sub]) => {
-              const on = d.recordatorios === si;
+            {[[false, 'bi-shop', 'Número del negocio', 'Con respuestas automáticas del bot'], [true, 'bi-person-badge-fill', 'Mi número personal', `${d.visible} · sin respuestas automáticas`]].map(([si, icono, titulo, sub]) => {
+              const on = d.principal === si;
               return (
                 <button key={titulo} type="button" disabled={!!ocupado} onClick={() => !on && cambiarUso(si)} aria-pressed={on}
                   style={{ flex: '1 1 200px', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: on ? 'default' : 'pointer',
@@ -165,6 +168,9 @@ export default function NumeroPersonal() {
               );
             })}
           </div>
+          {d.principal && <div role="note" style={{ marginTop: 10, fontSize: '.74rem', fontWeight: 700, color: '#8a5a00', background: '#fff6e5', border: '1px solid #f1d39a', borderRadius: 10, padding: '8px 10px' }}>
+            <i className="bi bi-robot me-1"></i>No tendremos respuestas automáticas mientras tu número personal esté como principal: lo que te contesten llega a tu teléfono.
+          </div>}
         </div>
 
         <div style={tarjeta}>
