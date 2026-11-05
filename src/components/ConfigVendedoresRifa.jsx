@@ -89,7 +89,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
     else if (!rifaId && vacio(cfg) && defecto) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
     else if (cfg.activo && !cfg.mensaje && (ultimo?.mensaje || defecto)) onChange({ recordatorio_vendedores: { ...cfg, mensaje: ultimo?.mensaje || defecto } });
     // Quedó guardada una plantilla anterior del sistema: se muestra la de Jordyn
-    else if (defecto && viejos.some((v) => v.trim() === String(cfg.mensaje || '').replace(//g, '').trim())) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
+    else if (defecto && viejos.some((v) => v.trim() === String(cfg.mensaje || '').replace(/\r/g, '').trim())) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
   }, [listo]);
   useEffect(() => {
     if (!rifaId) return;
