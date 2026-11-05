@@ -198,7 +198,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             {VARIABLES.map(([k, t]) => <button key={k} type="button" onClick={() => insertar(k)} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 7px' }}>{t}</button>)}
           </div>
           <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.4 }}>
-            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa» es a cuánto se recibe el bolívar en pesos (ej. 3,19). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {CUANDO}, sale en mayúsculas: «EL SÁBADO».
+            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa» es a cuánto se recibe el bolívar en pesos (ej. 3,19). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
             {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar el mensaje modelo</button></>}
           </div>
         </>}
