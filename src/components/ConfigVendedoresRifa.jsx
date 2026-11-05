@@ -67,6 +67,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const ubicaciones = useUbicaciones();
   const [defecto, setDefecto] = useState('');
   const [ultimo, setUltimo] = useState(null);   // lo de la última rifa configurada
+  const [viejos, setViejos] = useState([]);     // plantillas anteriores del sistema
   const [listo, setListo] = useState(false);
   const [stats, setStats] = useState(null);
   const [nuevaHora, setNuevaHora] = useState('18:00');
@@ -77,7 +78,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
 
   useEffect(() => {
     API.get('/rifas/vendedores-config/defecto')
-      .then((r) => { setDefecto(r.data.mensaje || ''); setUltimo(r.data.ultimo || null); })
+      .then((r) => { setDefecto(r.data.mensaje || ''); setUltimo(r.data.ultimo || null); setViejos(r.data.viejos || []); })
       .catch(() => {}).finally(() => setListo(true));
   }, []);
   // Rifa nueva: arranca con el mensaje y el horario de la última. Si ya estaba encendido
@@ -87,6 +88,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
     if (!rifaId && vacio(cfg) && ultimo) onChange({ recordatorio_vendedores: { ...RECORDATORIO_VENDEDORES_VACIO, ...ultimo, mensaje: ultimo.mensaje || defecto } });
     else if (!rifaId && vacio(cfg) && defecto) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
     else if (cfg.activo && !cfg.mensaje && (ultimo?.mensaje || defecto)) onChange({ recordatorio_vendedores: { ...cfg, mensaje: ultimo?.mensaje || defecto } });
+    // Quedó guardada una plantilla anterior del sistema: se muestra la de Jordyn
+    else if (defecto && viejos.some((v) => v.trim() === String(cfg.mensaje || '').replace(//g, '').trim())) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
   }, [listo]);
   useEffect(() => {
     if (!rifaId) return;
