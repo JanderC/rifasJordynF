@@ -84,7 +84,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   // sin texto, se muestra el texto que se iba a enviar para poder corregirlo.
   useEffect(() => {
     if (!listo) return;
-    if (!rifaId && vacio(cfg) && ultimo) onChange({ recordatorio_vendedores: { ...RECORDATORIO_VENDEDORES_VACIO, ...ultimo } });
+    if (!rifaId && vacio(cfg) && ultimo) onChange({ recordatorio_vendedores: { ...RECORDATORIO_VENDEDORES_VACIO, ...ultimo, mensaje: ultimo.mensaje || defecto } });
+    else if (!rifaId && vacio(cfg) && defecto) onChange({ recordatorio_vendedores: { ...cfg, mensaje: defecto } });
     else if (cfg.activo && !cfg.mensaje && (ultimo?.mensaje || defecto)) onChange({ recordatorio_vendedores: { ...cfg, mensaje: ultimo?.mensaje || defecto } });
   }, [listo]);
   useEffect(() => {
@@ -199,7 +200,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
           </div>
           <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.4 }}>
             Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa» es a cuánto se recibe el bolívar en pesos (ej. 3,19). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
-            {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar el mensaje modelo</button></>}
+            {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar la plantilla</button></>}
           </div>
         </>}
 
