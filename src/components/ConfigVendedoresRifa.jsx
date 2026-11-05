@@ -2,7 +2,9 @@
 //  ConfigVendedoresRifa.jsx — Rifas → crear / editar rifa
 //  La publicidad de cada ciudad (tres imágenes: "juega el sábado",
 //  "juega mañana" y "juega hoy") y el mensaje programado a los
-//  vendedores. Se guarda junto con la rifa.
+//  vendedores. Se guarda junto con la rifa. El programado manda la
+//  publicidad sola (sin números) y una rifa nueva arranca con el último
+//  mensaje y horario que se usó.
 // ============================================================
 import React, { useEffect, useRef, useState } from 'react';
 import API from '../services/api';
@@ -12,7 +14,9 @@ import { useUbicaciones } from './CampoUbicacion';
 const DEMAS = '*';
 const MAX_MB = 8;
 const DIAS = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
-const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'Hoy / Mañana'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['tasa', 'Tasa Bs'], ['tasa_pesos', 'Tasa pesos'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números']];
+const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['tasa', 'Tasa (pesos por Bs)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
+const TODOS_LOS_DIAS = [0, 1, 2, 3, 4, 5, 6];
+const vacio = (c) => !c.activo && !c.mensaje && !c.dias.length && !c.horas.length;
 const miniatura = (url) => (url && url.includes('/upload/') ? url.replace('/upload/', '/upload/f_auto,q_auto,c_limit,w_160/') : url);
 const hora12 = (h) => new Date(`2026-01-01T${h}:00`).toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit', hour12: true });
 export const RECORDATORIO_VENDEDORES_VACIO = { activo: false, dias: [], horas: [], mensaje: '' };
@@ -62,6 +66,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const cfg = { ...RECORDATORIO_VENDEDORES_VACIO, ...(value.recordatorio_vendedores || {}) };
   const ubicaciones = useUbicaciones();
   const [defecto, setDefecto] = useState('');
+  const [ultimo, setUltimo] = useState(null);   // lo de la última rifa configurada
+  const [listo, setListo] = useState(false);
   const [stats, setStats] = useState(null);
   const [nuevaHora, setNuevaHora] = useState('18:00');
   const [ocupado, setOcupado] = useState(false);
@@ -69,13 +75,31 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const [telefono, setTelefono] = useState('');
   const refTexto = useRef();
 
-  useEffect(() => { API.get('/rifas/vendedores-config/defecto').then((r) => setDefecto(r.data.mensaje)).catch(() => {}); }, []);
+  useEffect(() => {
+    API.get('/rifas/vendedores-config/defecto')
+      .then((r) => { setDefecto(r.data.mensaje || ''); setUltimo(r.data.ultimo || null); })
+      .catch(() => {}).finally(() => setListo(true));
+  }, []);
+  // Rifa nueva: arranca con el mensaje y el horario de la última. Si ya estaba encendido
+  // sin texto, se muestra el texto que se iba a enviar para poder corregirlo.
+  useEffect(() => {
+    if (!listo) return;
+    if (!rifaId && vacio(cfg) && ultimo) onChange({ recordatorio_vendedores: { ...RECORDATORIO_VENDEDORES_VACIO, ...ultimo } });
+    else if (cfg.activo && !cfg.mensaje && (ultimo?.mensaje || defecto)) onChange({ recordatorio_vendedores: { ...cfg, mensaje: ultimo?.mensaje || defecto } });
+  }, [listo]);
   useEffect(() => {
     if (!rifaId) return;
     API.get(`/rifas/${rifaId}/vendedores-config`).then((r) => setStats(r.data)).catch(() => {});
   }, [rifaId]);
 
   const set = (k, v) => onChange({ recordatorio_vendedores: { ...cfg, [k]: v } });
+  // Al encender sin horario: el de la última rifa, o todos los días a las 8:00 a. m.
+  const encender = (on) => onChange({ recordatorio_vendedores: on ? {
+    ...cfg, activo: true,
+    dias: cfg.dias.length ? cfg.dias : (ultimo?.dias?.length ? ultimo.dias : TODOS_LOS_DIAS),
+    horas: cfg.horas.length ? cfg.horas : (ultimo?.horas?.length ? ultimo.horas : ['08:00']),
+    mensaje: cfg.mensaje || ultimo?.mensaje || defecto,
+  } : { ...cfg, activo: false } });
   const filaDe = (u) => imagenes.find((x) => x.ubicacion === u) || {};
   const cambiarImagen = (u, momento, url) => {
     const fila = { ...filaDe(u), ubicacion: u, [momento]: url };
@@ -133,7 +157,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
       <div style={caja}>
         <div style={{ fontWeight: 800, fontSize: '.86rem' }}>Imágenes por ciudad</div>
         <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', marginBottom: 4, lineHeight: 1.4 }}>
-          A cada vendedor le llega la de su ciudad con sus números. El sistema elige sola la del día: «juega el {momentos(fechaSorteo)[0][1].replace('Juega el ', '')}» hasta dos días antes, «mañana» la víspera y «hoy» el día del sorteo.
+          A cada vendedor le llega la de su ciudad, sin números (los números se mandan desde «Números por vendedor»). El sistema elige sola la del día: «juega el {momentos(fechaSorteo)[0][1].replace('Juega el ', '')}» hasta dos días antes, «mañana» la víspera y «hoy» el día del sorteo.
         </div>
         {ciudades.map((u) => fila(u, u))}
         {fila(DEMAS, ciudades.length ? 'Las demás ciudades' : 'Todos los vendedores')}
@@ -143,10 +167,10 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
 
       <div style={caja}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '.86rem', cursor: 'pointer' }}>
-          <input type="checkbox" checked={cfg.activo} onChange={(e) => set('activo', e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--jordyn-primary)' }} />
-          Enviarles la imagen a los vendedores automáticamente
+          <input type="checkbox" checked={cfg.activo} onChange={(e) => encender(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--jordyn-primary)' }} />
+          Enviarles la publicidad a los vendedores automáticamente
         </label>
-        <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '3px 0 8px', lineHeight: 1.4 }}>Esos días, a esas horas, hasta el sorteo. A cada uno le llega su imagen con los números que le quedan libres y este mensaje.</div>
+        <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '3px 0 8px', lineHeight: 1.4 }}>Esos días, a esas horas, hasta el sorteo, a cada vendedor de esta rifa le llega la imagen de su ciudad con este mensaje. La próxima rifa que crees arranca con este mismo mensaje y horario.</div>
 
         {cfg.activo && <>
           <label className="jd-label">DÍAS</label>
@@ -165,13 +189,18 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             <input className="jd-input" type="time" value={nuevaHora} onChange={(e) => setNuevaHora(e.target.value)} aria-label="Hora" style={{ width: 130, padding: '6px 10px' }} />
             <button type="button" onClick={agregarHora} className="btn-jordyn-outline" style={{ fontSize: '.74rem', padding: '6px 10px' }}>Agregar hora</button>
           </div>
+          {!cfg.horas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, margin: '-2px 0 8px' }}>Sin una hora no sale nada: elige la hora y toca «Agregar hora».</div>}
+          {!cfg.dias.length && <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '-2px 0 8px' }}>Sin días marcados sale todos los días.</div>}
 
           <label className="jd-label">MENSAJE</label>
-          <textarea ref={refTexto} className="jd-input" rows={7} maxLength={1500} value={cfg.mensaje} placeholder={defecto} onChange={(e) => set('mensaje', e.target.value)} />
+          <textarea ref={refTexto} className="jd-input" rows={9} maxLength={1500} value={cfg.mensaje} placeholder={defecto} onChange={(e) => set('mensaje', e.target.value)} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
             {VARIABLES.map(([k, t]) => <button key={k} type="button" onClick={() => insertar(k)} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 7px' }}>{t}</button>)}
           </div>
-          <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>Vacío = el mensaje de arriba en gris. «Valor del ticket» es el precio de la rifa; si fuera de Rubio cuesta distinto, mejor que vaya en la imagen.</div>
+          <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.4 }}>
+            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa» es a cuánto se recibe el bolívar en pesos (ej. 3,19). Entre asteriscos va en negrita: *así*.
+            {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar el mensaje modelo</button></>}
+          </div>
         </>}
 
         {stats && (
@@ -192,7 +221,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             <input className="jd-input" type="tel" inputMode="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Tu WhatsApp: 04121234567" aria-label="Teléfono para la prueba" style={{ flex: '1 1 170px', padding: '6px 10px' }} />
             <button type="button" className="btn-jordyn-outline" onClick={enviarPrueba} disabled={ocupado || !telefono.trim()} style={{ fontSize: '.74rem', padding: '6px 10px' }}>Enviarme una prueba</button>
           </div>
-          <div style={{ fontSize: '.64rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>Usa lo que tienes en pantalla, aunque no hayas guardado. Toca «Ver» debajo de una imagen para ver cómo queda con los números.</div>
+          <div style={{ fontSize: '.64rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>Usa lo que tienes en pantalla, aunque no hayas guardado. Toca «Ver» debajo de una imagen para ver cómo le llega a un vendedor.</div>
         </div>
       ) : (
         <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', marginBottom: 10 }}>Al guardar la rifa y asignar los vendedores, podrás ver el ejemplo y enviarte una prueba.</div>
@@ -205,7 +234,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
               <b style={{ fontSize: '.85rem' }}>Ejemplo: {ejemplo.vendedor}</b>
               <button type="button" onClick={() => setEjemplo(null)} aria-label="Cerrar ejemplo" style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer' }}><i className="bi bi-x-lg"></i></button>
             </div>
-            <img src={ejemplo.imagen} alt={`Ejemplo de ${ejemplo.vendedor}`} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+            {ejemplo.imagen ? <img src={ejemplo.imagen} alt={`Ejemplo de ${ejemplo.vendedor}`} style={{ width: '100%', borderRadius: 8, display: 'block' }} />
+              : <div style={{ fontSize: '.74rem', color: '#a07000' }}>Sin imagen para esa ciudad ni foto de la rifa: sale solo el texto.</div>}
             <div style={{ whiteSpace: 'pre-wrap', fontSize: '.78rem', background: '#e7fbd9', borderRadius: 8, padding: 10, marginTop: 8 }}>{ejemplo.texto}</div>
           </div>
         </div>

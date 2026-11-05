@@ -448,8 +448,9 @@ export default function ImprimirBoletos() {
   const elegirVendedor = (v) => {
     setVendedorId(v.vendedor_id);
     if (disenosRifa.length < 2) return;
-    const ciudad = String(v.ubicacion || '').trim().toLowerCase();
-    const suyo = ciudad && disenosRifa.find(d => d.ubicacion && d.ubicacion.trim().toLowerCase() === ciudad);
+    const k = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const ciudad = k(v.ubicacion);
+    const suyo = ciudad && disenosRifa.find(d => d.ubicacion && k(d.ubicacion) === ciudad);
     setPlantilla((suyo || disenosRifa[0]).plantilla);
     setPorCiudad(suyo ? suyo.ubicacion : null);
   };

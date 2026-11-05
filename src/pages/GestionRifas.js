@@ -1401,8 +1401,9 @@ function ModalCompartirVendedores({ rifa, onClose }) {
     const faltan = Math.round((new Date(`${String(rifa.fecha_sorteo).slice(0, 10)}T12:00:00Z`) - new Date(`${hoy}T12:00:00Z`)) / 864e5);
     const momento = faltan <= 0 ? 'hoy' : faltan === 1 ? 'manana' : 'dia';
     const de = (f) => f && (f[momento] || f.dia || f.imagen || f.manana || f.hoy);
-    const ciudad = String(v.ubicacion || '').trim().toLowerCase();
-    return (ciudad && de(lista.find(x => x.ubicacion.trim().toLowerCase() === ciudad)))
+    const k = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const ciudad = k(v.ubicacion);
+    return (ciudad && de(lista.find(x => k(x.ubicacion) === ciudad)))
       || de(lista.find(x => x.ubicacion === '*')) || rifa.imagen_url;
   };
 
@@ -3216,6 +3217,7 @@ export default function GestionRifas() {
     e.preventDefault();
     if (!form.nombre || !form.premio || !form.precio) { toast.error('Nombre, premio y precio son requeridos'); return; }
     if (form.pago_diferido && !form.fecha_sorteo) { toast.error('Para permitir apartar sin pagar la rifa necesita fecha de sorteo'); return; }
+    if (form.recordatorio_vendedores?.activo && !form.recordatorio_vendedores.horas?.length) { toast.error('El mensaje a los vendedores necesita al menos una hora (toca «Agregar hora»)'); return; }
     setSaving(true);
     try {
       // Solo los vendedores marcados con checkbox
