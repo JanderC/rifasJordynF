@@ -14,7 +14,7 @@ import { useUbicaciones } from './CampoUbicacion';
 const DEMAS = '*';
 const MAX_MB = 8;
 const SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['precio_bs', 'Valor del ticket en Bs'], ['tasa', 'Tasa Bs'], ['tasa_pesos', 'Dólar por Zelle (pesos)'], ['tasa_efectivo', 'Dólar en efectivo (automático)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
+const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['precio_bs', 'Valor del ticket en Bs'], ['premio', 'Premio'], ['tasa', 'Tasa Bs'], ['tasa_pesos', 'Dólar por Zelle (pesos)'], ['tasa_efectivo', 'Dólar en efectivo (automático)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
 const vacio = (c) => !c.activo && !c.mensaje && !c.fechas.length && !c.dias.length && !c.horas.length;
 // Fechas como 'AAAA-MM-DD' (hora de Venezuela)
 const hoyVE = () => new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
@@ -166,6 +166,12 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
     mensaje: cfg.mensaje || ultimo?.mensaje || defecto,
   } : { ...cfg, activo: false } });
   const filaDe = (u) => imagenes.find((x) => x.ubicacion === u) || {};
+  // Precio y premio de esa ciudad (vacío = los de la rifa)
+  const cambiarDato = (u, k, val) => {
+    const fila = { ...filaDe(u), ubicacion: u, [k]: val };
+    if (val === '' || val == null) delete fila[k];
+    onChange({ imagenes_ubicacion: [...imagenes.filter((x) => x.ubicacion !== u), fila] });
+  };
   const cambiarImagen = (u, momento, url) => {
     const fila = { ...filaDe(u), ubicacion: u, [momento]: url };
     if (!url) delete fila[momento];
@@ -218,6 +224,16 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             onEjemplo={rifaId && !ocupado ? () => verEjemplo(u, m) : null} />
         ))}
       </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, maxWidth: 420 }}>
+        <input className="jd-input" type="number" inputMode="decimal" min="0" step="any" value={filaDe(u).precio ?? ''} onChange={(e) => cambiarDato(u, 'precio', e.target.value)}
+          placeholder="Precio aquí (vacío = el de la rifa)" aria-label={`Precio del ticket en ${etiqueta}`} style={{ flex: '1 1 150px', padding: '6px 10px', fontSize: '.78rem' }} />
+        <select className="jd-input" value={filaDe(u).moneda || 'COP'} onChange={(e) => cambiarDato(u, 'moneda', e.target.value)} aria-label={`Moneda del precio en ${etiqueta}`} style={{ flex: '0 0 100px', padding: '6px 8px', fontSize: '.78rem' }}>
+          <option value="COP">pesos</option>
+          <option value="USD">dólares</option>
+        </select>
+        <input className="jd-input" type="text" maxLength={80} value={filaDe(u).premio ?? ''} onChange={(e) => cambiarDato(u, 'premio', e.target.value)}
+          placeholder="Premio aquí (ej. 2 millones)" aria-label={`Premio en ${etiqueta}`} style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: '.78rem' }} />
+      </div>
     </div>
   );
 
@@ -226,7 +242,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
       <div style={caja}>
         <div style={{ fontWeight: 800, fontSize: '.86rem' }}>Imágenes por ciudad</div>
         <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', marginBottom: 4, lineHeight: 1.4 }}>
-          A cada vendedor le llega la de su ciudad, sin números (los números se mandan desde «Números por vendedor»). El sistema elige sola la del día: «juega el {momentos(fechaSorteo)[0][1].replace('Juega el ', '')}» hasta dos días antes, «mañana» la víspera y «hoy» el día del sorteo.
+          A cada vendedor le llega la de su ciudad, sin números (los números se mandan desde «Números por vendedor»), con el precio y el premio de su ciudad si los pones. El sistema elige sola la del día: «juega el {momentos(fechaSorteo)[0][1].replace('Juega el ', '')}» hasta dos días antes, «mañana» la víspera y «hoy» el día del sorteo.
         </div>
         {ciudades.map((u) => fila(u, u))}
         {fila(DEMAS, ciudades.length ? 'Las demás ciudades' : 'Todos los vendedores')}
