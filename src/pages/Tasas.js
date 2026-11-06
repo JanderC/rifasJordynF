@@ -27,19 +27,6 @@ const fmtFecha = f =>
 
 /* ─── Config visual de cada tasa ─── */
 const TASAS_CONFIG = {
-  COP_POR_BS: {
-    label:       'Tasa del bolívar en pesos',
-    descripcion: 'Cuántos pesos vale 1 bolívar. La escribes tú. Es la que sale como «BS» en el mensaje a los vendedores, y con ella se saca el precio en bolívares (precio en pesos ÷ esta tasa).',
-    icono:       '💱',
-    monedaBase:  'pesos',
-    monedaRef:   'Bs',
-    placeholder: '3',
-    step:        '0.01',
-    hint:    v => `1.000 Bs × ${new Intl.NumberFormat('es-CO').format(v)} = ${fmtCOP(1000 * v)}`,
-    ejemplo: v => `Un ticket de ${fmtCOP(12000)} = ${new Intl.NumberFormat('es-VE', { maximumFractionDigits: 2 }).format(12000 / v)} Bs`,
-    accentColor: '#16a34a',
-    accentAlpha: 'rgba(22,163,74,',
-  },
   COP_POR_USD: {
     label:       'Tasa COP / USD — solo Zelle',
     descripcion: 'Pesos colombianos por 1 dólar. Solo se usa para cobrar por Zelle. No afecta lo que se cobra en bolívares.',
@@ -340,8 +327,9 @@ export default function Tasas() {
   };
 
   // Orden fijo: COP primero, BSD segundo
-  const ORDER  = ['COP_POR_BS', 'COP_POR_USD', 'BSD_POR_USD', 'COP_POR_USD_BS'];
-  const allKeys = { ...TASAS_CONFIG, ...tasas };
+  const ORDER  = ['COP_POR_USD', 'BSD_POR_USD', 'COP_POR_USD_BS'];
+  const OCULTAS = ['COP_POR_BS'];   // la tasa manual del bolívar que hubo un día: ya no se usa
+  const allKeys = Object.fromEntries(Object.entries({ ...TASAS_CONFIG, ...tasas }).filter(([k]) => !OCULTAS.includes(k)));
   const claves = [
     ...ORDER.filter(k => k in allKeys),
     ...Object.keys(allKeys).filter(k => !ORDER.includes(k)),

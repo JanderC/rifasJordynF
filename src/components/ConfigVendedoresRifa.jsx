@@ -14,7 +14,7 @@ import { useUbicaciones } from './CampoUbicacion';
 const DEMAS = '*';
 const MAX_MB = 8;
 const SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['precio_bs', 'Valor del ticket en Bs'], ['tasa', 'Tasa Bs (la de Tasas)'], ['tasa_pesos', 'Dólar por Zelle (pesos)'], ['tasa_efectivo', 'Dólar en efectivo (automático)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
+const VARIABLES = [['nombre', 'Nombre'], ['cuando', 'El sábado / Mañana / Hoy'], ['rifa', 'Rifa'], ['fecha', 'Fecha del sorteo'], ['precio', 'Valor del ticket'], ['precio_bs', 'Valor del ticket en Bs'], ['tasa', 'Tasa Bs'], ['tasa_pesos', 'Dólar por Zelle (pesos)'], ['tasa_efectivo', 'Dólar en efectivo (automático)'], ['tasa_bcv', 'Dólar BCV'], ['tasa_dolar', 'Bs por dólar'], ['cuentas', 'Cuentas'], ['cantidad', 'Cuántos números le quedan']];
 const vacio = (c) => !c.activo && !c.mensaje && !c.fechas.length && !c.dias.length && !c.horas.length;
 // Fechas como 'AAAA-MM-DD' (hora de Venezuela)
 const hoyVE = () => new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
@@ -275,7 +275,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             {VARIABLES.map(([k, t]) => <button key={k} type="button" onClick={() => insertar(k)} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 7px' }}>{t}</button>)}
           </div>
           <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.4 }}>
-            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa Bs» es la que pones en Tasas → «Tasa del bolívar en pesos» (ej. 3: 1.000 Bs = 3.000 pesos). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
+            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa Bs» sale sola: dólar colombiano ÷ dólar paralelo (ej. 3.229 ÷ 1.009 = 3,20). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
             {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar la plantilla</button></>}
           </div>
         </>}
