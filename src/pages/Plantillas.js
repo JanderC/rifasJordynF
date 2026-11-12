@@ -128,9 +128,14 @@ export default function Plantillas() {
           Crea distintos diseños de boletos y asígnalos a cada rifa.
           {' '}<b style={{ color:'var(--jordyn-text)' }}>{plantillas.length}</b> {plantillas.length === 1 ? 'plantilla' : 'plantillas'}.
         </div>
-        <button className="btn-jordyn" onClick={handleNueva}>
-          <i className="bi bi-plus-lg me-1"></i>Nueva plantilla
-        </button>
+        <div className="d-flex gap-2 flex-wrap">
+          <button className="btn-jordyn-outline" onClick={() => nav('/plantillas/talonario')}>
+            <i className="bi bi-grid-3x3-gap-fill me-1"></i>Talonario de 3 números
+          </button>
+          <button className="btn-jordyn" onClick={handleNueva}>
+            <i className="bi bi-plus-lg me-1"></i>Nueva plantilla
+          </button>
+        </div>
       </div>
 
       {loading ? (

@@ -15,6 +15,7 @@ import Historial         from './pages/Historial';
 import Caja              from './pages/Caja';
 import DisenoTicket         from './pages/DisenoTicket';
 import Plantillas            from './pages/Plantillas';
+import TalonarioTriple       from './pages/TalonarioTriple';
 import GeneradorPDFTickets  from './pages/GeneradorPDFTickets';
 import ImprimirBoletos     from './pages/ImprimirBoletos';
 import ClientePublico       from './pages/ClientePublico';
@@ -83,6 +84,7 @@ function AppRoutes() {
       {/* ── DISEÑO DE TICKETS (sistema de plantillas) ── */}
       <Route path="/plantillas"        element={<PrivateRoute rol="dueno"><Plantillas /></PrivateRoute>} />
       <Route path="/plantillas/nueva"  element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
+      <Route path="/plantillas/talonario" element={<PrivateRoute rol="dueno"><TalonarioTriple /></PrivateRoute>} />
       <Route path="/plantillas/:id"    element={<PrivateRoute rol="dueno"><DisenoTicket /></PrivateRoute>} />
 
       {/* Compatibilidad: /diseno-ticket redirige a /plantillas */}
