@@ -117,7 +117,8 @@ function Imagen({ etiqueta, url, onCambio, onEjemplo }) {
 }
 
 // value: { imagenes_ubicacion, recordatorio_vendedores } · onChange(cambios) · rifaId: solo al editar
-export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSorteo }) {
+// onChoques(n): cuántos envíos de esta rifa quedan a la misma hora que otro (para no dejar guardar)
+export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSorteo, onChoques }) {
   const imagenes = Array.isArray(value.imagenes_ubicacion) ? value.imagenes_ubicacion : [];
   const cfg = { ...RECORDATORIO_VENDEDORES_VACIO, ...(value.recordatorio_vendedores || {}) };
   const ubicaciones = useUbicaciones();
@@ -185,7 +186,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const desde = hoyVE();
   const hasta = sorteo && sorteo >= desde ? sorteo : masDias(desde, 45);
   const ocupadas = {};
-  for (const o of otras) if (o.rifa_id !== rifaId) for (const f of o.fechas) (ocupadas[f] ||= []).push(o.nombre);
+  for (const o of otras) if (o.rifa_id !== rifaId && o.tipo !== 'tablita') for (const f of o.fechas) (ocupadas[f] ||= []).push(o.nombre);
   const dobles = cfg.fechas.filter((f) => ocupadas[f]);
   // La tablita (publicidad con los números de cada uno): su propio calendario y horas
   const tb = { ...TABLITA_VACIA, ...(cfg.tablita || {}) };
@@ -193,16 +194,74 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const encenderTb = (on) => onChange({ recordatorio_vendedores: { ...cfg, tablita: on
     ? { ...tb, activo: true, horas: tb.horas.length ? tb.horas : ['08:00'] }
     : { ...tb, activo: false } } });
+
+  // ── Horas ocupadas: dos envíos automáticos no pueden salir con menos de 30 minutos el mismo día
+  // (de otras rifas, y en esta rifa la publicidad contra la tablita)
+  const aMin = (h) => { const [a, b] = String(h).split(':').map(Number); return a * 60 + b; };
+  const SEPARACION = 30;
+  const horariosOtros = (tipo) => [
+    ...otras.filter((o) => o.rifa_id !== rifaId).map((o) => ({ ...o, quien: `«${o.nombre}» (${o.tipo === 'tablita' ? 'tablita' : 'publicidad'})` })),
+    ...(tipo === 'publicidad'
+      ? (tb.activo ? [{ fechas: tb.fechas, horas: tb.horas, quien: 'la tablita de esta rifa' }] : [])
+      : (cfg.activo ? [{ fechas: cfg.fechas, horas: cfg.horas, quien: 'la publicidad de esta rifa' }] : [])),
+  ];
+  const choque = (tipo, fecha, hora) => {
+    for (const o of horariosOtros(tipo)) {
+      if (!(o.fechas || []).includes(fecha)) continue;
+      const h = (o.horas || []).find((x) => Math.abs(aMin(x) - aMin(hora)) < SEPARACION);
+      if (h) return { fecha, hora, quien: o.quien, horaOtro: h };
+    }
+    return null;
+  };
+  const choquesDe = (tipo, fechas, horas) => fechas.flatMap((f) => horas.map((h) => choque(tipo, f, h)).filter(Boolean));
+  const avisarChoque = (c) => toast.error(`A las ${hora12(c.horaOtro)} del ${corta(c.fecha)} ya sale ${c.quien}. Elige otra hora (al menos ${SEPARACION} minutos de diferencia).`, { autoClose: 6000 });
+  // Horas que ya tienen otros envíos en los días marcados (para elegir otra)
+  const horasOcupadas = (tipo, fechas) => {
+    const m = new Map();
+    for (const o of horariosOtros(tipo)) {
+      if (!(o.fechas || []).some((f) => fechas.includes(f))) continue;
+      for (const h of o.horas || []) m.set(h, [...new Set([...(m.get(h) || []), o.quien])]);
+    }
+    return [...m.entries()].sort(([a], [b]) => aMin(a) - aMin(b));
+  };
+  const choquesPubli = cfg.activo ? choquesDe('publicidad', cfg.fechas, cfg.horas) : [];
+  const choquesTb = tb.activo ? choquesDe('tablita', tb.fechas, tb.horas) : [];
+  const totalChoques = choquesPubli.length + choquesTb.length;
+  useEffect(() => { onChoques?.(totalChoques); }, [totalChoques]); // eslint-disable-line
+
   const agregarHoraT = () => {
     if (!nuevaHoraT || tb.horas.includes(nuevaHoraT)) return;
     if (tb.horas.length >= 4) { toast.error('Máximo 4 horas al día'); return; }
+    const c = choquesDe('tablita', tb.fechas, [nuevaHoraT])[0];
+    if (c) { avisarChoque(c); return; }
     setTb('horas', [...tb.horas, nuevaHoraT].sort());
   };
   const agregarHora = () => {
     if (!nuevaHora || cfg.horas.includes(nuevaHora)) return;
     if (cfg.horas.length >= 4) { toast.error('Máximo 4 horas al día'); return; }
+    const c = choquesDe('publicidad', cfg.fechas, [nuevaHora])[0];
+    if (c) { avisarChoque(c); return; }
     set('horas', [...cfg.horas, nuevaHora].sort());
   };
+  // Marcar días: un día que choca con las horas ya puestas no se marca
+  const cambiarFechas = (tipo, nuevas, actuales, horas, poner) => {
+    const agregadas = nuevas.filter((f) => !actuales.includes(f));
+    const malos = agregadas.map((f) => horas.map((h) => choque(tipo, f, h)).find(Boolean)).filter(Boolean);
+    if (malos.length === 1 && agregadas.length === 1) { avisarChoque(malos[0]); return; }
+    const fuera = new Set(malos.map((m) => m.fecha));
+    if (fuera.size) toast.warn(`${fuera.size} día${fuera.size === 1 ? '' : 's'} no se marcaron porque a esa hora ya sale otro envío: ${[...fuera].map(corta).join(', ')}`, { autoClose: 7000 });
+    poner(nuevas.filter((f) => !fuera.has(f)));
+  };
+  const avisoHoras = (lista) => lista.length > 0 && (
+    <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '-2px 0 8px', lineHeight: 1.5 }}>
+      <b>Horas ya ocupadas esos días:</b> {lista.map(([h, quien]) => `${hora12(h)} (${quien.join(', ')})`).join(' · ')}
+    </div>
+  );
+  const alertaChoques = (lista) => lista.length > 0 && (
+    <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, background: '#fdecea', borderRadius: 8, padding: '6px 8px', marginBottom: 8 }}>
+      <i className="bi bi-exclamation-octagon-fill me-1"></i>Cambia la hora: {lista.slice(0, 4).map((c) => `${corta(c.fecha)} a las ${hora12(c.hora)} choca con ${c.quien} (${hora12(c.horaOtro)})`).join(' · ')}{lista.length > 4 ? ` y ${lista.length - 4} más` : ''}
+    </div>
+  );
   const insertar = (k) => {
     const el = refTexto.current;
     const actual = cfg.mensaje || defecto;
@@ -273,9 +332,9 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
         {cfg.activo && <>
           <label className="jd-label">DÍAS (TOCA EN EL CALENDARIO)</label>
           {!sorteo && <div style={{ fontSize: '.68rem', color: '#a07000', marginBottom: 6 }}>Pon la fecha del sorteo arriba para ver el calendario hasta ese día.</div>}
-          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={cfg.fechas} ocupadas={ocupadas} onCambio={(f) => set('fechas', f)} />
+          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={cfg.fechas} ocupadas={ocupadas} onCambio={(f) => cambiarFechas('publicidad', f, cfg.fechas, cfg.horas, (x) => set('fechas', x))} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: '.66rem', color: 'var(--jordyn-muted)', marginBottom: 6 }}>
-            <button type="button" onClick={() => set('fechas', rango(desde, hasta).filter((f) => !ocupadas[f]))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días libres hasta el sorteo</button>
+            <button type="button" onClick={() => cambiarFechas('publicidad', rango(desde, hasta).filter((f) => !ocupadas[f]), cfg.fechas, cfg.horas, (x) => set('fechas', x))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días libres hasta el sorteo</button>
             {cfg.fechas.length > 0 && <button type="button" onClick={() => set('fechas', [])} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px', borderStyle: 'dashed' }}>Quitar todos</button>}
             <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#e67e22', marginRight: 4 }} />ya lo tiene otra rifa</span>
             {sorteo && <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 3, border: '2px solid #e0a800', marginRight: 4, verticalAlign: -1 }} />sorteo</span>}
@@ -297,6 +356,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             <button type="button" onClick={agregarHora} className="btn-jordyn-outline" style={{ fontSize: '.74rem', padding: '6px 10px' }}>Agregar hora</button>
           </div>
           {!cfg.horas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, margin: '-2px 0 8px' }}>Sin una hora no sale nada: elige la hora y toca «Agregar hora».</div>}
+          {alertaChoques(choquesPubli)}
+          {avisoHoras(horasOcupadas('publicidad', cfg.fechas))}
 
           <label className="jd-label">MENSAJE</label>
           <textarea ref={refTexto} className="jd-input" rows={9} maxLength={1500} value={cfg.mensaje} placeholder={defecto} onChange={(e) => set('mensaje', e.target.value)} />
@@ -333,9 +394,9 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
         </div>
         {tb.activo && <>
           <label className="jd-label">DÍAS DE LA TABLITA</label>
-          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={tb.fechas} ocupadas={{}} onCambio={(f) => setTb('fechas', f)} />
+          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={tb.fechas} ocupadas={{}} onCambio={(f) => cambiarFechas('tablita', f, tb.fechas, tb.horas, (x) => setTb('fechas', x))} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-            <button type="button" onClick={() => setTb('fechas', rango(desde, hasta))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días hasta el sorteo</button>
+            <button type="button" onClick={() => cambiarFechas('tablita', rango(desde, hasta), tb.fechas, tb.horas, (x) => setTb('fechas', x))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días hasta el sorteo</button>
             {tb.fechas.length > 0 && <button type="button" onClick={() => setTb('fechas', [])} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px', borderStyle: 'dashed' }}>Quitar todos</button>}
           </div>
           {tb.fechas.length > 0
@@ -352,6 +413,8 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             <button type="button" onClick={agregarHoraT} className="btn-jordyn-outline" style={{ fontSize: '.74rem', padding: '6px 10px' }}>Agregar hora</button>
           </div>
           {!tb.horas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, margin: '-2px 0 8px' }}>Sin una hora no sale la tablita.</div>}
+          {alertaChoques(choquesTb)}
+          {avisoHoras(horasOcupadas('tablita', tb.fechas))}
           <label className="jd-label">TEXTO (OPCIONAL)</label>
           <textarea className="jd-input" rows={3} maxLength={900} value={tb.mensaje} onChange={(e) => setTb('mensaje', e.target.value)} placeholder="Vacío = solo la imagen, sin mensaje" />
           <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>Si escribes algo, puedes usar las mismas palabras automáticas de arriba, como {'{CUANDO}'}, {'{tasa}'} o {'{precio}'}.</div>

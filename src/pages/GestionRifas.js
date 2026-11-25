@@ -3054,6 +3054,7 @@ export default function GestionRifas() {
   const [modalCompartir,  setModalCompartir]  = useState(null);   // rifa: números por vendedor para compartir/imprimir
   const [confirmDelete,   setConfirmDelete]   = useState(null);
   const [deletingRifa,    setDeletingRifa]    = useState(false);
+  const choquesVendedores = useRef(0);   // envíos a vendedores a la misma hora que otro (lo cuenta ConfigVendedoresRifa)
   const [tasaValor,       setTasaValor]       = useState('');
   const [tasaBase,        setTasaBase]        = useState('');
   const [tasaResultado,   setTasaResultado]   = useState(null);
@@ -3219,6 +3220,7 @@ export default function GestionRifas() {
     if (form.pago_diferido && !form.fecha_sorteo) { toast.error('Para permitir apartar sin pagar la rifa necesita fecha de sorteo'); return; }
     if (form.recordatorio_vendedores?.activo && !form.recordatorio_vendedores.horas?.length) { toast.error('El mensaje a los vendedores necesita al menos una hora (toca «Agregar hora»)'); return; }
     if (form.recordatorio_vendedores?.activo && !form.recordatorio_vendedores.fechas?.length && !form.recordatorio_vendedores.dias?.length) { toast.error('Marca en el calendario los días en que sale el mensaje a los vendedores'); return; }
+    if (choquesVendedores.current > 0) { toast.error('Dos envíos automáticos a los vendedores quedan a la misma hora: cambia la hora marcada en rojo'); return; }
     const tablita = form.recordatorio_vendedores?.tablita;
     if (tablita?.activo && (!tablita.fechas?.length || !tablita.horas?.length)) { toast.error('A la tablita de los vendedores le faltan los días o la hora'); return; }
     setSaving(true);
@@ -4253,6 +4255,7 @@ export default function GestionRifas() {
                     onChange={cambios => setForm(p => ({ ...p, ...cambios }))}
                     rifaId={editId}
                     fechaSorteo={form.fecha_sorteo}
+                    onChoques={(n) => { choquesVendedores.current = n; }}
                   />
                 </div>
               </div>
