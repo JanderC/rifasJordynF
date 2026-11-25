@@ -74,7 +74,8 @@ function Calendario({ desde, hasta, sorteo, marcadas, ocupadas, onCambio }) {
 }
 const miniatura = (url) => (url && url.includes('/upload/') ? url.replace('/upload/', '/upload/f_auto,q_auto,c_limit,w_160/') : url);
 const hora12 = (h) => new Date(`2026-01-01T${h}:00`).toLocaleTimeString('es-VE', { hour: 'numeric', minute: '2-digit', hour12: true });
-export const RECORDATORIO_VENDEDORES_VACIO = { activo: false, fechas: [], dias: [], horas: [], mensaje: '' };
+const TABLITA_VACIA = { activo: false, fechas: [], horas: [], mensaje: '' };
+export const RECORDATORIO_VENDEDORES_VACIO = { activo: false, fechas: [], dias: [], horas: [], mensaje: '', tablita: TABLITA_VACIA };
 
 // Las tres imágenes de una ciudad
 const momentos = (fecha) => {
@@ -127,6 +128,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const [listo, setListo] = useState(false);
   const [stats, setStats] = useState(null);
   const [nuevaHora, setNuevaHora] = useState('18:00');
+  const [nuevaHoraT, setNuevaHoraT] = useState('08:00');
   const [ocupado, setOcupado] = useState(false);
   const [ejemplo, setEjemplo] = useState(null);
   const [telefono, setTelefono] = useState('');
@@ -185,6 +187,17 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
   const ocupadas = {};
   for (const o of otras) if (o.rifa_id !== rifaId) for (const f of o.fechas) (ocupadas[f] ||= []).push(o.nombre);
   const dobles = cfg.fechas.filter((f) => ocupadas[f]);
+  // La tablita (publicidad con los números de cada uno): su propio calendario y horas
+  const tb = { ...TABLITA_VACIA, ...(cfg.tablita || {}) };
+  const setTb = (k, v) => onChange({ recordatorio_vendedores: { ...cfg, tablita: { ...tb, [k]: v } } });
+  const encenderTb = (on) => onChange({ recordatorio_vendedores: { ...cfg, tablita: on
+    ? { ...tb, activo: true, horas: tb.horas.length ? tb.horas : ['08:00'] }
+    : { ...tb, activo: false } } });
+  const agregarHoraT = () => {
+    if (!nuevaHoraT || tb.horas.includes(nuevaHoraT)) return;
+    if (tb.horas.length >= 4) { toast.error('Máximo 4 horas al día'); return; }
+    setTb('horas', [...tb.horas, nuevaHoraT].sort());
+  };
   const agregarHora = () => {
     if (!nuevaHora || cfg.horas.includes(nuevaHora)) return;
     if (cfg.horas.length >= 4) { toast.error('Máximo 4 horas al día'); return; }
@@ -291,7 +304,7 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             {VARIABLES.map(([k, t]) => <button key={k} type="button" onClick={() => insertar(k)} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 7px' }}>{t}</button>)}
           </div>
           <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.4 }}>
-            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa Bs» sale sola: dólar colombiano ÷ dólar paralelo (ej. 3.229 ÷ 1.009 = 3,20). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
+            Escríbelo como lo mandas tú; los botones ponen lo que cambia solo. «El sábado / Mañana / Hoy» se pone según el día. «Tasa Bs» es la que pongas a mano en Tasas; si no pones ninguna, sale sola (dólar colombiano ÷ dólar paralelo). Entre asteriscos va en negrita: *así*. Si escribes la palabra en MAYÚSCULAS, por ejemplo {'{CUANDO}'}, sale en mayúsculas: «EL SÁBADO».
             {defecto && cfg.mensaje !== defecto && <> <button type="button" onClick={() => set('mensaje', defecto)} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--jordyn-primary-d)', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}>Usar la plantilla</button></>}
           </div>
         </>}
@@ -302,9 +315,47 @@ export default function ConfigVendedoresRifa({ value, onChange, rifaId, fechaSor
             {stats.sin_telefono > 0 && <div style={{ color: stats.con_telefono ? '#a07000' : '#c0392b', fontWeight: 700 }}>{stats.sin_telefono} vendedor{stats.sin_telefono === 1 ? '' : 'es'} sin teléfono no {stats.sin_telefono === 1 ? 'lo recibe' : 'lo reciben'}. Ponles el teléfono en «Números por vendedor» (botón «Agregar teléfono») o en Vendedores.</div>}
             {stats.nuevos > 0 && <> <b>{stats.nuevos}</b> nunca le {stats.nuevos === 1 ? 'ha' : 'han'} escrito a este WhatsApp: {stats.nuevos === 1 ? 'sale' : 'salen'} de a poco y con tope de 30 por día. Si te escriben una vez, les llega al instante.</>}
             {!stats.conectado && <div style={{ color: '#c0392b', fontWeight: 700 }}>WhatsApp no está conectado: mientras tanto no sale nada.</div>}
-            {stats.turnos.length > 0 && <div>Últimos envíos: {stats.turnos.map((t) => `${t.turno.slice(5).replace('T', ' ')} (${t.enviados})`).join(' · ')}</div>}
+            {stats.turnos.length > 0 && <div>Últimos envíos: {stats.turnos.map((t) => (t.turno.startsWith('N')
+              ? `tablita ${t.turno.slice(6).replace('T', ' ')} (${t.enviados})`
+              : `${t.turno.slice(5).replace('T', ' ')} (${t.enviados})`)).join(' · ')}</div>}
           </div>
         )}
+      </div>
+
+      {/* ── La tablita: publicidad con los números de cada vendedor, programada ── */}
+      <div style={caja}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '.86rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={tb.activo} onChange={(e) => encenderTb(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--jordyn-primary)' }} />
+          Enviarles la tablita (la publicidad con SUS números) automáticamente
+        </label>
+        <div style={{ fontSize: '.68rem', color: 'var(--jordyn-muted)', margin: '3px 0 8px', lineHeight: 1.4 }}>
+          Lo mismo que «Enviar a cada uno» de «Números por vendedor», pero solo: los días y a las horas que marques, a cada vendedor con teléfono le llega la imagen de su ciudad con los números que le quedan libres.
+        </div>
+        {tb.activo && <>
+          <label className="jd-label">DÍAS DE LA TABLITA</label>
+          <Calendario desde={desde} hasta={hasta} sorteo={sorteo} marcadas={tb.fechas} ocupadas={{}} onCambio={(f) => setTb('fechas', f)} />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+            <button type="button" onClick={() => setTb('fechas', rango(desde, hasta))} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px' }}>Todos los días hasta el sorteo</button>
+            {tb.fechas.length > 0 && <button type="button" onClick={() => setTb('fechas', [])} style={{ ...chip(false), fontSize: '.66rem', padding: '3px 8px', borderStyle: 'dashed' }}>Quitar todos</button>}
+          </div>
+          {tb.fechas.length > 0
+            ? <div style={{ fontSize: '.7rem', marginBottom: 6 }}><b>{tb.fechas.length} día{tb.fechas.length === 1 ? '' : 's'}:</b> {tb.fechas.map(corta).join(' · ')}</div>
+            : <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, marginBottom: 6 }}>Toca en el calendario los días en que sale la tablita.</div>}
+          <label className="jd-label">HORAS DE LA TABLITA (VENEZUELA)</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+            {tb.horas.map((h) => (
+              <span key={h} style={{ ...chip(true), cursor: 'default', display: 'inline-flex', gap: 6 }}>{hora12(h)}
+                <button type="button" onClick={() => setTb('horas', tb.horas.filter((x) => x !== h))} aria-label={`Quitar ${hora12(h)} de la tablita`} style={{ border: 'none', background: 'none', color: '#fff', padding: 0, cursor: 'pointer' }}>×</button>
+              </span>
+            ))}
+            <input className="jd-input" type="time" value={nuevaHoraT} onChange={(e) => setNuevaHoraT(e.target.value)} aria-label="Hora de la tablita" style={{ width: 130, padding: '6px 10px' }} />
+            <button type="button" onClick={agregarHoraT} className="btn-jordyn-outline" style={{ fontSize: '.74rem', padding: '6px 10px' }}>Agregar hora</button>
+          </div>
+          {!tb.horas.length && <div role="alert" style={{ fontSize: '.72rem', color: '#c0392b', fontWeight: 700, margin: '-2px 0 8px' }}>Sin una hora no sale la tablita.</div>}
+          <label className="jd-label">TEXTO (OPCIONAL)</label>
+          <textarea className="jd-input" rows={3} maxLength={900} value={tb.mensaje} onChange={(e) => setTb('mensaje', e.target.value)} placeholder="Vacío = solo la imagen, sin mensaje" />
+          <div style={{ fontSize: '.66rem', color: 'var(--jordyn-muted)', marginTop: 4 }}>Si escribes algo, puedes usar las mismas palabras automáticas de arriba, como {'{CUANDO}'}, {'{tasa}'} o {'{precio}'}.</div>
+        </>}
       </div>
 
       {rifaId ? (

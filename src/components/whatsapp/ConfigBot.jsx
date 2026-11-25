@@ -372,6 +372,18 @@ export default function ConfigBot() {
             <div className="wcb-opcion" style={{ marginTop: 10 }}><div><b>Enviar con la foto de la rifa</b><span>El mensaje sale como pie de la foto principal de la rifa. Si la rifa no tiene foto, sale solo el texto.</span></div><Toggle on={!!rec.con_imagen} onClick={() => setSub('recordatorios_apartado', 'con_imagen', !rec.con_imagen)} /></div>
           </div>
 
+          {/* Textos que acompañan la imagen al enviar */}
+          <div className="wcb-card">
+            <h4><i className="bi bi-chat-square-text" />Texto al enviar tickets y números</h4>
+            <div className="desc">Por defecto sale <b>solo la imagen</b>, sin mensaje. Si quieres que vaya un texto, escríbelo aquí. Palabras que cambian solas: {'{nombre}'}, {'{rifa}'} y, en el ticket, {'{numeros}'}.</div>
+            <label className="jd-label" style={{ marginTop: 6 }}>Al aprobar una compra (el ticket del cliente)</label>
+            <textarea className="jd-input" rows={3} maxLength={900} value={cfg.textos_envio?.ticket || ''} placeholder="Vacío = solo el ticket"
+              onChange={(e) => setSub('textos_envio', 'ticket', e.target.value)} />
+            <label className="jd-label" style={{ marginTop: 10 }}>Al enviar la tablita de números a un vendedor</label>
+            <textarea className="jd-input" rows={3} maxLength={900} value={cfg.textos_envio?.numeros || ''} placeholder="Vacío = solo la imagen"
+              onChange={(e) => setSub('textos_envio', 'numeros', e.target.value)} />
+          </div>
+
           {/* Dueño */}
           <div className="wcb-card">
             <h4><i className="bi bi-person-badge" />Dueño y avisos por WhatsApp</h4>

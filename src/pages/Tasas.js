@@ -82,6 +82,52 @@ const FUENTES_UI = {
   ],
 };
 
+/* ─── La tasa Bs del mensaje a vendedores: manual (manda) o automática ─── */
+function TasaBsMensaje() {
+  const [d, setD] = useState(null);
+  const [valor, setValor] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const cargar = useCallback(() => API.get('/tasas/tasa-bs').then((r) => { setD(r.data); setValor(r.data.manual ? String(r.data.manual) : ''); }).catch(() => {}), []);
+  useEffect(() => { cargar(); }, [cargar]);
+  const fmt = (v) => new Intl.NumberFormat('es-VE', { maximumFractionDigits: 2 }).format(v);
+  const guardar = async () => {
+    const v = parseFloat(String(valor).replace(',', '.'));
+    if (!(v > 0 && v < 100)) { toast.error('Escribe la tasa, por ejemplo 3,25'); return; }
+    setGuardando(true);
+    try { await API.put('/tasas/TASA_BS_MENSAJE', { valor: v, descripcion: 'Tasa Bs (pesos por 1 bolívar) del mensaje a vendedores, puesta a mano' }); toast.success(`Tasa fija en ${fmt(v)}: el mensaje a los vendedores usa esa`); await cargar(); }
+    catch (e) { toast.error(e.response?.data?.error || 'No se pudo guardar'); }
+    finally { setGuardando(false); }
+  };
+  const automatica = async () => {
+    setGuardando(true);
+    try { await API.delete('/tasas/tasa-bs'); toast.success('El mensaje vuelve a la tasa automática'); await cargar(); }
+    catch { toast.error('No se pudo cambiar'); }
+    finally { setGuardando(false); }
+  };
+  const manual = d?.manual;
+  return (
+    <div className="jd-card" style={{ padding: 18, marginBottom: 24, border: `2px solid ${manual ? '#16a34a' : 'var(--jordyn-border)'}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 260px' }}>
+          <div style={{ fontWeight: 900, fontSize: '1rem' }}>💱 Tasa Bs del mensaje a los vendedores</div>
+          <div style={{ fontSize: '.78rem', color: 'var(--jordyn-muted)', marginTop: 4, lineHeight: 1.5 }}>
+            Es la que sale como «BS» y con la que se saca el precio en bolívares en el mensaje automático a los vendedores.
+            {manual ? <> Ahora está <b style={{ color: '#16a34a' }}>fija en {fmt(manual)}</b>: no cambia sola aunque se mueva el dólar.</>
+              : <> Ahora es <b>automática</b>{d?.automatica ? <>: <b>{fmt(d.automatica)}</b> (dólar colombiano {fmt(d.pesos_por_dolar)} ÷ paralelo {d.paralelo ? fmt(d.paralelo) : '—'})</> : ''}. Cambia sola cuando se mueve el dólar.</>}
+          </div>
+        </div>
+        <div style={{ fontSize: '2rem', fontWeight: 900, color: manual ? '#16a34a' : 'var(--jordyn-text)' }}>{manual ? fmt(manual) : d?.automatica ? fmt(d.automatica) : '—'}</div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12 }}>
+        <input className="jd-input" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Ej. 3,25" aria-label="Tasa Bs manual" style={{ width: 130, fontSize: '1rem', fontWeight: 700 }} />
+        <button type="button" className="btn-jordyn" disabled={guardando} onClick={guardar}>{manual ? 'Cambiar la tasa fija' : 'Fijar esta tasa'}</button>
+        {manual && <button type="button" className="btn-jordyn-outline" disabled={guardando} onClick={automatica}>Volver a la automática</button>}
+      </div>
+      <div style={{ fontSize: '.7rem', color: 'var(--jordyn-muted)', marginTop: 6 }}>Ejemplo: con 3,25, mil bolívares son {fmt(3250)} pesos y un ticket de 12.000 pesos son {fmt(12000 / 3.25)} Bs.</div>
+    </div>
+  );
+}
+
 /* ─── Hook: dólar paralelo Venezuela ─── */
 function useDolarParalelo() {
   const [data, setData] = useState({ tasa: null, fuente: null, fecha: null });
@@ -328,7 +374,7 @@ export default function Tasas() {
 
   // Orden fijo: COP primero, BSD segundo
   const ORDER  = ['COP_POR_USD', 'BSD_POR_USD', 'COP_POR_USD_BS'];
-  const OCULTAS = ['COP_POR_BS'];   // la tasa manual del bolívar que hubo un día: ya no se usa
+  const OCULTAS = ['COP_POR_BS', 'TASA_BS_MENSAJE'];   // la vieja manual del bolívar, y la del mensaje (tiene su propio panel arriba)
   const allKeys = Object.fromEntries(Object.entries({ ...TASAS_CONFIG, ...tasas }).filter(([k]) => !OCULTAS.includes(k)));
   const claves = [
     ...ORDER.filter(k => k in allKeys),
@@ -337,6 +383,8 @@ export default function Tasas() {
 
   return (
     <Layout title="TASAS DE CAMBIO">
+
+      <TasaBsMensaje />
 
       {/* Descripción */}
       <div style={{ marginBottom:28 }}>

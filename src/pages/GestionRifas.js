@@ -3219,6 +3219,8 @@ export default function GestionRifas() {
     if (form.pago_diferido && !form.fecha_sorteo) { toast.error('Para permitir apartar sin pagar la rifa necesita fecha de sorteo'); return; }
     if (form.recordatorio_vendedores?.activo && !form.recordatorio_vendedores.horas?.length) { toast.error('El mensaje a los vendedores necesita al menos una hora (toca «Agregar hora»)'); return; }
     if (form.recordatorio_vendedores?.activo && !form.recordatorio_vendedores.fechas?.length && !form.recordatorio_vendedores.dias?.length) { toast.error('Marca en el calendario los días en que sale el mensaje a los vendedores'); return; }
+    const tablita = form.recordatorio_vendedores?.tablita;
+    if (tablita?.activo && (!tablita.fechas?.length || !tablita.horas?.length)) { toast.error('A la tablita de los vendedores le faltan los días o la hora'); return; }
     setSaving(true);
     try {
       // Solo los vendedores marcados con checkbox
